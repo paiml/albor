@@ -46,6 +46,10 @@
 | `bashrs make parse` | `bashrs make parse Makefile` | **PASS** (full AST) | — |
 | `bashrs make purify` | `bashrs make purify Makefile` | **PASS** (purified output) | — |
 | `bashrs classify` | `bashrs classify Makefile` | **PASS** (safe: 85%) | — |
+| `apr pipeline validate` | `apr pipeline validate albor.yaml` | **PASS** (2 machines, 22 resources) | ~~ALB-028~~ FIXED |
+| `apr pipeline plan` | `apr pipeline plan albor.yaml` | **PASS** (23 resources, full DAG) | ~~ALB-028~~ FIXED |
+| `apr pipeline plan --json` | `apr pipeline plan albor.yaml --json` | **PASS** (structured JSON with deps) | ~~ALB-028~~ FIXED |
+| `apr pipeline status` | `apr pipeline status albor.yaml` | **EXPECTED FAIL** (no state dir yet) | — |
 | `pmat query` | `pmat query "training"` | **PASS** (0 functions, 5 document matches) | — |
 | `pmat analyze makefile` | `pmat analyze makefile Makefile` | **PASS** (64% quality score) | — |
 | `pv lean` | `pv lean contracts/kd-v1.yaml` | **PASS** (6 Lean 4 theorem stubs generated) | — |
@@ -318,6 +322,26 @@ Phase 2 (requires ALB-009 inference): generates completions via realizar engine.
 Sample benchmark: `configs/eval/python-basic.jsonl` (10 problems).
 
 Commit: `aprender@4e61297e` → `apr eval --task code` works.
+
+### ALB-028: apr pipeline plan/apply/status/validate (FIXED)
+
+Added `apr pipeline` subcommand wrapping forjar's DAG engine:
+
+- **`apr pipeline plan <manifest>`**: Shows full execution plan with resource
+  DAG, dependency ordering, and per-machine breakdown. Supports `--json`,
+  `--machine`, `--tag`, `--cost` flags.
+- **`apr pipeline apply <manifest>`**: Converges resources via forjar engine.
+  Supports `--parallel`, `--keep-going`, `--machine`, `--tag`.
+- **`apr pipeline status <manifest>`**: Shows converged/pending/failed state
+  from forjar lock files.
+- **`apr pipeline validate <manifest>`**: Validates manifest without connecting
+  to machines.
+
+Implementation shells out to the `forjar` binary (keeping sovereign stack
+tools decoupled). Follows the train/tokenize plan/apply subcommand pattern.
+
+Commit: `aprender@e653d5ca` → All 4 subcommands work, plan shows 23 resources
+across 2 machines (lambda, intel).
 
 ### ALB-027: forjar task resource type (FIXED)
 
