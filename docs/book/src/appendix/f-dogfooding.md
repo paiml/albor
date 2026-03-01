@@ -59,6 +59,7 @@
 | `alimentar convert` | `alimentar convert` | **PASS** (format conversion) | — |
 | `bashrs score` | `bashrs score Makefile` | **PASS** (D grade, 5.2/10) | — |
 | `bashrs audit` | `bashrs audit Makefile` | **PASS** (comprehensive audit) | — |
+| `entrenar validate` | `entrenar validate pretrain-350m-manifest.yaml` | **PASS** (architecture overrides bridge through) | ~~ALB-021~~ FIXED |
 
 ## Contract Validation Detail
 
@@ -251,6 +252,24 @@ FIM formats (Bavarian et al. 2022). Features:
 - 10 unit tests
 
 Commit: `alimentar@290582d` → `alimentar fim` works.
+
+### ALB-021: Custom model architecture params in YAML (FIXED)
+
+Added `ArchitectureOverrides` to `ModelRef` in entrenar's config schema.
+The bridge converter (`manifest_to_spec`) now maps YAML manifest
+`architecture:` fields to overrides that are applied on top of the
+resolved `TransformerConfig` (from `config.json` or demo defaults).
+
+Supported override fields: `hidden_size`, `num_hidden_layers`,
+`num_attention_heads`, `num_kv_heads`, `intermediate_size`, `vocab_size`,
+`max_position_embeddings`, `rms_norm_eps`, `rope_theta`, `use_bias`.
+
+The YAML manifest `ArchitectureConfig` also gained serde aliases
+(`num_hidden_layers` → `num_layers`, `num_attention_heads` → `num_heads`,
+`num_key_value_heads` → `num_kv_heads`, `max_position_embeddings` → `max_seq_length`)
+for compatibility with HuggingFace config.json field names.
+
+Commit: `entrenar@a414861` → Architecture overrides work end-to-end.
 
 ## Tool Availability
 

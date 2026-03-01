@@ -1,0 +1,63 @@
+# configs/train/pretrain-350m-manifest.yaml
+#
+# Entrenar YAML manifest format for the Albor 350M pre-training config.
+# Uses the architecture: section to specify custom model params (ALB-021).
+#
+# Equivalent to pretrain-350m.yaml but in the declarative manifest format
+# that flows through the bridge converter with architecture overrides.
+
+entrenar: "1.0"
+name: "albor-pretrain-350m"
+version: "1.0.0"
+description: "Albor 350M LLaMA-style pre-training on 10B Python tokens"
+seed: 42
+
+model:
+  source: "./models/albor-base"
+  architecture:
+    type: transformer
+    hidden_size: 1024
+    num_layers: 24
+    num_heads: 16
+    num_kv_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_seq_length: 2048
+    rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
+    use_bias: false
+
+data:
+  source: "data/tokenized/train/"
+  val: "data/tokenized/val/"
+  tokenizer: "models/albor-tokenizer/tokenizer.json"
+  seq_len: 2048
+  input_column: "text"
+  loader:
+    batch_size: 8
+    shuffle: true
+
+optimizer:
+  name: adamw
+  lr: 3.0e-4
+  betas: [0.9, 0.95]
+  weight_decay: 0.1
+
+scheduler:
+  name: cosine
+  warmup:
+    steps: 2000
+
+training:
+  epochs: 1
+  gradient:
+    clip_norm: 1.0
+    accumulation_steps: 32
+  mixed_precision:
+    enabled: true
+    dtype: fp16
+  checkpoint:
+    save_every: 1000
+
+output:
+  dir: "./checkpoints/albor-base-350m"
