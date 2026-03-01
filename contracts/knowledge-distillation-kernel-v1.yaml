@@ -2,102 +2,153 @@
 #
 # Provable contract for knowledge distillation loss computation.
 # KD_loss = alpha * KL(sigma(z_t/T) || sigma(z_s/T)) * T^2 + (1-alpha) * CE(y, z_s)
-#
-# Verifies correctness of the KL divergence computation, temperature scaling,
-# alpha interpolation, and gradient flow through the distillation loss.
 
-contract:
-  name: "knowledge-distillation-kernel"
-  version: "1.0"
-  component: "entrenar"
-  gap_id: "ALB-013"
-  priority: "critical"
+metadata:
+  version: "1.0.0"
+  created: "2026-03-01"
+  author: "PAIML Engineering"
+  description: "Knowledge distillation kernel — temperature-scaled KL divergence + cross-entropy"
+  references:
+    - "Hinton et al. (2015) Distilling the Knowledge in a Neural Network"
+    - "Ba & Caruana (2014) Do Deep Nets Really Need to be Deep?"
+  depends_on:
+    - "softmax-kernel-v1"
+    - "cross-entropy-kernel-v1"
 
 equations:
   kd_loss:
-    latex: "\\mathcal{L}_{KD} = \\alpha \\cdot KL(\\sigma(z_t/T) \\| \\sigma(z_s/T)) \\cdot T^2 + (1-\\alpha) \\cdot CE(y, z_s)"
-    description: "Combined knowledge distillation loss with temperature-scaled KL divergence and hard-label cross entropy"
+    formula: "L_KD = alpha * KL(softmax(z_t/T) || softmax(z_s/T)) * T^2 + (1-alpha) * CE(y, z_s)"
+    domain: "z_t, z_s in R^V, T > 0, alpha in [0,1]"
+    codomain: "L_KD in [0, +inf)"
+    invariants:
+      - "L_KD >= 0 (non-negativity from KL and CE non-negativity)"
+      - "alpha=0 => L_KD = CE(y, z_s) (pure hard label)"
+      - "alpha=1 => L_KD = T^2 * KL(teacher || student) (pure soft label)"
 
   kl_divergence:
-    latex: "KL(P \\| Q) = \\sum_i P(i) \\log \\frac{P(i)}{Q(i)}"
-    description: "KL divergence between teacher and student softmax distributions"
+    formula: "KL(P || Q) = sum_i P(i) * log(P(i) / Q(i))"
+    domain: "P, Q valid probability distributions over V classes"
+    codomain: "KL in [0, +inf)"
+    invariants:
+      - "KL(P || Q) >= 0 (Gibbs inequality)"
+      - "KL(P || P) = 0 (identity)"
 
-  temperature_scaling:
-    latex: "\\sigma(z/T)_i = \\frac{e^{z_i/T}}{\\sum_j e^{z_j/T}}"
-    description: "Temperature-scaled softmax, T > 0"
+  temperature_softmax:
+    formula: "softmax(z/T)_i = exp(z_i/T) / sum_j exp(z_j/T)"
+    domain: "z in R^V, T > 0"
+    codomain: "softmax in (0, 1)^V, sum = 1"
+    invariants:
+      - "All outputs strictly positive"
+      - "Outputs sum to 1"
+      - "T -> inf => uniform distribution"
+      - "T -> 0 => one-hot on argmax"
 
-obligations:
-  - id: "KD-001"
-    name: "KL non-negativity"
-    level: 4                               # Kani bounded model check
-    property: "KL(P || Q) >= 0 for all valid probability distributions P, Q"
+proof_obligations:
+  - type: invariant
+    property: "KL non-negativity"
+    formal: "KL(P || Q) >= 0 for all valid P, Q"
+    applies_to: all
+
+  - type: bound
+    property: "Temperature scaling produces valid distribution"
+    formal: "softmax(z/T)_i > 0 and sum_i softmax(z/T)_i = 1 for T > 0"
+    applies_to: all
+
+  - type: invariant
+    property: "Alpha interpolation bound"
+    formal: "alpha=0 => L_KD = CE; alpha=1 => L_KD = T^2 * KL"
+    applies_to: all
+
+  - type: equivalence
+    property: "Gradient correctness"
+    formal: "analytical gradient matches numerical gradient within 1e-4"
+    tolerance: 1.0e-4
+    applies_to: all
+
+  - type: invariant
+    property: "T^2 gradient compensation"
+    formal: "gradient magnitude approximately constant across T in [1, 10]"
+    applies_to: all
+
+  - type: equivalence
+    property: "SIMD matches scalar within ULP"
+    tolerance: 8.0
+    applies_to: simd
+
+kernel_structure:
+  phases:
+    - name: teacher_softmax
+      description: "Compute softmax(z_t / T) — teacher soft targets"
+      invariant: "output is valid probability distribution"
+    - name: student_softmax
+      description: "Compute softmax(z_s / T) — student soft predictions"
+      invariant: "output is valid probability distribution"
+    - name: kl_divergence
+      description: "Compute KL(teacher || student)"
+      invariant: "result >= 0"
+    - name: cross_entropy
+      description: "Compute CE(y, z_s) — hard label loss"
+      invariant: "result >= 0"
+    - name: combine
+      description: "Combine: alpha * T^2 * KL + (1-alpha) * CE"
+      invariant: "result >= 0"
+
+falsification_tests:
+  - id: FALSIFY-KD-001
+    rule: "KL non-negativity"
+    prediction: "KL(teacher || student) >= 0 for all batches"
     test: "proptest with 10000 random logit pairs, assert KL >= -1e-7"
-    falsification: "FALSIFY-ALBOR-004"
+    if_fails: "Log-domain computation error or softmax numerical instability"
 
-  - id: "KD-002"
-    name: "Temperature scaling invariant"
-    level: 3                               # Property-based test
-    property: "softmax(z/T) is a valid probability distribution (sums to 1, all >= 0) for T > 0"
-    test: "proptest with random logit vectors and T in (0.1, 100), assert sum within 1e-6 of 1.0"
+  - id: FALSIFY-KD-002
+    rule: "Temperature boundary"
+    prediction: "softmax(z/T) approaches uniform as T -> inf"
+    test: "proptest with T=1000, assert max - min < 1e-3"
+    if_fails: "Overflow in exp(z/T) for small T or large z"
 
-  - id: "KD-003"
-    name: "Alpha interpolation bound"
-    level: 3
-    property: "For alpha in [0, 1]: KD_loss is bounded between pure KL loss and pure CE loss"
-    test: "proptest: alpha=0 => KD_loss == CE_loss; alpha=1 => KD_loss == T^2 * KL_loss"
+  - id: FALSIFY-KD-003
+    rule: "Alpha boundary conditions"
+    prediction: "alpha=0 => KD loss equals CE loss exactly"
+    test: "Direct comparison with tolerance 1e-7"
+    if_fails: "Alpha interpolation not applied correctly"
 
-  - id: "KD-004"
-    name: "Gradient correctness"
-    level: 3
-    property: "Numerical gradient of KD_loss w.r.t. student logits matches analytical gradient within 1e-4"
-    test: "Finite difference check on 1000 random inputs"
+  - id: FALSIFY-KD-004
+    rule: "Gradient correctness"
+    prediction: "Analytical gradient matches finite-difference within 1e-4"
+    test: "Central difference check on 1000 random inputs"
+    if_fails: "Derivative of KL or CE computed incorrectly"
 
-  - id: "KD-005"
-    name: "T^2 scaling"
-    level: 3
-    property: "The T^2 factor compensates for the 1/T^2 reduction in gradient magnitude from temperature scaling"
-    test: "Verify gradient magnitude is approximately constant across T in [1, 10]"
+  - id: FALSIFY-KD-005
+    rule: "Distillation value"
+    prediction: "albor-distill avg benchmark > albor-base avg benchmark"
+    test: "Run full eval suite on both, paired t-test p < 0.05"
+    if_fails: "Teacher logits corrupted, T too high/low, or alpha miscalibrated"
 
-  - id: "KD-006"
-    name: "Distillation improves over base"
-    level: 2                               # Falsification test
-    property: "albor-distill avg benchmark > albor-base avg benchmark"
-    test: "Paired t-test on eval suite with p < 0.05"
-    falsification: "FALSIFY-ALBOR-005"
+kani_harnesses:
+  - id: KANI-KD-001
+    obligation: KD-INV-001
+    property: "KL divergence non-negative for bounded logits"
+    bound: 8
+    strategy: stub_float
+    solver: cadical
+    harness: verify_kl_non_negative
 
-inputs:
-  teacher_logits:
-    type: "Tensor<f32>"
-    shape: "[batch, seq_len, vocab_size]"
-    constraints: "finite, no NaN/Inf"
+  - id: KANI-KD-002
+    obligation: KD-INV-002
+    property: "Temperature softmax produces valid distribution"
+    bound: 8
+    strategy: stub_float
+    solver: cadical
+    harness: verify_temp_softmax_valid
 
-  student_logits:
-    type: "Tensor<f32>"
-    shape: "[batch, seq_len, vocab_size]"
-    constraints: "finite, no NaN/Inf"
-
-  labels:
-    type: "Tensor<i64>"
-    shape: "[batch, seq_len]"
-    constraints: "values in [0, vocab_size)"
-
-  temperature:
-    type: "f32"
-    constraints: "> 0"
-
-  alpha:
-    type: "f32"
-    constraints: "in [0.0, 1.0]"
-
-outputs:
-  loss:
-    type: "f32"
-    constraints: ">= 0, finite"
-
-  kl_loss:
-    type: "f32"
-    constraints: ">= 0, finite"
-
-  ce_loss:
-    type: "f32"
-    constraints: ">= 0, finite"
+qa_gate:
+  id: F-KD-001
+  name: "Knowledge Distillation Contract"
+  description: "KD loss correctness for Albor distillation pipeline"
+  checks:
+    - "kl_non_negativity"
+    - "temperature_validity"
+    - "alpha_interpolation"
+    - "gradient_correctness"
+  pass_criteria: "All 5 falsification tests pass + 2 Kani harnesses verify"
+  falsification: "Replace KL with negative constant to verify detection"

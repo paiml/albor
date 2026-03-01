@@ -1,0 +1,79 @@
+# configs/pipeline/infra-only.yaml — Infrastructure-only subset
+#
+# This manifest contains only the forjar-native resource types (no task resources).
+# Used for infrastructure provisioning before ALB-027 (task resource type) is implemented.
+#
+# Usage:
+#   forjar validate -f configs/pipeline/infra-only.yaml
+#   forjar plan -f configs/pipeline/infra-only.yaml
+#   forjar apply -f configs/pipeline/infra-only.yaml
+
+version: "1.0"
+name: albor-infrastructure
+description: "Albor infrastructure — GPU drivers, directories, NFS mounts, teacher model"
+
+machines:
+  lambda:
+    hostname: lambda
+    addr: 127.0.0.1
+    user: noah
+    arch: x86_64
+    roles: [gpu-train, student]
+
+  intel:
+    hostname: intel
+    addr: intel
+    user: noah
+    ssh_key: ~/.ssh/id_ed25519
+    arch: x86_64
+    roles: [teacher-inference, data-pipeline, eval, checkpoint-backup]
+
+resources:
+  cuda-driver:
+    type: gpu
+    machine: lambda
+    gpu_backend: nvidia
+    driver_version: "550"
+    cuda_version: "12.4"
+    persistence_mode: true
+    compute_mode: exclusive_process
+
+  vulkan-driver:
+    type: package
+    machine: intel
+    provider: apt
+    state: present
+    packages: [mesa-vulkan-drivers, vulkan-tools, libvulkan-dev]
+
+  data-dir:
+    type: file
+    machine: [lambda, intel]
+    path: /data/albor
+    state: directory
+    mode: "0755"
+
+  teacher-model:
+    type: model
+    machine: intel
+    name: Qwen/Qwen3-Coder-Next
+    state: present
+    cache_dir: /data/albor/models/teacher
+    depends_on: [data-dir]
+
+  checkpoint-share:
+    type: mount
+    machine: intel
+    source: "lambda:/data/albor/checkpoints"
+    path: /data/albor/checkpoints
+    fstype: nfs
+    options: "rw,sync,no_subtree_check"
+    depends_on: [data-dir]
+
+  logit-share:
+    type: mount
+    machine: lambda
+    source: "intel:/data/albor/teacher-logits"
+    path: /data/albor/teacher-logits
+    fstype: nfs
+    options: "ro,sync"
+    depends_on: [data-dir]

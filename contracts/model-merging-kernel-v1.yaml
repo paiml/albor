@@ -1,74 +1,116 @@
 # model-merging-kernel-v1.yaml — ALB-015
 #
-# Provable contract for model merging algorithms: SLERP, TIES, DARE.
-# Merging combines weights from multiple fine-tuned models into one.
+# Provable contract for model merging: SLERP, TIES, DARE.
 
-contract:
-  name: "model-merging-kernel"
-  version: "1.0"
-  component: "entrenar"
-  gap_id: "ALB-015"
-  priority: "medium"
+metadata:
+  version: "1.0.0"
+  created: "2026-03-01"
+  author: "PAIML Engineering"
+  description: "Model merging kernel — SLERP, TIES, and DARE weight interpolation"
+  references:
+    - "Shoemake (1985) Animating Rotation with Quaternion Curves (SLERP)"
+    - "Yadav et al. (2023) TIES-Merging: Resolving Interference When Merging Models"
+    - "Yu et al. (2023) Language Models are Super Mario: Absorbing Abilities from Homologous Models as a Free Lunch (DARE)"
 
 equations:
   slerp:
-    latex: "\\text{SLERP}(w_1, w_2, t) = \\frac{\\sin((1-t)\\Omega)}{\\sin \\Omega} w_1 + \\frac{\\sin(t\\Omega)}{\\sin \\Omega} w_2"
-    description: "Spherical linear interpolation on the unit sphere, where cos(Omega) = w1 . w2 / (||w1|| ||w2||)"
+    formula: "SLERP(w1, w2, t) = sin((1-t)*Omega)/sin(Omega) * w1 + sin(t*Omega)/sin(Omega) * w2"
+    domain: "w1, w2 in R^n (weight vectors), t in [0, 1], cos(Omega) = w1.w2 / (||w1|| * ||w2||)"
+    codomain: "result in R^n with ||result|| approximately ||w1||"
+    invariants:
+      - "SLERP(w1, w2, 0) = w1 (left boundary)"
+      - "SLERP(w1, w2, 1) = w2 (right boundary)"
+      - "||SLERP(w1, w2, t)|| approximately ||w1|| for normalized inputs"
 
   ties:
-    latex: "w_{merged} = w_{base} + \\lambda \\cdot \\text{elect}(\\text{trim}(\\tau_1, ..., \\tau_n))"
-    description: "TIES: Trim redundant deltas, Elect sign, disjoint merge of task vectors"
+    formula: "w_merged = w_base + lambda * elect(trim(tau_1, ..., tau_n))"
+    domain: "tau_i = w_i - w_base (task vectors), trim ratio k in [0,1]"
+    codomain: "w_merged in R^n"
+    invariants:
+      - "After trim(k%), exactly k% of delta weights are zeroed per layer"
+      - "Sign election resolves conflicts by majority vote"
 
   dare:
-    latex: "\\tilde{\\tau}_i = m_i \\odot \\tau_i / (1-p)"
-    description: "DARE: Drop And REscale — randomly drop delta weights, rescale survivors"
+    formula: "tau_tilde_i = m_i * tau_i / (1-p) where m_i ~ Bernoulli(1-p)"
+    domain: "tau_i (task vector), p in [0, 1) (drop probability)"
+    codomain: "tau_tilde_i: rescaled sparse task vector"
+    invariants:
+      - "E[tau_tilde] = tau (unbiased estimator)"
+      - "Sparsity approximately p"
 
-obligations:
-  - id: "MERGE-001"
-    name: "SLERP interpolation bound"
-    level: 3
-    property: "||SLERP(w1, w2, t)|| is approximately ||w1|| for normalized inputs and t in [0, 1]"
+proof_obligations:
+  - type: bound
+    property: "SLERP interpolation bound"
+    formal: "||SLERP(w1, w2, t)|| within 1% of ||w1|| for normalized inputs"
+    applies_to: all
+
+  - type: invariant
+    property: "SLERP boundary conditions"
+    formal: "SLERP(w1, w2, 0) = w1 and SLERP(w1, w2, 1) = w2"
+    applies_to: all
+
+  - type: invariant
+    property: "TIES trim sparsity"
+    formal: "After trim(k%), exactly k% of deltas are zero"
+    applies_to: all
+
+  - type: invariant
+    property: "DARE unbiased estimator"
+    formal: "E[tau_tilde] = tau over many samples"
+    applies_to: all
+
+  - type: invariant
+    property: "Architecture compatibility check"
+    formal: "Merge rejects incompatible architectures with clear error"
+    applies_to: all
+
+kernel_structure:
+  phases:
+    - name: validate_architectures
+      description: "Verify all input models have same architecture"
+      invariant: "hidden_size, num_layers, vocab_size match"
+    - name: compute_task_vectors
+      description: "Compute delta from base: tau_i = w_i - w_base"
+      invariant: "tau has same shape as w"
+    - name: merge_weights
+      description: "Apply SLERP/TIES/DARE to combine weights"
+      invariant: "output weights are finite"
+
+falsification_tests:
+  - id: FALSIFY-MERGE-001
+    rule: "SLERP interpolation bound"
+    prediction: "||SLERP(w1, w2, t)|| within 1% of ||w1|| for normalized inputs"
     test: "proptest with 10000 random weight pairs and t values"
-    falsification: "FALSIFY-ALBOR-007"
+    if_fails: "SLERP uses LERP instead, or normalization missing"
 
-  - id: "MERGE-002"
-    name: "SLERP boundary conditions"
-    level: 3
-    property: "SLERP(w1, w2, 0) = w1 and SLERP(w1, w2, 1) = w2"
-    test: "proptest with random weight pairs, assert element-wise equality within 1e-6"
+  - id: FALSIFY-MERGE-002
+    rule: "SLERP boundary"
+    prediction: "SLERP(w1, w2, 0) = w1 exactly (within fp tolerance)"
+    test: "proptest with random weights, assert element-wise equality within 1e-6"
+    if_fails: "Off-by-one in interpolation parameter"
 
-  - id: "MERGE-003"
-    name: "TIES sparsity guarantee"
-    level: 3
-    property: "After trim(tau, k%), exactly k% of delta weights are zeroed per layer"
-    test: "proptest with random task vectors and trim percentages"
+  - id: FALSIFY-MERGE-003
+    rule: "DARE unbiased"
+    prediction: "Average of 10000 DARE samples within 1e-2 of original"
+    test: "Monte Carlo estimation of E[tau_tilde]"
+    if_fails: "Rescaling factor (1-p) not applied correctly"
 
-  - id: "MERGE-004"
-    name: "DARE rescaling"
-    level: 3
-    property: "E[tilde_tau] = tau (unbiased estimator after drop + rescale)"
-    test: "Monte Carlo: average 10000 DARE samples, assert mean within 1e-2 of original"
+kani_harnesses:
+  - id: KANI-MERGE-001
+    obligation: MERGE-BND-001
+    property: "SLERP interpolation bound for small vectors"
+    bound: 4
+    strategy: stub_float
+    solver: cadical
+    harness: verify_slerp_bound
 
-  - id: "MERGE-005"
-    name: "Architecture compatibility check"
-    level: 2
-    property: "Merge rejects models with incompatible architectures (different hidden_size, num_layers, etc.)"
-    test: "Attempt merge of incompatible models, assert error with clear diagnostic"
-
-inputs:
-  models:
-    type: "Vec<ModelWeights>"
-    constraints: "all models have identical architecture"
-
-  method:
-    type: "enum"
-    values: ["slerp", "ties", "dare"]
-
-  weight:
-    type: "f32"
-    constraints: "in [0.0, 1.0] for slerp; any positive float for TIES lambda"
-
-outputs:
-  merged:
-    type: "ModelWeights"
-    constraints: "same architecture as inputs, all weights finite"
+qa_gate:
+  id: F-MERGE-001
+  name: "Model Merging Contract"
+  description: "Weight merging correctness for Albor post-training"
+  checks:
+    - "slerp_bound"
+    - "slerp_boundary"
+    - "dare_unbiased"
+  pass_criteria: "All 3 falsification tests pass + Kani SLERP harness verifies"
+  falsification: "Replace SLERP with LERP to verify bound detection"

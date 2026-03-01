@@ -1529,8 +1529,9 @@ resources:
   vulkan-driver:
     type: package
     machine: intel
+    provider: apt
     state: present
-    names: [mesa-vulkan-drivers, vulkan-tools, libvulkan-dev]
+    packages: [mesa-vulkan-drivers, vulkan-tools, libvulkan-dev]
 
   data-dir:
     type: file

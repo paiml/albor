@@ -1,76 +1,123 @@
 # bpe-tokenizer-kernel-v1.yaml — ALB-014
 #
 # Provable contract for BPE tokenizer encode/decode.
-# The critical invariant: decode(encode(x)) = x for all valid UTF-8 input.
+# Critical invariant: decode(encode(x)) = x for all valid UTF-8 input.
 
-contract:
-  name: "bpe-tokenizer-kernel"
-  version: "1.0"
-  component: "aprender"
-  gap_id: "ALB-014"
-  priority: "high"
+metadata:
+  version: "1.0.0"
+  created: "2026-03-01"
+  author: "PAIML Engineering"
+  description: "BPE tokenizer kernel — byte-pair encoding with lossless roundtrip"
+  references:
+    - "Sennrich et al. (2016) Neural Machine Translation of Rare Words with Subword Units"
+    - "Gage (1994) A New Algorithm for Data Compression"
 
 equations:
   roundtrip:
-    latex: "\\text{decode}(\\text{encode}(x)) = x \\quad \\forall x \\in \\text{UTF-8}"
-    description: "Lossless roundtrip: any valid UTF-8 string survives encode-decode"
+    formula: "decode(encode(x)) = x for all x in UTF-8"
+    domain: "x: valid UTF-8 string"
+    codomain: "encode(x): Vec<u32> where each id in [0, V)"
+    invariants:
+      - "Lossless roundtrip for all valid UTF-8"
+      - "Empty input maps to empty output"
+      - "Byte-level fallback ensures all byte values representable"
 
   bpe_merge:
-    latex: "\\text{merge}(a, b) = ab \\text{ where } (a,b) = \\arg\\min_{(p,q) \\in \\text{pairs}} \\text{rank}(p,q)"
-    description: "BPE greedily merges the highest-priority byte pair at each step"
+    formula: "merge(a, b) = ab where (a,b) = argmin_{(p,q) in pairs} rank(p,q)"
+    domain: "token sequence with adjacent pairs"
+    codomain: "shorter token sequence"
+    invariants:
+      - "Each merge reduces sequence length by at least 1"
+      - "Merge ordering is deterministic"
+      - "Final sequence uses only tokens in vocabulary"
 
-obligations:
-  - id: "TOK-001"
-    name: "Roundtrip invariant"
-    level: 4                               # Kani bounded model check
-    property: "decode(encode(x)) = x for all valid UTF-8 strings"
-    test: "proptest with 10000 random UTF-8 strings (including edge cases: empty, single byte, multi-byte, emoji)"
-    falsification: "Custom roundtrip test on all training data"
+proof_obligations:
+  - type: invariant
+    property: "Roundtrip lossless"
+    formal: "decode(encode(x)) = x for all valid UTF-8 x"
+    applies_to: all
 
-  - id: "TOK-002"
-    name: "Vocab coverage"
-    level: 3
-    property: "Every byte value 0x00-0xFF is representable (byte-level fallback)"
-    test: "Encode every single-byte string, assert no UNK token produced"
+  - type: invariant
+    property: "Byte-level completeness"
+    formal: "Every byte value 0x00-0xFF is representable (no UNK)"
+    applies_to: all
 
-  - id: "TOK-003"
-    name: "Merge ordering determinism"
-    level: 3
-    property: "Same input always produces same token sequence (deterministic)"
+  - type: idempotency
+    property: "Deterministic encoding"
+    formal: "encode(x) = encode(x) for repeated calls on same input"
+    applies_to: all
+
+  - type: invariant
+    property: "Vocab size correctness"
+    formal: "len(tokenizer.vocab) = V (configured vocab size)"
+    applies_to: all
+
+  - type: invariant
+    property: "FIM sentinel tokens are atomic"
+    formal: "encode(<fim_prefix>) returns exactly one token ID"
+    applies_to: all
+
+  - type: invariant
+    property: "Empty input handling"
+    formal: "encode('') = [] and decode([]) = ''"
+    applies_to: all
+
+kernel_structure:
+  phases:
+    - name: byte_encode
+      description: "Convert UTF-8 string to byte sequence"
+      invariant: "bytes are valid UTF-8 representation"
+    - name: initial_tokenize
+      description: "Map bytes to initial token IDs (byte-level)"
+      invariant: "all bytes have a token mapping"
+    - name: bpe_merge
+      description: "Iteratively apply BPE merge rules in priority order"
+      invariant: "sequence length decreases monotonically"
+    - name: output
+      description: "Return final token ID sequence"
+      invariant: "all IDs in [0, vocab_size)"
+
+falsification_tests:
+  - id: FALSIFY-TOK-001
+    rule: "Roundtrip invariant"
+    prediction: "decode(encode(x)) = x for random UTF-8 strings"
+    test: "proptest with 10000 random UTF-8 strings including edge cases"
+    if_fails: "Merge rule corrupts byte boundaries or special chars"
+
+  - id: FALSIFY-TOK-002
+    rule: "Byte completeness"
+    prediction: "Every single-byte string encodes without UNK"
+    test: "Encode all 256 single-byte strings, assert no UNK token"
+    if_fails: "Byte-level fallback tokens missing from vocabulary"
+
+  - id: FALSIFY-TOK-003
+    rule: "Determinism"
+    prediction: "Same input always produces same tokens"
     test: "Encode same string 1000 times, assert all outputs identical"
+    if_fails: "Non-deterministic merge ordering (HashMap or thread race)"
 
-  - id: "TOK-004"
-    name: "Vocab size correctness"
-    level: 2
-    property: "Trained tokenizer has exactly vocab_size tokens"
-    test: "Assert len(tokenizer.vocab) == 32768"
+  - id: FALSIFY-TOK-004
+    rule: "FIM sentinels"
+    prediction: "Each FIM sentinel token encodes to exactly one token"
+    test: "Encode <fim_prefix>, <fim_suffix>, <fim_middle>, check length = 1"
+    if_fails: "Sentinel tokens not added to vocabulary as special tokens"
 
-  - id: "TOK-005"
-    name: "Special token handling"
-    level: 3
-    property: "FIM sentinel tokens (<fim_prefix>, <fim_suffix>, <fim_middle>) are single tokens"
-    test: "Encode each sentinel, assert output is exactly one token ID"
+kani_harnesses:
+  - id: KANI-TOK-001
+    obligation: TOK-INV-001
+    property: "Roundtrip for bounded-length strings"
+    bound: 16
+    strategy: exhaustive
+    harness: verify_roundtrip_bounded
 
-  - id: "TOK-006"
-    name: "Empty input"
-    level: 2
-    property: "encode('') returns empty sequence, decode([]) returns ''"
-    test: "Direct assertion"
-
-inputs:
-  text:
-    type: "String"
-    constraints: "valid UTF-8"
-
-  token_ids:
-    type: "Vec<u32>"
-    constraints: "all values in [0, vocab_size)"
-
-outputs:
-  encoded:
-    type: "Vec<u32>"
-    constraints: "all values in [0, vocab_size), length <= input bytes"
-
-  decoded:
-    type: "String"
-    constraints: "valid UTF-8"
+qa_gate:
+  id: F-TOK-001
+  name: "BPE Tokenizer Contract"
+  description: "Tokenizer correctness for Albor vocabulary"
+  checks:
+    - "roundtrip_lossless"
+    - "byte_completeness"
+    - "deterministic_encoding"
+    - "fim_sentinel_atomic"
+  pass_criteria: "All 4 falsification tests pass + Kani roundtrip harness verifies"
+  falsification: "Corrupt one merge rule to verify roundtrip detection"

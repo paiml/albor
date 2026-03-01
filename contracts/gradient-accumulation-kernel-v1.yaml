@@ -1,79 +1,131 @@
 # gradient-accumulation-kernel-v1.yaml — ALB-017
 #
 # Provable contract for gradient accumulation.
-# Accumulating gradients over N micro-batches must be numerically equivalent
-# to computing the gradient on the full batch, within floating-point tolerance.
-#
-# This is critical: gradient accumulation is how we achieve large effective
-# batch sizes (512K tokens) on a single 4090 with limited VRAM.
+# Accumulating over N micro-batches must be numerically equivalent to full-batch gradient.
 
-contract:
-  name: "gradient-accumulation-kernel"
-  version: "1.0"
-  component: "entrenar"
-  gap_id: "ALB-017"
-  priority: "high"
+metadata:
+  version: "1.0.0"
+  created: "2026-03-01"
+  author: "PAIML Engineering"
+  description: "Gradient accumulation kernel — numerical equivalence of micro-batch accumulation"
+  references:
+    - "Goyal et al. (2017) Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour"
+  depends_on:
+    - "adamw-kernel-v1"
 
 equations:
   accumulation:
-    latex: "G_{accum} = \\frac{1}{N} \\sum_{i=1}^{N} g_i \\approx g_{full}"
-    description: "Accumulated gradient over N micro-batches approximates full-batch gradient"
+    formula: "G_accum = (1/N) * sum_{i=1}^{N} g_i"
+    domain: "g_i: gradient from micro-batch i, N: accumulation steps"
+    codomain: "G_accum: accumulated gradient tensor"
+    invariants:
+      - "G_accum approximates G_full within fp tolerance"
+      - "N=1 => G_accum = g_1 exactly"
 
   loss_scaling:
-    latex: "\\mathcal{L}_{scaled} = \\frac{1}{N} \\mathcal{L}_{micro}"
-    description: "Each micro-batch loss is scaled by 1/N before backward pass"
+    formula: "L_scaled = (1/N) * L_micro"
+    domain: "L_micro: micro-batch loss, N: accumulation steps"
+    codomain: "L_scaled: scaled loss for backward pass"
+    invariants:
+      - "Total loss = mean of micro-batch losses (not sum)"
+      - "Gradients are correctly scaled by 1/N"
 
-obligations:
-  - id: "GA-001"
-    name: "Numerical equivalence"
-    level: 4                               # Kani bounded model check
-    property: "||G_accum - G_full|| < epsilon for N micro-batches (epsilon = 1e-5 for fp32, 1e-3 for fp16)"
-    test: "Compute gradient both ways on 1000 random inputs, assert max element-wise diff within tolerance"
+proof_obligations:
+  - type: equivalence
+    property: "Numerical equivalence"
+    formal: "||G_accum - G_full|| < epsilon (1e-5 fp32, 1e-3 fp16)"
+    tolerance: 1.0e-5
+    applies_to: all
 
-  - id: "GA-002"
-    name: "Loss scaling correctness"
-    level: 3
-    property: "Total loss = mean of micro-batch losses (not sum)"
-    test: "proptest: compute loss with accumulation=N and accumulation=1 on same data"
+  - type: invariant
+    property: "Loss scaling correctness"
+    formal: "Total loss = mean(micro_batch_losses)"
+    applies_to: all
 
-  - id: "GA-003"
-    name: "Gradient zeroing"
-    level: 3
-    property: "Gradients are zeroed before each accumulation cycle (no stale gradients)"
-    test: "Run two accumulation cycles, verify gradients from cycle 1 don't leak into cycle 2"
+  - type: invariant
+    property: "Gradient zeroing between cycles"
+    formal: "No stale gradients from previous accumulation cycle"
+    applies_to: all
 
-  - id: "GA-004"
-    name: "Step count correctness"
-    level: 2
-    property: "Optimizer step is called once per N micro-batches, not once per micro-batch"
-    test: "Track optimizer.step() call count over 3N micro-batches, assert exactly 3 calls"
+  - type: invariant
+    property: "Optimizer step frequency"
+    formal: "optimizer.step() called once per N micro-batches"
+    applies_to: all
 
-  - id: "GA-005"
-    name: "Mixed precision accumulation"
-    level: 3
-    property: "Gradients accumulated in fp32 even when forward pass uses fp16"
-    test: "Verify accumulation buffer dtype is fp32 when mixed_precision='fp16'"
+  - type: invariant
+    property: "Mixed precision accumulation in fp32"
+    formal: "Accumulation buffer dtype is fp32 even when forward uses fp16"
+    applies_to: all
 
-  - id: "GA-006"
-    name: "Gradient clipping after accumulation"
-    level: 3
-    property: "Gradient clipping is applied to the accumulated gradient, not to individual micro-batch gradients"
-    test: "Set clip=1.0, inject one large micro-batch gradient, verify clipping happens once on total"
+  - type: invariant
+    property: "Gradient clipping after accumulation"
+    formal: "Clipping applied to accumulated gradient, not per micro-batch"
+    applies_to: all
 
-inputs:
-  micro_batch_gradients:
-    type: "Vec<Tensor<f32>>"
-    constraints: "N tensors of identical shape, all finite"
+kernel_structure:
+  phases:
+    - name: zero_gradients
+      description: "Zero gradient buffers at start of accumulation cycle"
+      invariant: "all gradient values are 0.0"
+    - name: accumulate
+      description: "Add scaled micro-batch gradients: G += (1/N) * g_i"
+      invariant: "accumulation buffer is fp32"
+    - name: clip
+      description: "Apply gradient clipping to accumulated gradient"
+      invariant: "||G_clipped|| <= max_norm"
+    - name: step
+      description: "Optimizer updates parameters using accumulated gradient"
+      invariant: "called exactly once per N micro-batches"
 
-  accumulation_steps:
-    type: "usize"
-    constraints: "> 0"
+falsification_tests:
+  - id: FALSIFY-GA-001
+    rule: "Numerical equivalence"
+    prediction: "Accumulated gradient matches full-batch gradient within tolerance"
+    test: "Compute both ways on 1000 random inputs, assert max diff < 1e-5"
+    if_fails: "Scaling factor (1/N) not applied, or accumulation buffer wrong dtype"
 
-  mixed_precision:
-    type: "Option<String>"
-    constraints: "one of ['fp16', 'bf16', None]"
+  - id: FALSIFY-GA-002
+    rule: "Gradient zeroing"
+    prediction: "No gradient leakage between accumulation cycles"
+    test: "Run two cycles, verify cycle 2 gradients independent of cycle 1"
+    if_fails: "Gradient buffers not zeroed before new cycle"
 
-outputs:
-  accumulated_gradient:
-    type: "Tensor<f32>"
-    constraints: "same shape as inputs, all finite, dtype is fp32"
+  - id: FALSIFY-GA-003
+    rule: "Step count"
+    prediction: "Exactly 3 optimizer steps for 3N micro-batches"
+    test: "Track step count over 3 full cycles"
+    if_fails: "Step called per micro-batch instead of per cycle"
+
+  - id: FALSIFY-GA-004
+    rule: "Clip after accumulate"
+    prediction: "One large micro-batch gradient triggers clipping once on total"
+    test: "Inject gradient > max_norm in one micro-batch, verify single clip"
+    if_fails: "Clipping applied per micro-batch instead of on accumulated total"
+
+kani_harnesses:
+  - id: KANI-GA-001
+    obligation: GA-EQ-001
+    property: "Accumulation equivalence for small batch"
+    bound: 4
+    strategy: stub_float
+    solver: cadical
+    harness: verify_accumulation_equivalence
+
+  - id: KANI-GA-002
+    obligation: GA-INV-001
+    property: "Gradient zeroing invariant"
+    bound: 8
+    strategy: exhaustive
+    harness: verify_gradient_zeroing
+
+qa_gate:
+  id: F-GA-001
+  name: "Gradient Accumulation Contract"
+  description: "Gradient accumulation correctness for Albor training"
+  checks:
+    - "numerical_equivalence"
+    - "gradient_zeroing"
+    - "step_count"
+    - "clip_after_accumulate"
+  pass_criteria: "All 4 falsification tests pass + 2 Kani harnesses verify"
+  falsification: "Remove 1/N scaling to verify equivalence detection"

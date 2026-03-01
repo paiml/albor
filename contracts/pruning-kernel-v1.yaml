@@ -1,88 +1,120 @@
 # pruning-kernel-v1.yaml — ALB-016
 #
 # Provable contract for model pruning: WANDA and magnitude pruning.
-# Pruning zeroes out low-importance weights to reduce model size and inference cost.
 
-contract:
-  name: "pruning-kernel"
-  version: "1.0"
-  component: "entrenar"
-  gap_id: "ALB-016"
-  priority: "medium"
+metadata:
+  version: "1.0.0"
+  created: "2026-03-01"
+  author: "PAIML Engineering"
+  description: "Pruning kernel — WANDA and magnitude-based weight pruning"
+  references:
+    - "Sun et al. (2023) A Simple and Effective Pruning Approach for Large Language Models (WANDA)"
+    - "Han et al. (2015) Learning both Weights and Connections for Efficient Neural Networks"
 
 equations:
-  wanda:
-    latex: "\\text{score}(w_{ij}) = |w_{ij}| \\cdot \\|X_j\\|_2"
-    description: "WANDA: weight magnitude times activation norm — prune lowest scores"
+  wanda_score:
+    formula: "score(w_ij) = |w_ij| * ||X_j||_2"
+    domain: "w_ij: weight, X_j: activation column vector"
+    codomain: "score in [0, +inf)"
+    invariants:
+      - "score >= 0 (product of norms)"
+      - "score = 0 iff w_ij = 0 or X_j = 0"
 
-  magnitude:
-    latex: "\\text{score}(w_{ij}) = |w_{ij}|"
-    description: "Magnitude pruning: prune weights with smallest absolute values"
-
-  sparsity:
-    latex: "s = \\frac{|\\{w : w = 0\\}|}{|w|}"
-    description: "Sparsity ratio: fraction of weights that are exactly zero"
-
-obligations:
-  - id: "PRUNE-001"
-    name: "Sparsity invariant"
-    level: 3
-    property: "After pruning with target sparsity s, exactly s% of weights are zero (within +/-0.1%)"
-    test: "proptest with random weight matrices and sparsity targets"
-    falsification: "FALSIFY-ALBOR-008"
-
-  - id: "PRUNE-002"
-    name: "Score ordering preserved"
-    level: 3
-    property: "All pruned weights have scores <= all surviving weights"
-    test: "proptest: compute scores, verify partition is correct"
-
-  - id: "PRUNE-003"
-    name: "WANDA activation dependency"
-    level: 3
-    property: "WANDA score depends on both weight magnitude and input activation norm"
-    test: "Two weights with same magnitude but different activation norms get different scores"
-
-  - id: "PRUNE-004"
-    name: "Zero sparsity is identity"
-    level: 2
-    property: "Pruning with sparsity=0 returns the original model unchanged"
-    test: "Direct assertion: output weights == input weights"
-
-  - id: "PRUNE-005"
-    name: "Full sparsity zeroes all"
-    level: 2
-    property: "Pruning with sparsity=1.0 zeroes all prunable weights"
-    test: "Direct assertion: all prunable weights are zero"
-
-  - id: "PRUNE-006"
-    name: "Layer exclusion"
-    level: 2
-    property: "Embedding and output projection layers are excluded from pruning by default"
-    test: "Prune model, verify embedding layer weights unchanged"
-
-inputs:
-  model:
-    type: "ModelWeights"
-    constraints: "valid model with finite weights"
-
-  method:
-    type: "enum"
-    values: ["wanda", "magnitude"]
+  magnitude_score:
+    formula: "score(w_ij) = |w_ij|"
+    domain: "w_ij: weight value"
+    codomain: "score in [0, +inf)"
+    invariants:
+      - "score >= 0"
+      - "score = 0 iff w_ij = 0"
 
   sparsity:
-    type: "f32"
-    constraints: "in [0.0, 1.0]"
+    formula: "s = |{w : w = 0}| / |w|"
+    domain: "w: weight tensor"
+    codomain: "s in [0, 1]"
+    invariants:
+      - "s = 0 means no pruning"
+      - "s = 1 means all weights zeroed"
+      - "After pruning with target s, achieved sparsity within 0.1% of s"
 
-  calibration_data:
-    type: "Option<Tensor<f32>>"
-    constraints: "required for WANDA (activation norms), optional for magnitude"
+proof_obligations:
+  - type: invariant
+    property: "Sparsity target met"
+    formal: "Achieved sparsity within +/-0.1% of target"
+    applies_to: all
 
-outputs:
-  pruned_model:
-    type: "ModelWeights"
-    constraints: "same architecture, sparsity matches target, all weights finite"
+  - type: ordering
+    property: "Score ordering preserved"
+    formal: "All pruned weights have score <= all surviving weights"
+    applies_to: all
 
-  sparsity_achieved:
-    type: "f32"
-    constraints: "within 0.1% of target sparsity"
+  - type: invariant
+    property: "WANDA activation dependency"
+    formal: "Same weight magnitude + different activation norms => different WANDA scores"
+    applies_to: all
+
+  - type: invariant
+    property: "Zero sparsity is identity"
+    formal: "prune(model, sparsity=0) returns original model unchanged"
+    applies_to: all
+
+  - type: invariant
+    property: "Full sparsity zeroes all"
+    formal: "prune(model, sparsity=1.0) zeroes all prunable weights"
+    applies_to: all
+
+  - type: invariant
+    property: "Embedding layer excluded"
+    formal: "Embedding and output projection weights untouched by pruning"
+    applies_to: all
+
+kernel_structure:
+  phases:
+    - name: compute_scores
+      description: "Compute importance score for each weight"
+      invariant: "scores are non-negative"
+    - name: determine_threshold
+      description: "Find threshold score for target sparsity"
+      invariant: "threshold partitions weights into keep/prune sets"
+    - name: apply_mask
+      description: "Zero out weights below threshold"
+      invariant: "sparsity matches target within tolerance"
+
+falsification_tests:
+  - id: FALSIFY-PRUNE-001
+    rule: "Sparsity guarantee"
+    prediction: "Exactly 50% of weights zero after prune --sparsity 0.5"
+    test: "Count zero weights, assert within +/-0.1% of target"
+    if_fails: "Threshold computation error or layer exclusion bug"
+
+  - id: FALSIFY-PRUNE-002
+    rule: "Score ordering"
+    prediction: "All pruned weights have score <= all surviving weights"
+    test: "proptest: compute scores, verify partition"
+    if_fails: "Sorting or partitioning algorithm bug"
+
+  - id: FALSIFY-PRUNE-003
+    rule: "Identity at zero sparsity"
+    prediction: "Pruning with sparsity=0 returns original weights"
+    test: "Assert output == input element-wise"
+    if_fails: "Off-by-one in threshold or mask computation"
+
+kani_harnesses:
+  - id: KANI-PRUNE-001
+    obligation: PRUNE-INV-001
+    property: "Sparsity invariant for small weight matrices"
+    bound: 16
+    strategy: stub_float
+    solver: cadical
+    harness: verify_sparsity_invariant
+
+qa_gate:
+  id: F-PRUNE-001
+  name: "Pruning Contract"
+  description: "Weight pruning correctness for Albor model compression"
+  checks:
+    - "sparsity_guarantee"
+    - "score_ordering"
+    - "identity_at_zero"
+  pass_criteria: "All 3 falsification tests pass + Kani sparsity harness verifies"
+  falsification: "Invert score ordering to verify detection"
