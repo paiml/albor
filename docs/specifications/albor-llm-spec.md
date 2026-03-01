@@ -2304,18 +2304,18 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 ## 15. Implementation Phases
 
 ### Phase 0: Pipeline Manifest, Contracts & Quality Baseline (Week 1)
-- [ ] Write `configs/pipeline/albor.yaml` — full pipeline manifest (infra + data + train + eval + publish)
-- [ ] `apr pipeline plan` — validate entire DAG, estimate resources
+- [x] Write `configs/pipeline/albor.yaml` — full pipeline manifest (infra + data + train + eval + publish) (ALB-028 FIXED)
+- [x] `apr pipeline plan` — validate entire DAG, estimate resources (23 resources, 2 machines)
 - [ ] `apr pipeline apply --target cuda-driver --target vulkan-driver --target data-dir` — provision infra
 - [ ] Verify `trueno` wgpu on W5700X via Vulkan (not Metal — Linux)
-- [ ] Verify `trueno` CUDA on 4090
-- [ ] Download Qwen3-Coder-Next to intel box, verify it loads in realizar
+- [x] Verify `trueno` CUDA on 4090 (CUDA executor confirmed working via `apr train apply`)
+- [ ] Download Qwen3-Coder-Next to intel box, verify it loads in realizar (ALB-010 blocker)
 - [ ] `pmat tdg baseline create` on all stack components
-- [ ] `pv coverage contracts/ --binding` — establish contract coverage baseline
-- [ ] `batuta falsify . --critical-only` — initial falsification assessment
+- [x] `pv coverage contracts/ --binding` — 5 contracts, 100% obligation coverage, 0/13 impl bindings
+- [x] `batuta falsify . --critical-only` — 70% (3/5 pass, AI-01 partial, AI-04 fail)
 
 ### Phase 1: Data Pipeline + Tokenizer Contract (Week 1-2)
-- [ ] Ingest local ground truth corpora via `alimentar import local` (fix ALB-019 if needed)
+- [ ] Ingest local ground truth corpora via `alimentar import local` (~~fix ALB-019~~ FIXED)
   - [ ] depyler: examples/ + tdd-book/tests/ (~1,845 files, ~219K lines)
   - [ ] hf-ground-truth-corpus (~11,928 files)
   - [ ] jax-ground-truth-corpus (~2,697 files)
@@ -2323,26 +2323,26 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 - [ ] Ingest local ML framework code (Tier 2, ~53K files)
 - [ ] Download external datasets via `alimentar import hf` (StarCoder Python, FineWeb-Edu)
 - [ ] Quality validation via `alimentar quality check` on all sources
-- [ ] Build weighted training mix with 10x upsampling on Tier 1 (fix ALB-020 if needed)
-- [ ] Write `bpe-tokenizer-kernel-v1.yaml` contract (ALB-014)
-- [ ] `pv probar` + `pv kani` on tokenizer contract
-- [ ] Train BPE tokenizer on mixed corpus (fix ALB-001 if needed)
+- [ ] Build weighted training mix with 10x upsampling on Tier 1 (~~fix ALB-020~~ FIXED)
+- [x] Write `bpe-tokenizer-kernel-v1.yaml` contract (ALB-014 — DOGFOODING, passes `pv validate`)
+- [x] `pv probar` + `pv kani` on tokenizer contract (roundtrip, FIM sentinel tests generated)
+- [ ] Train BPE tokenizer on mixed corpus (~~fix ALB-001~~ FIXED)
 - [ ] Verify FALSIFY roundtrip: `decode(encode(text)) = text` for all test data
-- [ ] Tokenize all data into sharded Parquet
-- [ ] Apply FIM transforms to code sequences (fix ALB-018 if needed)
+- [ ] Tokenize all data into sharded Parquet (~~fix ALB-007~~ FIXED — Parquet→LMBatch bridge working)
+- [ ] Apply FIM transforms to code sequences (~~fix ALB-018~~ FIXED)
 - [ ] Create train/val/test splits via `alimentar`
 - [ ] Record SHA-256 hashes + provenance manifest for all data artifacts
 - [ ] `pmat comply check --strict` on alimentar changes
 
 ### Phase 2: Pipeline Validation — 50M Model (Week 2)
-- [ ] Write `gradient-accumulation-kernel-v1.yaml` contract (ALB-017)
-- [ ] Write `configs/train/pretrain-50m.yaml` (model arch + training + monitoring)
+- [x] Write `gradient-accumulation-kernel-v1.yaml` contract (ALB-017 — DOGFOODING, passes `pv validate`)
+- [x] Write `configs/train/pretrain-50m.yaml` (model arch + training + monitoring)
 - [ ] Train albor-50M on 4090 (hours, not days)
 - [ ] Validate `apr monitor` attaches to running training (live TUI)
 - [ ] Validate Andon alerts fire on NaN/Inf (inject a bad batch to test)
-- [ ] Fix ALB-009 if `apr train` lacks pre-training support
+- [x] ~~Fix ALB-009~~ FIXED: `apr train plan/apply` with causal LM pre-training (`aprender@d79ed943`)
 - [ ] Verify FALSIFY-ALBOR-001 (loss decreases) and FALSIFY-ALBOR-002 (gradient bounds)
-- [ ] Run eval (fix ALB-006 if needed)
+- [x] ~~Fix ALB-006~~ FIXED: `apr eval --task code` with pass@1 scoring (`aprender@4e61297e`)
 - [ ] `pv audit` on all existing kernel contracts used in training
 - [ ] **Milestone**: Training loop converges, monitoring works, all kernel contracts pass
 
