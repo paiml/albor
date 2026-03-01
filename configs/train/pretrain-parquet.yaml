@@ -1,0 +1,24 @@
+# configs/train/pretrain-parquet.yaml — Pre-training with Parquet data (ALB-007 dogfood)
+#
+# Used with: apr train plan --task pretrain --config configs/train/pretrain-parquet.yaml
+#            apr train apply --task pretrain --config configs/train/pretrain-parquet.yaml
+#
+# This config exercises the Parquet→LMBatch bridge (entrenar@a5a2fb7).
+
+model:
+  path: "."
+  mode: transformer
+
+data:
+  train: "./data/tokenized/train/"
+  batch_size: 2
+  seq_len: 128
+  input_column: "text"
+
+optimizer:
+  name: adam
+  lr: 0.0001
+
+training:
+  epochs: 1
+  output_dir: "./outputs/pretrain-parquet"

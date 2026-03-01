@@ -29,6 +29,7 @@
 | `apr distill --config --plan --json` | `apr distill --config distill-entrenar.yaml --plan --json` | **PASS** (structured JSON with verdict) | ~~ALB-011~~ FIXED |
 | `apr distill --config --stage precompute` | `apr distill --config distill-entrenar.yaml --stage precompute` | **PASS** (inspects teacher, 290 tensors, writes manifest) | ~~ALB-011~~ FIXED |
 | `apr distill --config --stage train` | `apr distill --config distill-entrenar.yaml --stage train` | **PASS** (reads manifest, validates, sets up KD) | ~~ALB-011~~ FIXED |
+| `apr train apply --parquet` | `apr train apply --task pretrain --config pretrain-parquet.yaml` | **PASS** (8 rows from Parquet, 4 batches, CUDA training) | ~~ALB-007~~ FIXED |
 | `apr quantize --plan` | `apr quantize --plan <file>` | **PASS** (plan mode works) | — |
 | `apr prune --plan` | `apr prune --plan <file>` | **PASS** (plan mode exists) | — |
 | `alimentar quality profiles` | `alimentar quality profiles` | **PASS** (ml-training profile exists) | — |
@@ -449,6 +450,35 @@ Full coverage audit:
 | publish | --plan flag | **New** |
 
 Commit: `aprender@526a1e4b` → All action commands have plan mode.
+
+## ALB-007: Parquet→LMBatch Bridge (Upstream Fix)
+
+**Gap**: entrenar's `load_lm_batches_from_parquet()` was a stub that returned demo data.
+The Parquet-to-training bridge was missing — alimentar produces Arrow RecordBatch,
+entrenar consumes `LMBatch(Vec<u32>)`.
+
+**Fix** (`entrenar@a5a2fb7`):
+- Text column Parquet: extracts text column → tokenizes with HfTokenizer → LMBatch
+- Pre-tokenized Parquet: reads `input_ids`/`token_ids` List<u32> directly → LMBatch
+- Directory support: iterates all `.parquet` shards in a directory
+- Column auto-detection: tries specified column, then text/content/code fallbacks
+- Gated behind `parquet` feature flag (alimentar + arrow deps)
+- `apr-cli` Cargo.toml updated to enable `entrenar/parquet` feature
+
+**Dogfood result**:
+```
+apr train apply --task pretrain --config configs/train/pretrain-parquet.yaml
+
+  Loading 1 Parquet shard(s) from ./data/tokenized/train/
+  Loaded 8 rows from Parquet
+  Extracted 8 text rows, tokenizing...
+  Tokenized 8 sequences
+  4 LM batches created
+  Epoch 1/1: loss=12.05
+```
+
+`apr-cli` Cargo.toml: `entrenar = { version = "0.7.3", features = ["cuda", "parquet"] }`
+Commit: `aprender@` (pending push)
 
 ## Tool Availability
 
