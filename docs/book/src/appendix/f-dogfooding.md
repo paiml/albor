@@ -21,6 +21,7 @@
 | `alimentar quality profiles` | `alimentar quality profiles` | **PASS** (ml-training profile exists) | — |
 | `alimentar import` | N/A | **MISSING** (no `import` subcommand) | ALB-019 |
 | `alimentar mix` | N/A | **MISSING** (no `mix` subcommand) | ALB-020 |
+| `batuta falsify` | `batuta falsify . --critical-only` | **PARTIAL** (2/5 pass, 3 false positives) | ALB-029 |
 
 ## Contract Validation Detail
 
@@ -87,3 +88,20 @@ All sovereign stack tools are installed and reachable:
 | `alimentar` | `/home/noah/.cargo/bin/alimentar` | alimentar |
 | `batuta` | `/home/noah/.cargo/bin/batuta` | batuta |
 | `pmat` | `/home/noah/.cargo/bin/pmat` | pmat |
+
+## Batuta Falsification Detail
+
+`batuta falsify . --critical-only` reports 2/5 critical items passing (40% score,
+"STOP THE LINE" grade). However, 3 failures are **false positives** because batuta's
+checklist is designed for Rust library projects, not project repos:
+
+| Check | Result | Analysis |
+|-------|--------|----------|
+| AI-01 Declarative YAML | FAIL | False positive: batuta looks in `src/` but albor has 9 YAML configs in `configs/` |
+| AI-02 Zero Scripting | PASS | Correct: no Python/JS in production |
+| AI-03 Pure Rust Testing | PASS | Correct: no non-Rust test artifacts |
+| AI-04 WASM-First Browser | FAIL | False positive: 8 JS files are from mdBook in `book-output/`, not project code |
+| AI-05 Schema Validation | FAIL | False positive: no `Cargo.toml` because albor is not a Rust project; configs ARE validated by pv and forjar |
+
+Filed as ALB-029 ([#28](https://github.com/paiml/albor/issues/28)) — batuta needs
+to handle non-Rust project repos that contain only configs, contracts, and documentation.

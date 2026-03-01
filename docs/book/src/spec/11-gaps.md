@@ -57,6 +57,12 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 
 **Contract coverage report** (`pv coverage contracts`): 5 contracts, 13 equations, 29 obligations, 19 falsification tests, 7 Kani harnesses, **100% obligation coverage**. All contracts at impl=0/N — waiting for upstream bindings.
 
-*Gaps will be added as they are discovered during implementation.*
+## 11.4 Dogfooding-Discovered Gaps
+
+| ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
+|----|-------|-----------|-----|----------|--------|---------------------|
+| ALB-029 | [#28](https://github.com/paiml/albor/issues/28) | batuta | `batuta falsify` false positives on project repos | Medium | OPEN | `batuta falsify` correctly handles non-Rust project repos (YAML configs in `configs/`, mdBook JS in `book-output/`). Currently: AI-01 misses configs/, AI-04 counts mdBook JS, AI-05 expects Cargo.toml. |
+
+*Gaps are added as they are discovered during implementation and dogfooding.*
 
 ---
