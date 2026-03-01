@@ -48,32 +48,83 @@ proof_obligations:
     property: "KL non-negativity"
     formal: "KL(P || Q) >= 0 for all valid P, Q"
     applies_to: all
+    lean:
+      theorem: KLDivergence.kl_nonneg
+      module: ProvableContracts.KnowledgeDistillation
+      status: sorry
+      depends_on:
+        - Real.log_le_sub_one_of_le
+        - MeasureTheory.integral_nonneg
+      mathlib_imports:
+        - Mathlib.Analysis.SpecialFunctions.Log.Basic
+        - Mathlib.MeasureTheory.Integral.Bochner
+      notes: "Gibbs inequality; standard result from information theory"
 
   - type: bound
     property: "Temperature scaling produces valid distribution"
     formal: "softmax(z/T)_i > 0 and sum_i softmax(z/T)_i = 1 for T > 0"
     applies_to: all
+    lean:
+      theorem: KnowledgeDistillation.temp_softmax_valid
+      module: ProvableContracts.KnowledgeDistillation
+      status: sorry
+      depends_on:
+        - Softmax.partition_of_unity
+        - Softmax.softmax_pos
+      mathlib_imports:
+        - Mathlib.Analysis.SpecialFunctions.ExpDeriv
+        - Mathlib.Algebra.BigOperators.Group.Finset
+      notes: "Reduces to softmax properties via T-scaling; depends on softmax-kernel-v1 Lean proofs"
 
   - type: invariant
     property: "Alpha interpolation bound"
     formal: "alpha=0 => L_KD = CE; alpha=1 => L_KD = T^2 * KL"
     applies_to: all
+    lean:
+      theorem: KnowledgeDistillation.alpha_boundary
+      module: ProvableContracts.KnowledgeDistillation
+      status: sorry
+      depends_on:
+        - mul_zero
+        - one_mul
+      mathlib_imports:
+        - Mathlib.Algebra.Order.Ring.Defs
+      notes: "Direct substitution; alpha=0 zeroes KL term, alpha=1 zeroes CE term"
 
   - type: equivalence
     property: "Gradient correctness"
     formal: "analytical gradient matches numerical gradient within 1e-4"
     tolerance: 1.0e-4
     applies_to: all
+    lean:
+      theorem: KnowledgeDistillation.grad_correct
+      module: ProvableContracts.KnowledgeDistillation
+      status: not-applicable
+      notes: "Numerical tolerance check — not amenable to formal proof over reals. Verified via probar property tests."
 
   - type: invariant
     property: "T^2 gradient compensation"
     formal: "gradient magnitude approximately constant across T in [1, 10]"
     applies_to: all
+    lean:
+      theorem: KnowledgeDistillation.t2_compensation
+      module: ProvableContracts.KnowledgeDistillation
+      status: sorry
+      depends_on:
+        - Real.deriv_exp
+      mathlib_imports:
+        - Mathlib.Analysis.SpecialFunctions.ExpDeriv
+      notes: "T^2 factor compensates for softmax gradient shrinkage at high T"
 
   - type: equivalence
     property: "SIMD matches scalar within ULP"
     tolerance: 8.0
     applies_to: simd
+    lean:
+      theorem: KnowledgeDistillation.simd_equiv
+      module: ProvableContracts.KnowledgeDistillation
+      status: not-applicable
+      notes: "ULP-level floating-point equivalence — verified via Kani bounded model checking, not Lean"
 
 kernel_structure:
   phases:

@@ -1,0 +1,160 @@
+# Albor Success Criteria — Machine-Readable Tracking
+#
+# Maps to spec section 17. Updated as milestones are achieved.
+# Each criterion has a status: pending, in_progress, pass, fail, blocked
+
+version: "1.0"
+spec_version: "0.3.0-draft"
+last_updated: "2026-03-01"
+
+minimum_viable:
+  description: "Phase 3 complete — base model trained"
+  criteria:
+    - id: MV-001
+      name: "350M base model trained to convergence"
+      metric: "~10B tokens, 80% Python data"
+      status: blocked
+      blocker: ALB-009
+      notes: "apr train plan/apply needs causal LM pre-training mode"
+
+    - id: MV-002
+      name: "FIM training implemented"
+      metric: "fill-in-the-middle PSM mode working"
+      status: blocked
+      blocker: ALB-018
+      notes: "alimentar/entrenar need FIM data transform"
+
+    - id: MV-003
+      name: "HumanEval pass@1 > 8%"
+      metric: "pass_at_1"
+      target: 0.08
+      status: pending
+
+    - id: MV-004
+      name: "HumanEval-FIM working"
+      metric: "qualitative infill"
+      status: pending
+
+    - id: MV-005
+      name: "Pipeline uses only sovereign stack"
+      status: pass
+      notes: "All tools installed and reachable, configs validated"
+
+    - id: MV-006
+      name: "All artifacts reproducible from spec"
+      status: in_progress
+      notes: "Configs, contracts, playbook all tracked in git"
+
+    - id: MV-007
+      name: "All kernel contracts pass pv audit"
+      status: pass
+      notes: "5 contracts, 0 audit findings, 100% obligation coverage"
+
+    - id: MV-008
+      name: "pmat comply check passes"
+      status: pending
+      notes: "No upstream code modified yet"
+
+good:
+  description: "Phase 5 complete — distillation demonstrated"
+  criteria:
+    - id: GOOD-001
+      name: "Distillation from Qwen3-Coder-Next"
+      status: blocked
+      blocker: ALB-011
+      notes: "apr distill plan/apply needs config-driven workflow"
+
+    - id: GOOD-002
+      name: "albor-distill outperforms albor-base"
+      status: pending
+
+    - id: GOOD-003
+      name: "HumanEval pass@1 > 15%"
+      metric: "pass_at_1"
+      target: 0.15
+      status: pending
+
+    - id: GOOD-004
+      name: "MBPP pass@1 > 12%"
+      metric: "pass_at_1"
+      target: 0.12
+      status: pending
+
+    - id: GOOD-005
+      name: "FIM infill working"
+      status: pending
+
+    - id: GOOD-006
+      name: "KD contract at Level 4 (Kani-proved)"
+      status: pending
+      notes: "Contract written, needs binding to entrenar"
+
+    - id: GOOD-007
+      name: "FALSIFY-ALBOR tests 001-006 pass"
+      status: pending
+
+full_success:
+  description: "Phase 8 complete — full improvement ladder"
+  criteria:
+    - id: FULL-001
+      name: "All 6 model variants benchmarked"
+      status: pending
+
+    - id: FULL-002
+      name: "Big Code Models Leaderboard submission"
+      status: pending
+      notes: "First sub-1B model on the board"
+
+    - id: FULL-003
+      name: "Q4 latency: <50ms/tok CPU, <10ms/tok GPU"
+      status: pending
+
+    - id: FULL-004
+      name: "Critical path gaps closed"
+      gaps: [ALB-001, ALB-006, ALB-009, ALB-010, ALB-011, ALB-018]
+      status: pending
+
+    - id: FULL-005
+      name: "Models published on HuggingFace"
+      status: pending
+
+    - id: FULL-006
+      name: "batuta falsify: Toyota Standard (90/108)"
+      current_score: 72.2
+      target_score: 83.3
+      status: pending
+
+    - id: FULL-007
+      name: "pmat TDG: Grade A on all touched components"
+      status: pending
+
+    - id: FULL-008
+      name: "Test coverage >= 95%, mutation >= 85%"
+      status: pending
+
+    - id: FULL-009
+      name: "All 9 FALSIFY-ALBOR tests pass"
+      status: pending
+
+    - id: FULL-010
+      name: "Verification DAG published via pv graph"
+      status: pass
+      notes: "pv graph contracts produces correct Mermaid output"
+
+# Summary
+summary:
+  minimum_viable:
+    total: 8
+    pass: 2
+    in_progress: 1
+    pending: 1
+    blocked: 4
+  good:
+    total: 7
+    pass: 0
+    pending: 6
+    blocked: 1
+  full_success:
+    total: 10
+    pass: 1
+    pending: 9
