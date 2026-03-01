@@ -13,7 +13,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | DOGFOODING | Implemented, being validated in albor pipeline |
 | CLOSED | Verified working end-to-end, issue closed |
 
-## 11.1 Critical Path Gaps (Block the Improvement Ladder)
+### 11.1 Critical Path Gaps (Block the Improvement Ladder)
 
 | ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
 |----|-------|-----------|-----|----------|--------|---------------------|
@@ -35,7 +35,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-027 | [#4](https://github.com/paiml/albor/issues/4) | forjar | `task` resource type for pipeline orchestration | Critical | OPEN | New forjar resource type: runs arbitrary command, tracks exit code, hashes `output_artifacts` for idempotency, supports `completion_check` and `timeout`. bashrs validates `command:` at plan time. Dogfooding: `forjar validate` rejects `type: task` — only supports package, file, service, mount, user, docker, pepita, network, cron, recipe, model, gpu. |
 | ALB-028 | [#5](https://github.com/paiml/albor/issues/5) | apr (aprender) | `apr pipeline plan/apply` wrapping forjar DAG engine | Critical | OPEN | `apr pipeline plan` parses manifest, shows full DAG with estimates. `apr pipeline apply` executes via forjar engine. `apr pipeline status` shows converged/pending/failed. Resumable, multi-machine. |
 
-## 11.2 Distributed Training Gaps (Stretch / Future)
+### 11.2 Distributed Training Gaps (Stretch / Future)
 
 | ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
 |----|-------|-----------|-----|----------|--------|---------------------|
@@ -45,7 +45,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-005 | [#12](https://github.com/paiml/albor/issues/12) | trueno | wgpu backward pass (gradient WGSL shaders) | High | OPEN | Compute shaders for matmul_backward, gelu_backward, rmsnorm_backward, attention_backward |
 | ALB-008 | [#13](https://github.com/paiml/albor/issues/13) | repartir | Heterogeneous worker throughput balancing | Medium | OPEN | Workers with different GPU speeds get proportional workload |
 
-## 11.3 Quality & Verification Gaps
+### 11.3 Quality & Verification Gaps
 
 | ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
 |----|-------|-----------|-----|----------|--------|---------------------|
@@ -57,12 +57,13 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 
 **Contract coverage report** (`pv coverage contracts`): 5 contracts, 13 equations, 29 obligations, 19 falsification tests, 7 Kani harnesses, **100% obligation coverage**. All contracts at impl=0/N — waiting for upstream bindings.
 
-## 11.4 Dogfooding-Discovered Gaps
+### 11.4 Dogfooding-Discovered Gaps
 
 | ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
 |----|-------|-----------|-----|----------|--------|---------------------|
 | ALB-029 | [#28](https://github.com/paiml/albor/issues/28) | batuta | `batuta falsify` false positives on project repos | Medium | OPEN | `batuta falsify` correctly handles non-Rust project repos (YAML configs in `configs/`, mdBook JS in `book-output/`). Currently: AI-01 misses configs/, AI-04 counts mdBook JS, AI-05 expects Cargo.toml. |
+| ALB-030 | [#29](https://github.com/paiml/albor/issues/29) | batuta | `batuta stack status` fails without Cargo.toml | Low | OPEN | `batuta stack status` works on project repos that have no Cargo.toml (config-only repos with forjar manifests and batuta playbooks). |
+| ALB-031 | [#30](https://github.com/paiml/albor/issues/30) | batuta | `batuta hf search` returns mock/placeholder data | Low | OPEN | `batuta hf search model "code completion"` returns live HuggingFace Hub results instead of placeholder models. |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
 
----

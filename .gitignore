@@ -16,10 +16,15 @@ target
 # mdBook build output
 book-output/
 
+# pv generate output (regenerated from contracts)
+generated/
+# pv book output at repo root (we copy to docs/book/src/contracts/)
+/book/
+
 # Albor runtime data
 data/
 checkpoints/
-eval/
+/eval/
 state/
 .entrenar/
 

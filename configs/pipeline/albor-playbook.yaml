@@ -1,0 +1,371 @@
+# Albor Training Pipeline — Batuta Playbook
+#
+# This is the actual executable pipeline for the albor model, expressed as a
+# batuta playbook (deterministic YAML pipeline with BLAKE3 caching).
+#
+# The forjar manifest (albor.yaml) handles infrastructure provisioning.
+# This playbook handles the ML pipeline: data prep → train → distill → improve → eval → publish.
+#
+# Usage:
+#   batuta playbook validate configs/pipeline/albor-playbook.yaml
+#   batuta playbook run configs/pipeline/albor-playbook.yaml
+#   batuta playbook status configs/pipeline/albor-playbook.yaml
+
+version: "1.0"
+name: albor-training-pipeline
+description: "Sovereign Python code completion model — 350M params, full improvement ladder"
+
+params:
+  model_size: "350M"
+  vram_gb: 24
+  teacher_model: "Qwen/Qwen3-Coder-Next"
+  teacher_cache: "/data/albor/models/teacher"
+  data_dir: "/data/albor"
+  checkpoint_dir: "/data/albor/checkpoints"
+  eval_dir: "/data/albor/eval"
+  seed: 42
+  pretrain_config: "configs/train/pretrain-350m.yaml"
+  distill_config: "configs/train/distill.yaml"
+  finetune_config: "configs/train/finetune-lora.yaml"
+  data_mix_config: "configs/data-mix.yaml"
+  temperature: 4.0
+  alpha: 0.5
+
+targets:
+  lambda:
+    host: "lambda"
+    ssh_user: "noah"
+    cores: 16
+    memory_gb: 64
+    workdir: "/data/albor"
+    env:
+      CUDA_VISIBLE_DEVICES: "0"
+  intel:
+    host: "intel"
+    ssh_user: "noah"
+    cores: 48
+    memory_gb: 288
+    workdir: "/data/albor"
+
+stages:
+  # ═══════════════════════════════════════════════════════════
+  # PHASE 0: Validate contracts and configs
+  # ═══════════════════════════════════════════════════════════
+
+  validate-contracts:
+    description: "Validate all provable contracts with pv"
+    cmd: "pv validate contracts/*.yaml && pv coverage contracts"
+    deps:
+      - path: contracts/knowledge-distillation-kernel-v1.yaml
+      - path: contracts/bpe-tokenizer-kernel-v1.yaml
+      - path: contracts/gradient-accumulation-kernel-v1.yaml
+      - path: contracts/model-merging-kernel-v1.yaml
+      - path: contracts/pruning-kernel-v1.yaml
+    outs:
+      - path: state/validation/contracts.log
+
+  validate-configs:
+    description: "Validate YAML syntax for all configs"
+    cmd: "for f in configs/**/*.yaml configs/*.yaml; do python3 -c \"import yaml; yaml.safe_load(open('$f'))\"; done"
+    deps:
+      - path: configs/train/pretrain-350m.yaml
+      - path: configs/train/distill.yaml
+      - path: configs/train/finetune-lora.yaml
+      - path: configs/data-mix.yaml
+    outs:
+      - path: state/validation/configs.log
+
+  # ═══════════════════════════════════════════════════════════
+  # PHASE 1: Data preparation
+  # ═══════════════════════════════════════════════════════════
+
+  data-download:
+    description: "Download and cache training data sources"
+    cmd: "alimentar import --config {{params.data_mix_config}} --output {{params.data_dir}}/raw"
+    deps:
+      - path: configs/data-mix.yaml
+    outs:
+      - path: /data/albor/raw
+        type: directory
+    after:
+      - validate-configs
+    target: intel
+
+  data-tokenize:
+    description: "Tokenize raw data with BPE tokenizer"
+    cmd: "alimentar tokenize --input {{params.data_dir}}/raw --output {{params.data_dir}}/tokenized --vocab-size 32768"
+    deps:
+      - path: /data/albor/raw
+        type: directory
+    outs:
+      - path: /data/albor/tokenized
+        type: directory
+    after:
+      - data-download
+    target: intel
+
+  data-mix:
+    description: "Apply data mix ratios and FIM augmentation"
+    cmd: "alimentar mix --config {{params.data_mix_config}} --input {{params.data_dir}}/tokenized --output {{params.data_dir}}/mixed"
+    deps:
+      - path: /data/albor/tokenized
+        type: directory
+      - path: configs/data-mix.yaml
+    outs:
+      - path: /data/albor/mixed
+        type: directory
+    after:
+      - data-tokenize
+    target: intel
+
+  # ═══════════════════════════════════════════════════════════
+  # PHASE 2: Pre-training (Stage 1 — albor-base)
+  # ═══════════════════════════════════════════════════════════
+
+  pretrain:
+    description: "Pre-train 350M causal LM from scratch"
+    cmd: "apr train apply {{params.pretrain_config}} --data {{params.data_dir}}/mixed --output {{params.checkpoint_dir}}/albor-base --seed {{params.seed}}"
+    deps:
+      - path: /data/albor/mixed
+        type: directory
+      - path: configs/train/pretrain-350m.yaml
+    outs:
+      - path: /data/albor/checkpoints/albor-base
+        type: directory
+    after:
+      - data-mix
+      - validate-contracts
+    target: lambda
+    resources:
+      gpu: 1
+      memory_gb: 24
+      timeout: 172800
+
+  eval-base:
+    description: "Evaluate albor-base on all benchmarks"
+    cmd: "apr eval apply --model {{params.checkpoint_dir}}/albor-base --suite humaneval,mbpp,multipl-e,bigcodebench --output {{params.eval_dir}}/albor-base"
+    deps:
+      - path: /data/albor/checkpoints/albor-base
+        type: directory
+    outs:
+      - path: /data/albor/eval/albor-base
+        type: directory
+    after:
+      - pretrain
+    target: lambda
+
+  # ═══════════════════════════════════════════════════════════
+  # PHASE 3: Distillation (Stage 2 — albor-distill)
+  # ═══════════════════════════════════════════════════════════
+
+  teacher-logits:
+    description: "Precompute teacher logits from Qwen3-Coder-Next"
+    cmd: "apr distill precompute --teacher {{params.teacher_cache}} --data {{params.data_dir}}/mixed --output {{params.data_dir}}/logits --top-k 128 --temperature {{params.temperature}}"
+    deps:
+      - path: /data/albor/mixed
+        type: directory
+    outs:
+      - path: /data/albor/logits
+        type: directory
+    after:
+      - data-mix
+    target: intel
+    resources:
+      memory_gb: 128
+      timeout: 259200
+
+  distill:
+    description: "Knowledge distillation from teacher to student"
+    cmd: "apr distill apply {{params.distill_config}} --student {{params.checkpoint_dir}}/albor-base --logits {{params.data_dir}}/logits --output {{params.checkpoint_dir}}/albor-distill --alpha {{params.alpha}} --temperature {{params.temperature}}"
+    deps:
+      - path: /data/albor/checkpoints/albor-base
+        type: directory
+      - path: /data/albor/logits
+        type: directory
+      - path: configs/train/distill.yaml
+    outs:
+      - path: /data/albor/checkpoints/albor-distill
+        type: directory
+    after:
+      - pretrain
+      - teacher-logits
+    target: lambda
+    resources:
+      gpu: 1
+      memory_gb: 24
+      timeout: 86400
+
+  eval-distill:
+    description: "Evaluate albor-distill on all benchmarks"
+    cmd: "apr eval apply --model {{params.checkpoint_dir}}/albor-distill --suite humaneval,mbpp,multipl-e,bigcodebench --output {{params.eval_dir}}/albor-distill"
+    deps:
+      - path: /data/albor/checkpoints/albor-distill
+        type: directory
+    outs:
+      - path: /data/albor/eval/albor-distill
+        type: directory
+    after:
+      - distill
+    target: lambda
+
+  # ═══════════════════════════════════════════════════════════
+  # PHASE 4: Fine-tuning (Stage 3 — albor-sft)
+  # ═══════════════════════════════════════════════════════════
+
+  finetune:
+    description: "LoRA fine-tuning on instruction data"
+    cmd: "apr finetune apply {{params.finetune_config}} --base {{params.checkpoint_dir}}/albor-distill --output {{params.checkpoint_dir}}/albor-sft"
+    deps:
+      - path: /data/albor/checkpoints/albor-distill
+        type: directory
+      - path: configs/train/finetune-lora.yaml
+    outs:
+      - path: /data/albor/checkpoints/albor-sft
+        type: directory
+    after:
+      - distill
+    target: lambda
+    resources:
+      gpu: 1
+      memory_gb: 24
+      timeout: 43200
+
+  eval-sft:
+    description: "Evaluate albor-sft"
+    cmd: "apr eval apply --model {{params.checkpoint_dir}}/albor-sft --suite humaneval,mbpp,multipl-e,bigcodebench --output {{params.eval_dir}}/albor-sft"
+    deps:
+      - path: /data/albor/checkpoints/albor-sft
+        type: directory
+    outs:
+      - path: /data/albor/eval/albor-sft
+        type: directory
+    after:
+      - finetune
+    target: lambda
+
+  # ═══════════════════════════════════════════════════════════
+  # PHASE 5: Model merging (Stage 4 — albor-merged)
+  # ═══════════════════════════════════════════════════════════
+
+  merge:
+    description: "SLERP merge of base + distill + SFT checkpoints"
+    cmd: "apr merge apply --method slerp --models {{params.checkpoint_dir}}/albor-base,{{params.checkpoint_dir}}/albor-distill,{{params.checkpoint_dir}}/albor-sft --output {{params.checkpoint_dir}}/albor-merged --t 0.5"
+    deps:
+      - path: /data/albor/checkpoints/albor-base
+        type: directory
+      - path: /data/albor/checkpoints/albor-distill
+        type: directory
+      - path: /data/albor/checkpoints/albor-sft
+        type: directory
+    outs:
+      - path: /data/albor/checkpoints/albor-merged
+        type: directory
+    after:
+      - finetune
+    target: lambda
+
+  eval-merged:
+    description: "Evaluate albor-merged"
+    cmd: "apr eval apply --model {{params.checkpoint_dir}}/albor-merged --suite humaneval,mbpp,multipl-e,bigcodebench --output {{params.eval_dir}}/albor-merged"
+    deps:
+      - path: /data/albor/checkpoints/albor-merged
+        type: directory
+    outs:
+      - path: /data/albor/eval/albor-merged
+        type: directory
+    after:
+      - merge
+    target: lambda
+
+  # ═══════════════════════════════════════════════════════════
+  # PHASE 6: Pruning (Stage 5 — albor-pruned)
+  # ═══════════════════════════════════════════════════════════
+
+  prune:
+    description: "Wanda unstructured pruning to 50% sparsity"
+    cmd: "apr prune apply --method wanda --sparsity 0.5 --model {{params.checkpoint_dir}}/albor-merged --output {{params.checkpoint_dir}}/albor-pruned"
+    deps:
+      - path: /data/albor/checkpoints/albor-merged
+        type: directory
+    outs:
+      - path: /data/albor/checkpoints/albor-pruned
+        type: directory
+    after:
+      - merge
+    target: lambda
+
+  eval-pruned:
+    description: "Evaluate albor-pruned"
+    cmd: "apr eval apply --model {{params.checkpoint_dir}}/albor-pruned --suite humaneval,mbpp,multipl-e,bigcodebench --output {{params.eval_dir}}/albor-pruned"
+    deps:
+      - path: /data/albor/checkpoints/albor-pruned
+        type: directory
+    outs:
+      - path: /data/albor/eval/albor-pruned
+        type: directory
+    after:
+      - prune
+    target: lambda
+
+  # ═══════════════════════════════════════════════════════════
+  # PHASE 7: Quantization (Stage 6 — albor-q4)
+  # ═══════════════════════════════════════════════════════════
+
+  quantize:
+    description: "Q4_K_M quantization for deployment"
+    cmd: "apr quantize apply --method q4_k_m --model {{params.checkpoint_dir}}/albor-pruned --output {{params.checkpoint_dir}}/albor-q4"
+    deps:
+      - path: /data/albor/checkpoints/albor-pruned
+        type: directory
+    outs:
+      - path: /data/albor/checkpoints/albor-q4
+        type: directory
+    after:
+      - prune
+    target: lambda
+
+  eval-q4:
+    description: "Evaluate albor-q4 (final model)"
+    cmd: "apr eval apply --model {{params.checkpoint_dir}}/albor-q4 --suite humaneval,mbpp,multipl-e,bigcodebench --output {{params.eval_dir}}/albor-q4"
+    deps:
+      - path: /data/albor/checkpoints/albor-q4
+        type: directory
+    outs:
+      - path: /data/albor/eval/albor-q4
+        type: directory
+    after:
+      - quantize
+    target: lambda
+
+  # ═══════════════════════════════════════════════════════════
+  # PHASE 8: Publish
+  # ═══════════════════════════════════════════════════════════
+
+  publish:
+    description: "Export to APR format and publish to HuggingFace"
+    cmd: "apr export apply --model {{params.checkpoint_dir}}/albor-q4 --format apr --output {{params.checkpoint_dir}}/albor-final.apr && apr publish apply --model {{params.checkpoint_dir}}/albor-final.apr --repo paiml/albor --model-card docs/model-card.md"
+    deps:
+      - path: /data/albor/checkpoints/albor-q4
+        type: directory
+      - path: /data/albor/eval/albor-q4
+        type: directory
+      - path: docs/model-card.md
+    outs:
+      - path: /data/albor/checkpoints/albor-final.apr
+    after:
+      - eval-q4
+    target: lambda
+
+policy:
+  failure: stop_on_first
+  validation: checksum
+  lock_file: true
+
+compliance:
+  pre_flight:
+    - type: "tdg"
+      min_grade: "C"
+      path: "contracts/"
+  post_flight:
+    - type: "coverage"
+      min: 80.0

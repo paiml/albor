@@ -1,0 +1,76 @@
+# General Capability Evaluation Suite (Secondary)
+#
+# These benchmarks validate that albor has reasonable base model quality,
+# not that it's a good code model. Code benchmarks are the real scoreboard.
+#
+# Run only at the end — albor-base and albor-distill (final).
+#   apr eval apply --config configs/eval/general-capability.yaml --model <checkpoint>
+
+name: albor-general-capability-eval
+description: "Secondary general capability benchmarks (zero-shot)"
+seed: 42
+
+tasks:
+  # ARC-Easy — AI2 Reasoning Challenge (elementary science)
+  # 2376 multiple-choice science questions. Random baseline: 25%.
+  - name: arc_easy
+    type: multiple_choice
+    metric: [accuracy]
+    few_shot: 0
+    random_baseline: 25.0
+
+  # HellaSwag — Commonsense sentence completion
+  # 10K sentence completion problems. Random baseline: 25%.
+  - name: hellaswag
+    type: multiple_choice
+    metric: [accuracy]
+    few_shot: 0
+    random_baseline: 25.0
+
+  # PIQA — Physical Intuition QA
+  # 2K physical intuition questions. Random baseline: 50%.
+  - name: piqa
+    type: multiple_choice
+    metric: [accuracy]
+    few_shot: 0
+    random_baseline: 50.0
+
+  # LAMBADA — Long-range next-word prediction
+  # 5153 passages, predict final word. Random baseline: ~0%.
+  - name: lambada
+    type: next_word_prediction
+    metric: [accuracy, perplexity]
+    few_shot: 0
+    random_baseline: 0.0
+
+# Targets — conservative, code-focused model won't excel here
+targets:
+  albor-base:
+    arc_easy: ">40%"
+    hellaswag: ">33%"
+    piqa: ">62%"
+  albor-distill:
+    arc_easy: ">42%"
+    hellaswag: ">36%"
+    piqa: ">65%"
+
+# Baselines
+baselines:
+  OPT-350M:
+    params: 350M
+    arc_easy: 41.9
+    hellaswag: 36.2
+    piqa: 64.8
+    notes: "Target: OPT-350M parity"
+  Pythia-410M:
+    params: 410M
+    arc_easy: 47.1
+    hellaswag: 40.1
+    piqa: 67.2
+    notes: "Aspirational ceiling"
+  GPT-2-Medium:
+    params: 345M
+    arc_easy: 43.0
+    hellaswag: 34.0
+    piqa: 66.0
+    notes: "Approximate values"

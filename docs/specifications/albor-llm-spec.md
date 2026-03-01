@@ -1899,6 +1899,8 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
 |----|-------|-----------|-----|----------|--------|---------------------|
 | ALB-029 | [#28](https://github.com/paiml/albor/issues/28) | batuta | `batuta falsify` false positives on project repos | Medium | OPEN | `batuta falsify` correctly handles non-Rust project repos (YAML configs in `configs/`, mdBook JS in `book-output/`). Currently: AI-01 misses configs/, AI-04 counts mdBook JS, AI-05 expects Cargo.toml. |
+| ALB-030 | [#29](https://github.com/paiml/albor/issues/29) | batuta | `batuta stack status` fails without Cargo.toml | Low | OPEN | `batuta stack status` works on project repos that have no Cargo.toml (config-only repos with forjar manifests and batuta playbooks). |
+| ALB-031 | [#30](https://github.com/paiml/albor/issues/30) | batuta | `batuta hf search` returns mock/placeholder data | Low | OPEN | `batuta hf search model "code completion"` returns live HuggingFace Hub results instead of placeholder models. |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
 

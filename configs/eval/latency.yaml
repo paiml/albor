@@ -1,0 +1,68 @@
+# Latency Benchmark Configuration
+#
+# Measures inference speed — critical for code completion use case.
+# A slow model is a useless code assistant, no matter its quality.
+#
+# Run on final quantized model:
+#   apr bench apply --config configs/eval/latency.yaml --model <checkpoint>
+
+name: albor-latency-benchmark
+description: "Inference latency for code completion use case"
+
+prompts:
+  - name: fibonacci
+    text: "def fibonacci(n):"
+    max_tokens: 128
+    expected_lines: 8
+
+  - name: binary_search
+    text: "def binary_search(arr, target):"
+    max_tokens: 256
+    expected_lines: 15
+
+  - name: class_definition
+    text: "class DataLoader:\n    def __init__(self, path: str):"
+    max_tokens: 512
+    expected_lines: 30
+
+  - name: long_context
+    text: |
+      import pandas as pd
+      import numpy as np
+      from sklearn.model_selection import train_test_split
+      from sklearn.ensemble import RandomForestClassifier
+
+      def train_and_evaluate(df: pd.DataFrame, target_col: str):
+    max_tokens: 256
+    expected_lines: 20
+
+devices:
+  - name: cpu
+    device: cpu
+    batch_size: 1
+    warmup_iterations: 3
+    benchmark_iterations: 10
+
+  - name: cuda
+    device: cuda
+    batch_size: 1
+    warmup_iterations: 5
+    benchmark_iterations: 20
+
+# Latency targets for code completion viability
+targets:
+  cpu_q4:
+    tokens_per_second: ">30"
+    time_to_first_token_ms: "<200"
+    notes: "Q4_K_M on CPU — must be usable"
+  cuda_fp16:
+    tokens_per_second: ">100"
+    time_to_first_token_ms: "<50"
+    notes: "fp16 on RTX 4090 — interactive speed"
+
+# Baselines
+baselines:
+  llama_cpp_350M_q4:
+    cpu_tok_per_sec: 45
+    cuda_tok_per_sec: 180
+    notes: "Estimate based on similar-sized models in llama.cpp"

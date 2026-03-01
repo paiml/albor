@@ -1,0 +1,97 @@
+# Python Code Completion Evaluation Suite (Primary)
+#
+# These are the benchmarks that matter for albor — they directly measure
+# Python code completion quality, which is our target use case.
+#
+# Run after every improvement ladder stage:
+#   apr eval plan --config configs/eval/python-code.yaml --model <checkpoint>
+#   apr eval apply --config configs/eval/python-code.yaml --model <checkpoint>
+
+name: albor-python-code-eval
+description: "Primary Python code completion benchmarks"
+seed: 42
+
+tasks:
+  # HumanEval — Big Code Leaderboard metric
+  # 164 hand-written Python problems. Generate function body from docstring.
+  # Metric: pass@1 (greedy), pass@10 (sampling)
+  - name: humaneval
+    type: code_generation
+    metric: [pass_at_1, pass_at_10]
+    n_samples: 50
+    temperature: 0.2
+    top_p: 0.95
+    max_tokens: 512
+    stop_tokens: ["\nclass ", "\ndef ", "\n#", "\nif __name__"]
+    leaderboard: bigcode
+
+  # HumanEval FIM — Fill-in-the-Middle variant
+  # Same 164 problems but evaluated in FIM mode (prefix + suffix → middle)
+  - name: humaneval_fim
+    type: fill_in_middle
+    metric: [exact_match, pass_at_1]
+    n_samples: 50
+    temperature: 0.2
+    top_p: 0.95
+    max_tokens: 256
+    fim_mode: PSM  # prefix-suffix-middle
+
+  # MBPP — Mostly Basic Python Programming
+  # 500 crowd-sourced Python problems. 3-shot evaluation.
+  - name: mbpp
+    type: code_generation
+    metric: [pass_at_1]
+    n_samples: 1
+    temperature: 0.0
+    max_tokens: 512
+    few_shot: 3
+    stop_tokens: ["\nclass ", "\ndef ", "\n#"]
+
+  # DS-1000 — Data Science code generation
+  # Pandas/NumPy/sklearn problems. Tests library API knowledge.
+  - name: ds1000
+    type: code_generation
+    metric: [pass_at_1]
+    n_samples: 1
+    temperature: 0.0
+    max_tokens: 256
+    libraries: [pandas, numpy, sklearn, matplotlib, scipy, pytorch, tensorflow]
+
+  # MultiPL-E — Python only (for Big Code Leaderboard)
+  # HumanEval translated to 18 languages. We only run Python.
+  - name: multiple_py
+    type: code_generation
+    metric: [pass_at_1]
+    n_samples: 50
+    temperature: 0.2
+    top_p: 0.95
+    max_tokens: 512
+    language: python
+    leaderboard: bigcode
+
+# Targets — what we're aiming for at each stage
+targets:
+  albor-base:
+    humaneval_pass_at_1: ">8%"
+    mbpp_pass_at_1: ">8%"
+  albor-distill:
+    humaneval_pass_at_1: ">15%"
+    mbpp_pass_at_1: ">12%"
+  albor-sft:
+    humaneval_pass_at_1: ">18%"
+    mbpp_pass_at_1: ">15%"
+
+# Baselines for comparison
+baselines:
+  CodeGen-350M-mono:
+    params: 350M
+    humaneval_pass_at_1: 12.8
+    notes: "Same param count, no distillation"
+  phi-1:
+    params: 1.3B
+    humaneval_pass_at_1: 50.6
+    notes: "Our inspiration — same playbook, 3.7x larger"
+  SantaCoder:
+    params: 1.1B
+    humaneval_pass_at_1: 18.0
+    notes: "FIM-trained, multi-language"

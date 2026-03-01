@@ -23,6 +23,14 @@
 - [Success Criteria](./spec/17-success.md)
 - [Reference Commands](./spec/18-commands.md)
 
+# Kernel Contracts (pv generated)
+
+- [Knowledge Distillation](./contracts/knowledge-distillation-kernel-v1.md)
+- [BPE Tokenizer](./contracts/bpe-tokenizer-kernel-v1.md)
+- [Gradient Accumulation](./contracts/gradient-accumulation-kernel-v1.md)
+- [Model Merging](./contracts/model-merging-kernel-v1.md)
+- [Pruning](./contracts/pruning-kernel-v1.md)
+
 # Appendices
 
 - [Batuta Oracle](./appendix/a-oracle.md)

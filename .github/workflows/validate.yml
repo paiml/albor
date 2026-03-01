@@ -6,11 +6,13 @@ on:
     paths:
       - 'configs/**'
       - 'contracts/**'
+      - 'Makefile'
       - '.github/workflows/validate.yml'
   pull_request:
     paths:
       - 'configs/**'
       - 'contracts/**'
+      - 'Makefile'
 
 jobs:
   validate-yaml:
@@ -20,7 +22,6 @@ jobs:
 
       - name: Validate YAML syntax
         run: |
-          pip install yamllint
           echo "--- Validating config YAML syntax ---"
           for f in configs/**/*.yaml configs/*.yaml; do
             echo "  $f"
@@ -76,3 +77,38 @@ jobs:
           echo ""
           echo "--- forjar graph ---"
           forjar graph -f configs/pipeline/infra-only.yaml
+
+  validate-playbook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install batuta
+        run: cargo install batuta
+
+      - name: Validate batuta playbook
+        run: |
+          echo "--- batuta playbook validate ---"
+          batuta playbook validate configs/pipeline/albor-playbook.yaml
+
+  lint-makefile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install bashrs
+        run: cargo install bashrs
+
+      - name: Lint Makefile with bashrs
+        run: |
+          echo "--- bashrs make lint ---"
+          bashrs make lint Makefile
+          echo ""
+          echo "--- bashrs classify ---"
+          bashrs classify Makefile
