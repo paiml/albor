@@ -20,7 +20,7 @@
 | `pv book` | `pv book contracts/` | **PASS** (5 mdBook pages) | — |
 | `pv lean` | `pv lean contracts/*.yaml` | **INFO** (needs `lean:` metadata blocks) | — |
 | `forjar validate` | `forjar validate -f infra-only.yaml` | **PASS** (2 machines, 6 resources) | — |
-| `forjar validate` | `forjar validate -f albor.yaml` | **FAIL** (`task` type unknown) | ALB-027 |
+| `forjar validate` | `forjar validate -f albor.yaml` | **PASS** (2 machines, 22 resources) | ~~ALB-027~~ FIXED |
 | `forjar graph` | `forjar graph -f infra-only.yaml` | **PASS** (Mermaid output) | — |
 | `apr finetune --plan` | `apr finetune --plan --model-size 350M --vram 24` | **PASS** (VRAM estimate correct) | — |
 | `apr train plan` | `apr train plan configs/train/pretrain-350m.yaml` | **FAIL** (expects `--data` flag, not config file) | ALB-009 |
@@ -101,18 +101,20 @@ These have been integrated into the albor mdBook under "Kernel Contracts".
 
 ## Pipeline Manifest Validation Detail
 
-The full pipeline manifest (`configs/pipeline/albor.yaml`) fails `forjar validate`
-because it uses `type: task` for ML pipeline steps. Forjar currently supports:
-`package`, `file`, `service`, `mount`, `user`, `docker`, `pepita`, `network`, `cron`,
-`recipe`, `model`, `gpu`.
+The full pipeline manifest (`configs/pipeline/albor.yaml`) now passes `forjar validate`
+after the ALB-027 fix added the `task` resource type:
 
-The `task` resource type (ALB-027, [#4](https://github.com/paiml/albor/issues/4))
-is the key missing piece that turns forjar from an infrastructure tool into a
-pipeline orchestrator.
+```
+forjar validate -f configs/pipeline/albor.yaml
+OK: albor-training-pipeline (2 machines, 22 resources)
+```
 
-A separate `infra-only.yaml` manifest validates successfully -- this allows provisioning
-infrastructure (GPU drivers, directories, NFS mounts, teacher model) independently
-while waiting for the `task` type to be implemented.
+Forjar supports all 13 resource types: `package`, `file`, `service`, `mount`, `user`,
+`docker`, `pepita`, `network`, `cron`, `recipe`, `model`, `gpu`, `task`.
+
+The `task` resource type is the key piece that turns forjar from an infrastructure
+tool into a pipeline orchestrator — it runs arbitrary commands with idempotency
+tracking via output artifact hashing.
 
 ### Spec Correction: `names` to `packages`
 
@@ -316,6 +318,24 @@ Phase 2 (requires ALB-009 inference): generates completions via realizar engine.
 Sample benchmark: `configs/eval/python-basic.jsonl` (10 problems).
 
 Commit: `aprender@4e61297e` → `apr eval --task code` works.
+
+### ALB-027: forjar task resource type (FIXED)
+
+Added `task` resource type to forjar for pipeline orchestration. Three handlers:
+
+1. **`check_script`**: If `completion_check` set, runs it (exit 0 = done).
+   If `output_artifacts` set, checks all exist. Otherwise reports pending.
+2. **`apply_script`**: Runs `command` with `set -euo pipefail`. Supports
+   `working_dir` (cd before exec) and `timeout` (wraps with `timeout N`).
+3. **`state_query_script`**: Hashes `output_artifacts` via `b3sum` for drift
+   detection. Falls back to echoing command string if no artifacts.
+
+Validation: `command` field required, `timeout` must be > 0 if set.
+
+New Resource fields: `output_artifacts`, `completion_check`, `timeout`,
+`working_dir`. Reuses existing `command` field (shared with cron).
+
+Commit: `forjar@d14e633` → `forjar validate -f albor.yaml` passes (2 machines, 22 resources).
 
 ### ALB-023: Plan/apply contract for all apr subcommands (FIXED)
 
