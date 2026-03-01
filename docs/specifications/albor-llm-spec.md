@@ -24,7 +24,7 @@ exclusively the Sovereign AI stack:
 - `apr` for training, distillation, merging, pruning, quantization, eval, export
 - `alimentar` for data loading and preprocessing
 - `forjar` for pipeline orchestration (DAG engine, multi-machine, state tracking)
-- `bashrs` (Rash) for shell fragment validation in pipeline task resources
+- `bashrs` (Rash) for shell fragment validation, Makefile linting (KING of linting), and pipeline command purification
 - `repartir` for distributed compute
 - `entrenar` for the training engine (autograd, optimizers, checkpointing)
 - `trueno` for SIMD/GPU tensor operations
@@ -1488,6 +1488,16 @@ apr pipeline drift                               # Detect unauthorized state cha
 - **Idempotent**: Same manifest, same state → zero changes (all NoOp).
 - **bashrs linted**: All shell fragments in task `command:` fields are validated
   by bashrs (Rash v6.65) at plan time. No unvalidated shell reaches execution.
+  bashrs is KING of linting — `bashrs make lint` validates Makefiles, `bashrs lint`
+  validates shell scripts, `bashrs classify` classifies safety.
+
+**Dual orchestration**:
+- **forjar manifest** (`configs/pipeline/albor.yaml`): Infrastructure provisioning
+  (GPU drivers, packages, directories, mounts, teacher model download). Blocked on
+  `type: task` (ALB-027) for ML steps.
+- **batuta playbook** (`configs/pipeline/albor-playbook.yaml`): ML pipeline orchestration
+  (data prep, train, distill, finetune, merge, prune, quantize, eval, publish).
+  19-stage deterministic DAG with BLAKE3 caching. Validates successfully.
 
 ### 10.2 Pipeline Manifest: `configs/pipeline/albor.yaml`
 
@@ -2485,25 +2495,22 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 
 ```bash
 # ═══════════════════════════════════════════════════════════
-# THE PIPELINE (this is all you need)
+# THE PIPELINE (two orchestrators working together)
 # ═══════════════════════════════════════════════════════════
 
-# Plan: show full DAG, validate all configs, estimate all resources
-apr pipeline plan configs/pipeline/albor.yaml
+# Infrastructure provisioning (forjar — bare metal to ready state)
+forjar validate -f configs/pipeline/infra-only.yaml   # Validate
+forjar apply -f configs/pipeline/infra-only.yaml       # Provision
 
-# Apply: execute everything (resumable — skips converged steps)
+# ML pipeline orchestration (batuta playbook — data to published model)
+batuta playbook validate configs/pipeline/albor-playbook.yaml  # Validate DAG
+batuta playbook run configs/pipeline/albor-playbook.yaml       # Execute (resumable)
+batuta playbook status configs/pipeline/albor-playbook.yaml    # Check progress
+
+# Future: unified pipeline (apr pipeline wraps forjar + batuta)
+apr pipeline plan configs/pipeline/albor.yaml      # (blocked: ALB-028)
 apr pipeline apply configs/pipeline/albor.yaml
-
-# Status: what's done, what's pending, what failed
 apr pipeline status
-
-# Targeted: run just one step (+ its dependencies)
-apr pipeline apply configs/pipeline/albor.yaml --target train-350m
-apr pipeline apply configs/pipeline/albor.yaml --target eval-code
-apr pipeline apply configs/pipeline/albor.yaml --target publish
-
-# Force re-run a step (ignore converged state)
-apr pipeline apply configs/pipeline/albor.yaml --target distill --force
 
 # ═══════════════════════════════════════════════════════════
 # MONITORING (run in a separate terminal during training)
@@ -2514,20 +2521,32 @@ apr experiment view --db .entrenar/experiments.db  # Browse past experiments
 apr cbtop ./checkpoints/albor-base-350m/           # GPU profiler
 
 # ═══════════════════════════════════════════════════════════
-# QUALITY (upstream repos — run independently of pipeline)
+# QUALITY (bashrs is KING of linting)
 # ═══════════════════════════════════════════════════════════
 
+# bashrs — sovereign linter for all shell artifacts
+bashrs make lint Makefile                          # Makefile quality
+bashrs classify Makefile                           # Safety classification
+bashrs make purify Makefile                        # Deterministic output
+bashrs lint scripts/*.sh                           # Shell script safety
+
+# provable-contracts — kernel correctness
+pv validate contracts/*.yaml                       # Contract schemas
+pv coverage contracts                              # Obligation coverage
+pv generate contracts/*.yaml                       # Scaffold + tests + harnesses
+pv book contracts/                                 # mdBook pages
+pv status contracts/                               # Contract completeness
+pv graph contracts/ --format mermaid               # Verification DAG
+
+# batuta — falsification
+batuta falsify . --format markdown                 # 108-item checklist
+batuta oracle --list                               # Stack components
+batuta oracle --local                              # Local workspace status
+
+# pmat — code quality (upstream repos)
 pmat tdg baseline create                           # TDG baseline
 pmat comply check --strict ../aprender
 pmat comply check --strict ../entrenar
-pmat comply check --strict ../alimentar
-pmat comply check --strict ../realizar
-pv validate contracts/*.yaml                       # Contract schemas
-pv status contracts/                               # Contract completeness
-pv graph contracts/ --format mermaid               # Verification DAG
-batuta falsify . --min-grade toyota-standard       # 108-item checklist
-cargo mutants --no-times                           # Mutation score ≥ 85%
-cargo llvm-cov --summary-only                      # Coverage ≥ 95%
 
 # ═══════════════════════════════════════════════════════════
 # INDIVIDUAL SUBCOMMANDS (for development / debugging only)
@@ -2566,8 +2585,8 @@ apr eval apply --model ./checkpoints/albor-merged-350m/ \
 | repartir | 2.0.3 | Distributed compute (future: gradient sync) |
 | forjar | 1.0.0 | Pipeline orchestration (DAG engine, infra + task resources) |
 | presentar | 0.3.2 | Training visualization (TUI dashboards, WASM, experiment browser) |
-| bashrs (Rash) | 6.65.0 | Shell fragment validation for pipeline task resources |
-| batuta | 0.6.6 | Stack orchestration, oracle, falsification checklist |
+| bashrs (Rash) | 6.65.0 | KING of linting: Makefile lint/purify/classify, shell safety, pipeline command validation |
+| batuta | 0.7.2 | Stack orchestration, oracle, falsification (108 checks), playbook DAG engine, HF Hub |
 | provable-contracts | latest | Design-by-contract YAML specs, Kani proofs, falsification tests |
 | pmat | latest | TDG scoring, comply check, fault patterns, coverage gaps |
 | certeza | latest | Three-tier test effectiveness (unit → property → formal) |

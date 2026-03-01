@@ -2,25 +2,22 @@
 
 ```bash
 # ═══════════════════════════════════════════════════════════
-# THE PIPELINE (this is all you need)
+# THE PIPELINE (two orchestrators working together)
 # ═══════════════════════════════════════════════════════════
 
-# Plan: show full DAG, validate all configs, estimate all resources
-apr pipeline plan configs/pipeline/albor.yaml
+# Infrastructure provisioning (forjar — bare metal to ready state)
+forjar validate -f configs/pipeline/infra-only.yaml   # Validate
+forjar apply -f configs/pipeline/infra-only.yaml       # Provision
 
-# Apply: execute everything (resumable — skips converged steps)
+# ML pipeline orchestration (batuta playbook — data to published model)
+batuta playbook validate configs/pipeline/albor-playbook.yaml  # Validate DAG
+batuta playbook run configs/pipeline/albor-playbook.yaml       # Execute (resumable)
+batuta playbook status configs/pipeline/albor-playbook.yaml    # Check progress
+
+# Future: unified pipeline (apr pipeline wraps forjar + batuta)
+apr pipeline plan configs/pipeline/albor.yaml      # (blocked: ALB-028)
 apr pipeline apply configs/pipeline/albor.yaml
-
-# Status: what's done, what's pending, what failed
 apr pipeline status
-
-# Targeted: run just one step (+ its dependencies)
-apr pipeline apply configs/pipeline/albor.yaml --target train-350m
-apr pipeline apply configs/pipeline/albor.yaml --target eval-code
-apr pipeline apply configs/pipeline/albor.yaml --target publish
-
-# Force re-run a step (ignore converged state)
-apr pipeline apply configs/pipeline/albor.yaml --target distill --force
 
 # ═══════════════════════════════════════════════════════════
 # MONITORING (run in a separate terminal during training)
@@ -31,20 +28,32 @@ apr experiment view --db .entrenar/experiments.db  # Browse past experiments
 apr cbtop ./checkpoints/albor-base-350m/           # GPU profiler
 
 # ═══════════════════════════════════════════════════════════
-# QUALITY (upstream repos — run independently of pipeline)
+# QUALITY (bashrs is KING of linting)
 # ═══════════════════════════════════════════════════════════
 
+# bashrs — sovereign linter for all shell artifacts
+bashrs make lint Makefile                          # Makefile quality
+bashrs classify Makefile                           # Safety classification
+bashrs make purify Makefile                        # Deterministic output
+bashrs lint scripts/*.sh                           # Shell script safety
+
+# provable-contracts — kernel correctness
+pv validate contracts/*.yaml                       # Contract schemas
+pv coverage contracts                              # Obligation coverage
+pv generate contracts/*.yaml                       # Scaffold + tests + harnesses
+pv book contracts/                                 # mdBook pages
+pv status contracts/                               # Contract completeness
+pv graph contracts/ --format mermaid               # Verification DAG
+
+# batuta — falsification
+batuta falsify . --format markdown                 # 108-item checklist
+batuta oracle --list                               # Stack components
+batuta oracle --local                              # Local workspace status
+
+# pmat — code quality (upstream repos)
 pmat tdg baseline create                           # TDG baseline
 pmat comply check --strict ../aprender
 pmat comply check --strict ../entrenar
-pmat comply check --strict ../alimentar
-pmat comply check --strict ../realizar
-pv validate contracts/*.yaml                       # Contract schemas
-pv status contracts/                               # Contract completeness
-pv graph contracts/ --format mermaid               # Verification DAG
-batuta falsify . --min-grade toyota-standard       # 108-item checklist
-cargo mutants --no-times                           # Mutation score ≥ 85%
-cargo llvm-cov --summary-only                      # Coverage ≥ 95%
 
 # ═══════════════════════════════════════════════════════════
 # INDIVIDUAL SUBCOMMANDS (for development / debugging only)
@@ -59,3 +68,4 @@ apr distill apply configs/train/distill.yaml --stage precompute
 apr eval apply --model ./checkpoints/albor-merged-350m/ \
   --tasks humaneval,mbpp --output ./eval/results.json --seed 42
 ```
+

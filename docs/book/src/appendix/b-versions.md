@@ -10,8 +10,9 @@
 | repartir | 2.0.3 | Distributed compute (future: gradient sync) |
 | forjar | 1.0.0 | Pipeline orchestration (DAG engine, infra + task resources) |
 | presentar | 0.3.2 | Training visualization (TUI dashboards, WASM, experiment browser) |
-| bashrs (Rash) | 6.65.0 | Shell fragment validation for pipeline task resources |
-| batuta | 0.6.6 | Stack orchestration, oracle, falsification checklist |
+| bashrs (Rash) | 6.65.0 | KING of linting: Makefile lint/purify/classify, shell safety, pipeline command validation |
+| batuta | 0.7.2 | Stack orchestration, oracle, falsification (108 checks), playbook DAG engine, HF Hub |
 | provable-contracts | latest | Design-by-contract YAML specs, Kani proofs, falsification tests |
 | pmat | latest | TDG scoring, comply check, fault patterns, coverage gaps |
 | certeza | latest | Three-tier test effectiveness (unit → property → formal) |
+
