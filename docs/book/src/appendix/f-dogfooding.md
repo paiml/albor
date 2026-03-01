@@ -54,7 +54,9 @@
 | `apr merge` | `apr merge --strategy slerp` | **PASS** (SLERP, TIES, DARE supported) | — |
 | `apr export --list-formats` | `apr export --list-formats` | **PASS** (SafeTensors, GGUF, MLX) | — |
 | `apr publish` | `apr publish <dir> <repo>` | **PASS** (HF Hub publish exists) | — |
-| `apr eval` | `apr eval <model>` | **PASS** (perplexity eval, needs benchmark tasks) | ALB-006 |
+| `apr eval` | `apr eval <model>` | **PASS** (perplexity eval) | — |
+| `apr eval --task code` | `apr eval model --task code --data bench.jsonl` | **PASS** (pass@1 scoring, 10/10 on basic set) | ~~ALB-006~~ FIXED |
+| `apr eval --task plan` | `apr eval model --task plan --data bench.jsonl` | **PASS** (dry-run validation) | ~~ALB-006~~ FIXED |
 | `alimentar quality` | `alimentar quality profiles` | **PASS** (ml-training profile) | — |
 | `alimentar convert` | `alimentar convert` | **PASS** (format conversion) | — |
 | `bashrs score` | `bashrs score Makefile` | **PASS** (D grade, 5.2/10) | — |
@@ -292,6 +294,25 @@ Applied to `ArchitectureConfig` fields (`hidden_size`, `num_layers`, `num_heads`
 `DataConfig` fields (`seq_len`, `max_length`).
 
 Commit: `entrenar@1cb0950` → Shorthand deserialization works.
+
+### ALB-006: apr eval benchmark harness (FIXED)
+
+Added `--task code` for code completion benchmarks and `--task plan` for
+dry-run validation to `apr eval`. Code evaluation uses JSONL format:
+
+```json
+{"task_id": "add", "prompt": "def add(a, b):\n", "test": "assert add(1, 2) == 3", "canonical_solution": "    return a + b\n"}
+```
+
+Reports pass@1 rate with per-problem PASS/FAIL breakdown. JSON output
+mode supported for CI integration.
+
+Phase 1 (current): validates benchmark structure, checks canonical solutions.
+Phase 2 (requires ALB-009 inference): generates completions via realizar engine.
+
+Sample benchmark: `configs/eval/python-basic.jsonl` (10 problems).
+
+Commit: `aprender@4e61297e` → `apr eval --task code` works.
 
 ## Tool Availability
 
