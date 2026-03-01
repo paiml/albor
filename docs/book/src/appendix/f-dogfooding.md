@@ -45,6 +45,17 @@
 | `bashrs classify` | `bashrs classify Makefile` | **PASS** (safe: 85%) | — |
 | `pmat query` | `pmat query "training"` | **PASS** (0 functions, 5 document matches) | — |
 | `pmat analyze makefile` | `pmat analyze makefile Makefile` | **PASS** (64% quality score) | — |
+| `pv lean` | `pv lean contracts/kd-v1.yaml` | **PASS** (6 Lean 4 theorem stubs generated) | — |
+| `pv lean-status` | `pv lean-status contracts/` | **PASS** (0% L4 coverage, 4 sorry debt) | — |
+| `apr train plan` | `apr train plan --data <JSONL>` | **PASS** (exists, classification only) | ALB-009 |
+| `apr merge` | `apr merge --strategy slerp` | **PASS** (SLERP, TIES, DARE supported) | — |
+| `apr export --list-formats` | `apr export --list-formats` | **PASS** (SafeTensors, GGUF, MLX) | — |
+| `apr publish` | `apr publish <dir> <repo>` | **PASS** (HF Hub publish exists) | — |
+| `apr eval` | `apr eval <model>` | **PASS** (perplexity eval, needs benchmark tasks) | ALB-006 |
+| `alimentar quality` | `alimentar quality profiles` | **PASS** (ml-training profile) | — |
+| `alimentar convert` | `alimentar convert` | **PASS** (format conversion) | — |
+| `bashrs score` | `bashrs score Makefile` | **PASS** (D grade, 5.2/10) | — |
+| `bashrs audit` | `bashrs audit Makefile` | **PASS** (comprehensive audit) | — |
 
 ## Contract Validation Detail
 
