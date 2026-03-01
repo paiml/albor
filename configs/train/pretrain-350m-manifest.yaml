@@ -2,6 +2,7 @@
 #
 # Entrenar YAML manifest format for the Albor 350M pre-training config.
 # Uses the architecture: section to specify custom model params (ALB-021).
+# Uses human-readable shorthand for sizes (ALB-022): "1K" = 1024, "32K" = 32768.
 #
 # Equivalent to pretrain-350m.yaml but in the declarative manifest format
 # that flows through the bridge converter with architecture overrides.
@@ -16,13 +17,13 @@ model:
   source: "./models/albor-base"
   architecture:
     type: transformer
-    hidden_size: 1024
+    hidden_size: "1K"                        # 1024 (d_model)
     num_layers: 24
-    num_heads: 16
-    num_kv_heads: 4
-    intermediate_size: 4096
-    vocab_size: 32768
-    max_seq_length: 2048
+    num_heads: 16                            # d_head = 64
+    num_kv_heads: 4                          # GQA 4:1 ratio
+    intermediate_size: "4K"                  # 4096, SwiGLU FFN
+    vocab_size: "32K"                        # 32768, power of 2 for GPU efficiency
+    max_seq_length: "2K"                     # 2048, context length
     rms_norm_eps: 1.0e-5
     rope_theta: 10000.0
     use_bias: false
@@ -31,7 +32,7 @@ data:
   source: "data/tokenized/train/"
   val: "data/tokenized/val/"
   tokenizer: "models/albor-tokenizer/tokenizer.json"
-  seq_len: 2048
+  seq_len: "2K"                              # 2048
   input_column: "text"
   loader:
     batch_size: 8

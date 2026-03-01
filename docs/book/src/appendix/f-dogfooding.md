@@ -60,6 +60,7 @@
 | `bashrs score` | `bashrs score Makefile` | **PASS** (D grade, 5.2/10) | — |
 | `bashrs audit` | `bashrs audit Makefile` | **PASS** (comprehensive audit) | — |
 | `entrenar validate` | `entrenar validate pretrain-350m-manifest.yaml` | **PASS** (architecture overrides bridge through) | ~~ALB-021~~ FIXED |
+| `entrenar shorthand` | `vocab_size: "32K"` in YAML manifest | **PASS** (parses to 32768) | ~~ALB-022~~ FIXED |
 
 ## Contract Validation Detail
 
@@ -270,6 +271,27 @@ The YAML manifest `ArchitectureConfig` also gained serde aliases
 for compatibility with HuggingFace config.json field names.
 
 Commit: `entrenar@a414861` → Architecture overrides work end-to-end.
+
+### ALB-022: Human-readable value shorthand in YAML configs (FIXED)
+
+Added `shorthand` module with `parse_human_usize()` and
+`deserialize_human_usize_opt` custom serde deserializer. Supports:
+
+- **SI suffixes (binary)**: `32K` (32×1024), `1M` (1×1024²), `1G` (1×1024³)
+- **SI suffixes (decimal)**: `10B` (10×10⁹), `1T` (1×10¹²)
+- **Scientific notation**: `1e6`, `3.2e4`
+- **Fractional suffixes**: `1.5K` (1536)
+- **Plain numbers**: `1024`, `32768`
+- **YAML underscore notation**: `32_768` (already native)
+
+K/M/G use binary (powers of 2) since they're used for model dimensions.
+B/T use decimal since they're used for token/parameter counts.
+
+Applied to `ArchitectureConfig` fields (`hidden_size`, `num_layers`, `num_heads`,
+`num_kv_heads`, `intermediate_size`, `vocab_size`, `max_seq_length`) and
+`DataConfig` fields (`seq_len`, `max_length`).
+
+Commit: `entrenar@1cb0950` → Shorthand deserialization works.
 
 ## Tool Availability
 
