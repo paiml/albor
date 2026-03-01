@@ -1,0 +1,50 @@
+# configs/train/distill-entrenar.yaml — entrenar-compatible distillation config
+#
+# Used with: apr distill --config configs/train/distill-entrenar.yaml --plan
+#            apr distill --config configs/train/distill-entrenar.yaml --stage precompute
+#            apr distill --config configs/train/distill-entrenar.yaml --stage train
+#
+# Teacher: Qwen2.5-Coder-0.5B (local SafeTensors)
+# Student: albor-base-350m (pre-trained checkpoint)
+#
+# This config follows the entrenar DistillationYamlConfig schema.
+
+teacher:
+  model_id: "/home/noah/src/models/qwen2.5-coder-0.5b"
+  load_in_8bit: false
+
+student:
+  model_id: "./checkpoints/albor-base-350m"
+  load_in_4bit: false
+  lora:
+    rank: 16
+    alpha: 32.0
+
+distillation:
+  temperature: 4.0
+  alpha: 0.5
+  # progressive:
+  #   layer_mapping: [[0, 3], [1, 7], [2, 11]]
+  #   hidden_weight: 1.0
+  # attention_transfer:
+  #   weight: 0.1
+
+training:
+  epochs: 3
+  batch_size: 8
+  learning_rate: 0.0001
+  weight_decay: 0.1
+  gradient_checkpointing: false
+  mixed_precision: "fp16"
+  max_grad_norm: 1.0
+  seed: 42
+
+dataset:
+  path: "./data/tokenized/train/"
+  max_seq_length: 2048
+
+output:
+  dir: "./outputs/distill"
+  log_steps: 10
+  save_steps: 500
+  eval_steps: 100

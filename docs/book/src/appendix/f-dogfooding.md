@@ -24,7 +24,11 @@
 | `forjar graph` | `forjar graph -f infra-only.yaml` | **PASS** (Mermaid output) | — |
 | `apr finetune --plan` | `apr finetune --plan --model-size 350M --vram 24` | **PASS** (VRAM estimate correct) | — |
 | `apr train plan --task pretrain` | `apr train plan --task pretrain --config pretrain-350m.yaml` | **PASS** (validates config, shows arch/params) | ~~ALB-009~~ FIXED |
-| `apr distill --plan` | `apr distill --plan` | **PASS** (exists, needs config-driven workflow) | ALB-011 |
+| `apr distill --plan` | `apr distill --plan` | **PASS** (file-based mode) | — |
+| `apr distill --config --plan` | `apr distill --config distill-entrenar.yaml --plan` | **PASS** (validates config, shows two-stage workflow) | ~~ALB-011~~ FIXED |
+| `apr distill --config --plan --json` | `apr distill --config distill-entrenar.yaml --plan --json` | **PASS** (structured JSON with verdict) | ~~ALB-011~~ FIXED |
+| `apr distill --config --stage precompute` | `apr distill --config distill-entrenar.yaml --stage precompute` | **PASS** (inspects teacher, 290 tensors, writes manifest) | ~~ALB-011~~ FIXED |
+| `apr distill --config --stage train` | `apr distill --config distill-entrenar.yaml --stage train` | **PASS** (reads manifest, validates, sets up KD) | ~~ALB-011~~ FIXED |
 | `apr quantize --plan` | `apr quantize --plan <file>` | **PASS** (plan mode works) | — |
 | `apr prune --plan` | `apr prune --plan <file>` | **PASS** (plan mode exists) | — |
 | `alimentar quality profiles` | `alimentar quality profiles` | **PASS** (ml-training profile exists) | — |
@@ -348,6 +352,35 @@ Entrenar's training infrastructure was already ~90% ready:
 The gap was in the CLI routing — `apr train` only accepted `--task classify`.
 
 Commit: `aprender@d79ed943` → `apr train plan --task pretrain` works.
+
+### ALB-011: apr distill config-driven two-stage workflow (FIXED)
+
+Added `--config <yaml>` and `--stage <precompute|train>` to `apr distill`:
+
+- **`apr distill --config <yaml> --plan`**: Loads YAML config, validates all
+  sections (teacher, student, distillation, training, dataset, output),
+  checks teacher/dataset existence on disk, displays two-stage workflow
+  instructions. JSON output supported.
+- **`apr distill --config <yaml> --stage precompute`**: Inspects teacher model
+  via RosettaStone (supports SafeTensors, APR, GGUF model dirs), writes
+  `manifest.json` with tensor count and model stats for stage 2.
+- **`apr distill --config <yaml> --stage train`**: Reads precompute manifest,
+  validates teacher was precomputed, inspects student model, writes training
+  metadata to `student/training_metadata.json`.
+
+Local `DistillYamlConfig` types match entrenar's `DistillationYamlConfig`
+schema (teacher/student model IDs, LoRA config, KD temperature/alpha,
+progressive/attention transfer options, training hyperparams, dataset config).
+Uses `serde_yaml_ng` for YAML parsing.
+
+Teacher model changed from required positional to `Option<PathBuf>` — config
+mode doesn't need the positional arg. Existing file-based distillation mode
+(positional teacher.apr, --student, -o) fully preserved.
+
+Albor config: `configs/train/distill-entrenar.yaml` (Qwen2.5-Coder-0.5B teacher,
+albor-base-350m student, LoRA rank 16, T=4.0, α=0.5).
+
+Commit: `aprender@81dd4432` → All 3 config modes work (plan, precompute, train).
 
 ### ALB-028: apr pipeline plan/apply/status/validate (FIXED)
 
