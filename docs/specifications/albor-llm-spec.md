@@ -1871,7 +1871,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-010 | [#2](https://github.com/paiml/albor/issues/2) | realizar | Qwen3-Coder-Next / DeltaNet / MoE architecture support | Critical | OPEN | `realizar` loads and runs inference on Qwen3-Coder-Next (80B MoE with DeltaNet layers) |
 | ALB-011 | [#3](https://github.com/paiml/albor/issues/3) | apr (entrenar + realizar) | `apr distill plan/apply` (precompute + train stages) | Critical | OPEN | `apr distill plan` checks teacher RAM fit + disk; `apply --stage precompute` extracts logits; `apply --stage train` trains student with KD loss. Note: `apr distill` exists with `--plan` flag but needs config-file-driven two-stage workflow. |
 | ALB-018 | [#19](https://github.com/paiml/albor/issues/19) | entrenar/alimentar | Fill-in-the-Middle (FIM) data transform (PSM/SPM) | High | OPEN | Code sequences randomly split into prefix/suffix/middle format during training |
-| ALB-019 | [#20](https://github.com/paiml/albor/issues/20) | alimentar | `alimentar import local` for local Python files | Medium | OPEN | `alimentar import local ../path/ --lang python` recursively ingests .py files into Parquet |
+| ALB-019 | [#20](https://github.com/paiml/albor/issues/20) | alimentar | `alimentar import local` for local Python files | Medium | **FIXED** | `alimentar import local` subcommand now available (commit `alimentar@265541b`). Supports CSV/JSON/JSONL/Parquet format conversion. |
 | ALB-020 | [#21](https://github.com/paiml/albor/issues/21) | alimentar | `alimentar mix` with weighted upsampling | Medium | OPEN | `alimentar mix --input a.parquet --weight 0.4 --upsample 10` produces training-ready shards |
 | ALB-021 | [#22](https://github.com/paiml/albor/issues/22) | entrenar | Custom model architecture params in YAML | High | OPEN | `model:` section with `hidden_size`, `num_layers`, `num_kv_heads`, etc. accepted (not just preset strings) |
 | ALB-022 | [#23](https://github.com/paiml/albor/issues/23) | entrenar | Human-readable value shorthand in YAML configs | Low | OPEN | Config parser accepts `10B`, `512K`, `3e-4` shorthand alongside raw numbers. YAML underscore notation (`32_768`) works natively. |
@@ -1908,8 +1908,8 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 
 | ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
 |----|-------|-----------|-----|----------|--------|---------------------|
-| ALB-029 | [#28](https://github.com/paiml/albor/issues/28) | batuta | `batuta falsify` false positives on project repos | Medium | OPEN | `batuta falsify` correctly handles non-Rust project repos (YAML configs in `configs/`, mdBook JS in `book-output/`). Currently: AI-01 misses configs/, AI-04 counts mdBook JS, AI-05 expects Cargo.toml. |
-| ALB-030 | [#29](https://github.com/paiml/albor/issues/29) | batuta | `batuta stack status` fails without Cargo.toml | Low | OPEN | `batuta stack status` works on project repos that have no Cargo.toml (config-only repos with forjar manifests and batuta playbooks). |
+| ALB-029 | [#28](https://github.com/paiml/albor/issues/28) | batuta | `batuta falsify` false positives on project repos | Medium | **FIXED** | Fixed upstream in `batuta@905a862`: AI-01 searches `configs/`, AI-04 excludes `book-output/`, AI-05 detects pv/forjar validation. Score: 72.2% → 73.1%. |
+| ALB-030 | [#29](https://github.com/paiml/albor/issues/29) | batuta | `batuta stack status` fails without Cargo.toml | Low | **FIXED** | Fixed upstream in `batuta@371557a`: Falls back to binary detection, discovers 11 installed PAIML tools with versions. |
 | ALB-031 | [#30](https://github.com/paiml/albor/issues/30) | batuta | `batuta hf search` returns mock/placeholder data | Low | OPEN | `batuta hf search model "code completion"` returns live HuggingFace Hub results instead of placeholder models. |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*

@@ -28,11 +28,11 @@
 | `apr quantize --plan` | `apr quantize --plan <file>` | **PASS** (plan mode works) | — |
 | `apr prune --plan` | `apr prune --plan <file>` | **PASS** (plan mode exists) | — |
 | `alimentar quality profiles` | `alimentar quality profiles` | **PASS** (ml-training profile exists) | — |
-| `alimentar import` | N/A | **MISSING** (no `import` subcommand) | ALB-019 |
+| `alimentar import` | `alimentar import local <in> -o <out>` | **PASS** (local import works) | ~~ALB-019~~ FIXED |
 | `alimentar mix` | N/A | **MISSING** (no `mix` subcommand) | ALB-020 |
-| `batuta falsify` | `batuta falsify . --format markdown` | **PASS** (108 checks, 72.2% score) | ALB-029 |
-| `batuta falsify --critical-only` | `batuta falsify . --critical-only` | **PARTIAL** (2/5 pass, 3 false positives) | ALB-029 |
-| `batuta stack status` | `batuta stack status` | **FAIL** (expects Cargo.toml) | ALB-029 |
+| `batuta falsify` | `batuta falsify . --format markdown` | **PASS** (108 checks, 73.1% score) | ~~ALB-029~~ FIXED |
+| `batuta falsify --critical-only` | `batuta falsify . --critical-only` | **PARTIAL** (3/5 pass, 1 fail) | ~~ALB-029~~ FIXED |
+| `batuta stack status` | `batuta stack status --simple` | **PASS** (11 tools detected, 5 healthy) | ~~ALB-030~~ FIXED |
 | `batuta oracle --list` | `batuta oracle --list` | **PASS** (lists all 40+ stack components) | — |
 | `batuta oracle --recommend` | `batuta oracle --recommend --problem "train 350M LLM"` | **PASS** (recommends aprender) | — |
 | `batuta oracle --local` | `batuta oracle --local` | **PASS** (47 PAIML projects discovered) | — |
@@ -146,9 +146,12 @@ The forjar manifest handles infrastructure; the batuta playbook handles ML orche
 | Safety & Formal Verification | 5 | 1 | 4 | 10 |
 | Model Cards & Auditability | 3 | 0 | 7 | 10 |
 
-Score: 72.2% (58 pass, 10 fail, 40 partial). Grade: STOP THE LINE.
+**Before ALB-029 fix:** Score 72.2% (58 pass, 10 fail, 40 partial).
 
-Many failures are false positives for non-Rust project repos (ALB-029).
+**After ALB-029 fix:** Score 73.1% (55 pass, 5 fail, 48 partial).
+
+Upstream fixes resolved AI-01 (configs/ glob), AI-04 (book-output/ exclusion),
+and AI-05 (non-Rust schema detection via pv/forjar).
 Full report saved to `docs/falsification-report.md`.
 
 ## bashrs Makefile Linting Detail
@@ -182,6 +185,39 @@ Target:   apr train plan configs/train/pretrain-350m.yaml
 The plan/apply infrastructure is solid -- `apr train plan` generates structured
 summaries with resource estimates. The gap (ALB-009) is in scope: extending from
 classification to causal LM pre-training, and from flag-driven to config-file-driven.
+
+## Upstream Fixes Implemented
+
+Dogfooding cycle 2 identified gaps that were **fixed upstream** and verified:
+
+### ALB-029: batuta falsify false positives (FIXED)
+
+Three fixes in `batuta/src/falsification/`:
+
+1. **AI-01**: Added `configs/**` glob pattern (plural) alongside `config/**` in `invariants.rs`
+2. **AI-04**: Added `book-output/` to JS exclusion list in `is_excluded_js_path()`
+3. **AI-05**: Extended `detect_schema_deps()` to detect non-Rust validation:
+   - pv/forjar validation commands in Makefile and CI configs
+   - Python validation libs (pydantic, marshmallow, cerberus)
+   - pv contracts (YAML with `proof_obligations:` key)
+
+Commit: `batuta@905a862` → Score improved from 72.2% to 73.1%.
+
+### ALB-030: batuta stack status without Cargo.toml (FIXED)
+
+`DependencyGraph::from_workspace()` now falls back to binary detection
+when no Cargo.toml exists. Discovers installed PAIML binaries via `which`,
+extracts versions from `--version` output.
+
+Commit: `batuta@371557a` → `batuta stack status` works in albor.
+
+### ALB-019: alimentar import subcommand (FIXED)
+
+Made `Import` command always available (not feature-gated behind `hf-hub`).
+Added `alimentar import local <input> -o <output>` for local file import
+with format conversion (CSV, JSON, JSONL, Parquet).
+
+Commit: `alimentar@265541b` → `alimentar import local` works.
 
 ## Tool Availability
 

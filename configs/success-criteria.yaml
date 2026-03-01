@@ -120,7 +120,7 @@ full_success:
 
     - id: FULL-006
       name: "batuta falsify: Toyota Standard (90/108)"
-      current_score: 72.2
+      current_score: 73.1
       target_score: 83.3
       status: pending
 
