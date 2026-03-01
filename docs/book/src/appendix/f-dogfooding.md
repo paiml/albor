@@ -32,6 +32,7 @@
 | `alimentar mix` | `alimentar mix a.parquet:0.8 b.parquet:0.2 -o out.parquet` | **PASS** (weighted sampling + upsampling) | ~~ALB-020~~ FIXED |
 | `apr tokenize plan` | `apr tokenize plan --data corpus.txt --vocab-size 32000` | **PASS** (validates corpus, estimates time) | ~~ALB-001~~ FIXED |
 | `apr tokenize apply` | `apr tokenize apply --data corpus.txt --vocab-size 100` | **PASS** (trains BPE, writes vocab.json + merges.txt) | ~~ALB-001~~ FIXED |
+| `alimentar fim` | `alimentar fim data.parquet -o fim.parquet --rate 0.5` | **PASS** (PSM/SPM FIM transform) | ~~ALB-018~~ FIXED |
 | `batuta falsify` | `batuta falsify . --format markdown` | **PASS** (108 checks, 73.1% score) | ~~ALB-029~~ FIXED |
 | `batuta falsify --critical-only` | `batuta falsify . --critical-only` | **PARTIAL** (3/5 pass, 1 fail) | ~~ALB-029~~ FIXED |
 | `batuta stack status` | `batuta stack status --simple` | **PASS** (11 tools detected, 5 healthy) | ~~ALB-030~~ FIXED |
@@ -237,6 +238,19 @@ Added `apr tokenize plan/apply` subcommands for BPE vocabulary training:
 - Supports text, JSON, and YAML output formats for plan
 
 Commit: `aprender@90427205` → `apr tokenize plan/apply` works.
+
+### ALB-018: Fill-in-the-Middle (FIM) data transform (FIXED)
+
+Added `alimentar fim` subcommand and `Fim` transform implementing PSM/SPM
+FIM formats (Bavarian et al. 2022). Features:
+- Configurable FIM rate (probability per row)
+- PSM and SPM format variants
+- Custom sentinel tokens (`<|fim_prefix|>`, `<|fim_suffix|>`, `<|fim_middle|>`)
+- Deterministic with seed, respects char boundaries
+- Rows below `min_chars` threshold left unchanged
+- 10 unit tests
+
+Commit: `alimentar@290582d` → `alimentar fim` works.
 
 ## Tool Availability
 
