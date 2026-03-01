@@ -1,0 +1,16 @@
+[book]
+authors = ["Noah Gift / Pragmatic AI Labs"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Albor LLM Specification"
+description = "Sovereign Python code completion model trained from first principles"
+
+[build]
+build-dir = "../../book-output"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/paiml/albor"
+edit-url-template = "https://github.com/paiml/albor/edit/main/docs/book/src/{path}"
