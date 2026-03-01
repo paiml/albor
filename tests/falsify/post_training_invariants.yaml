@@ -1,0 +1,54 @@
+# Falsification tests: Post-Training Invariants
+# FALSIFY-ALBOR-007 through FALSIFY-ALBOR-009
+#
+# These tests verify correctness of merging, pruning, and quantization —
+# the post-training optimization stages of the improvement ladder.
+
+tests:
+  - id: FALSIFY-ALBOR-007
+    rule: "SLERP correctness"
+    prediction: "||SLERP(w1, w2, t)|| approximately equals ||w1|| for t in [0,1] (unit sphere)"
+    test_script: |
+      # Generate 10000 random weight pairs
+      # Compute SLERP for random t in [0, 1]
+      # Assert ||result|| within 1% of ||w1|| for normalized inputs
+      apr merge verify --method slerp
+        --num-samples 10000
+        --tolerance 0.01
+    if_fails: "SLERP implementation uses LERP instead, or normalization missing"
+    contract: "contracts/model-merging-kernel-v1.yaml"
+    obligation: "MERGE-001"
+
+  - id: FALSIFY-ALBOR-008
+    rule: "WANDA correctness"
+    prediction: "Exactly 50% of weights are zero after prune --sparsity 0.5"
+    test_script: |
+      # Prune model with sparsity=0.5
+      # Count zero weights across all prunable layers
+      # Assert within +/-0.1% of target 50%
+      apr prune apply --model ./checkpoints/albor-merged-350m/
+        --method wanda --sparsity 0.5
+        --output ./checkpoints/falsify-pruned/
+      # Count zeros: (zero_count / total_prunable) should be in [0.499, 0.501]
+    if_fails: "Pruning threshold computation error or layer exclusion bug"
+    contract: "contracts/pruning-kernel-v1.yaml"
+    obligation: "PRUNE-001"
+
+  - id: FALSIFY-ALBOR-009
+    rule: "Q4 fidelity"
+    prediction: "Perplexity(Q4 model) < 1.05 x Perplexity(fp16 model)"
+    test_script: |
+      # Evaluate perplexity on held-out validation set for both models
+      # Compute ratio: ppl_q4 / ppl_fp16
+      # Assert ratio < 1.05 (less than 5% perplexity degradation)
+      apr eval apply --model ./checkpoints/albor-merged-350m/
+        --tasks perplexity --data data/tokenized/val/
+        --output ./eval/ppl-fp16.json --seed 42
+      apr eval apply --model ./checkpoints/albor-q4/
+        --tasks perplexity --data data/tokenized/val/
+        --output ./eval/ppl-q4.json --seed 42
+      # Assert ppl_q4 / ppl_fp16 < 1.05
+    if_fails: "Quantization calibration data insufficient or block size wrong"
+    depends_on:
+      - checkpoints/albor-merged-350m/
+      - checkpoints/albor-q4/

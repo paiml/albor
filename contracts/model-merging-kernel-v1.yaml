@@ -1,0 +1,74 @@
+# model-merging-kernel-v1.yaml — ALB-015
+#
+# Provable contract for model merging algorithms: SLERP, TIES, DARE.
+# Merging combines weights from multiple fine-tuned models into one.
+
+contract:
+  name: "model-merging-kernel"
+  version: "1.0"
+  component: "entrenar"
+  gap_id: "ALB-015"
+  priority: "medium"
+
+equations:
+  slerp:
+    latex: "\\text{SLERP}(w_1, w_2, t) = \\frac{\\sin((1-t)\\Omega)}{\\sin \\Omega} w_1 + \\frac{\\sin(t\\Omega)}{\\sin \\Omega} w_2"
+    description: "Spherical linear interpolation on the unit sphere, where cos(Omega) = w1 . w2 / (||w1|| ||w2||)"
+
+  ties:
+    latex: "w_{merged} = w_{base} + \\lambda \\cdot \\text{elect}(\\text{trim}(\\tau_1, ..., \\tau_n))"
+    description: "TIES: Trim redundant deltas, Elect sign, disjoint merge of task vectors"
+
+  dare:
+    latex: "\\tilde{\\tau}_i = m_i \\odot \\tau_i / (1-p)"
+    description: "DARE: Drop And REscale — randomly drop delta weights, rescale survivors"
+
+obligations:
+  - id: "MERGE-001"
+    name: "SLERP interpolation bound"
+    level: 3
+    property: "||SLERP(w1, w2, t)|| is approximately ||w1|| for normalized inputs and t in [0, 1]"
+    test: "proptest with 10000 random weight pairs and t values"
+    falsification: "FALSIFY-ALBOR-007"
+
+  - id: "MERGE-002"
+    name: "SLERP boundary conditions"
+    level: 3
+    property: "SLERP(w1, w2, 0) = w1 and SLERP(w1, w2, 1) = w2"
+    test: "proptest with random weight pairs, assert element-wise equality within 1e-6"
+
+  - id: "MERGE-003"
+    name: "TIES sparsity guarantee"
+    level: 3
+    property: "After trim(tau, k%), exactly k% of delta weights are zeroed per layer"
+    test: "proptest with random task vectors and trim percentages"
+
+  - id: "MERGE-004"
+    name: "DARE rescaling"
+    level: 3
+    property: "E[tilde_tau] = tau (unbiased estimator after drop + rescale)"
+    test: "Monte Carlo: average 10000 DARE samples, assert mean within 1e-2 of original"
+
+  - id: "MERGE-005"
+    name: "Architecture compatibility check"
+    level: 2
+    property: "Merge rejects models with incompatible architectures (different hidden_size, num_layers, etc.)"
+    test: "Attempt merge of incompatible models, assert error with clear diagnostic"
+
+inputs:
+  models:
+    type: "Vec<ModelWeights>"
+    constraints: "all models have identical architecture"
+
+  method:
+    type: "enum"
+    values: ["slerp", "ties", "dare"]
+
+  weight:
+    type: "f32"
+    constraints: "in [0.0, 1.0] for slerp; any positive float for TIES lambda"
+
+outputs:
+  merged:
+    type: "ModelWeights"
+    constraints: "same architecture as inputs, all weights finite"

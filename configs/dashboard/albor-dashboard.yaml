@@ -1,0 +1,95 @@
+# configs/dashboard/albor-dashboard.yaml — presentar dashboard config
+#
+# Declarative YAML dashboard for training visualization.
+# Same config renders to both terminal (crossterm) and browser (WebGPU/WASM).
+#
+# Usage:
+#   apr monitor ./checkpoints/albor-base-350m/          # Live TUI
+#   presentar serve --config configs/dashboard/albor-dashboard.yaml  # Web
+
+title: "Albor Training Dashboard"
+description: "Sovereign Python code completion model — training metrics"
+refresh_rate: 1000                         # ms
+
+data_sources:
+  live:
+    type: "json_file"
+    path: "./checkpoints/albor-base-350m/training_state.json"
+    poll_interval: 1000
+
+  experiments:
+    type: "sqlite"
+    path: "./.entrenar/experiments.db"
+    read_only: true
+
+layout:
+  rows:
+    # ─── Row 1: Training Progress ───
+    - columns:
+        - widget: "loss_curve"
+          title: "Training Loss"
+          data_source: "live"
+          metric: "loss"
+          window: 100
+          smoothing: "ema"
+          width: 60
+
+        - widget: "gauge_group"
+          title: "GPU Status"
+          width: 40
+          gauges:
+            - metric: "gpu_utilization"
+              label: "GPU %"
+              max: 100
+              thresholds: { warn: 50, critical: 30 }
+            - metric: "memory"
+              label: "VRAM"
+              max: 24576                   # 24GB in MB
+              unit: "MB"
+            - metric: "temperature"
+              label: "Temp"
+              max: 95
+              unit: "C"
+              thresholds: { warn: 80, critical: 90 }
+
+    # ─── Row 2: Learning Rate + Gradient Norm ───
+    - columns:
+        - widget: "sparkline"
+          title: "Learning Rate"
+          data_source: "live"
+          metric: "learning_rate"
+          width: 50
+
+        - widget: "sparkline"
+          title: "Gradient Norm"
+          data_source: "live"
+          metric: "gradient_norm"
+          width: 50
+
+    # ─── Row 3: Training Stats ───
+    - columns:
+        - widget: "stats_table"
+          title: "Training Progress"
+          width: 50
+          fields:
+            - { label: "Step", metric: "step" }
+            - { label: "Total Steps", metric: "total_steps" }
+            - { label: "Tokens Processed", metric: "tokens_processed", format: "human" }
+            - { label: "Tokens/sec", metric: "tokens_per_second", format: "comma" }
+            - { label: "ETA", metric: "eta", format: "duration" }
+            - { label: "Checkpoint", metric: "last_checkpoint" }
+
+        - widget: "bar_chart"
+          title: "Benchmark Scores"
+          data_source: "experiments"
+          query: "SELECT key, value FROM metrics WHERE run_id = (SELECT id FROM runs ORDER BY created_at DESC LIMIT 1) AND key LIKE 'eval_%'"
+          width: 50
+
+alerts:
+  display: "bottom"                        # Show Andon alerts at bottom of dashboard
+  max_visible: 5
+  severity_colors:
+    critical: "red"
+    error: "yellow"
+    warning: "blue"
+    info: "dim"

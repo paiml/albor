@@ -1,0 +1,60 @@
+# Falsification tests: Training Correctness
+# FALSIFY-ALBOR-001 through FALSIFY-ALBOR-003
+#
+# These tests are run via `batuta falsify` against training artifacts.
+# Each test makes a Popperian prediction that must survive falsification.
+
+tests:
+  - id: FALSIFY-ALBOR-001
+    rule: "Training convergence"
+    prediction: "EMA(loss, window=100) is monotonically decreasing after warmup"
+    test_script: |
+      # Load training log from checkpoint directory
+      # Compute EMA with window=100
+      # Skip warmup steps (first 2000 for 350M, first 500 for 50M)
+      # Assert no sustained increase >5% over any 500-step window
+      apr eval apply --model ./checkpoints/${MODEL}/
+        --task training-convergence
+        --log ./checkpoints/${MODEL}/training_state.json
+        --warmup-steps ${WARMUP}
+        --ema-window 100
+        --max-increase-pct 5.0
+        --sustained-window 500
+    if_fails: "Learning rate too high, data corruption, or gradient computation bug"
+    applies_to:
+      - checkpoints/albor-base-50m/
+      - checkpoints/albor-base-350m/
+      - checkpoints/albor-distill/
+
+  - id: FALSIFY-ALBOR-002
+    rule: "Training stability"
+    prediction: "Global gradient norm < 10.0 after clipping for all steps"
+    test_script: |
+      # Parse training log
+      # Extract gradient_norm for every step
+      # Assert max(gradient_norm) < 10.0
+      apr eval apply --model ./checkpoints/${MODEL}/
+        --task gradient-stability
+        --log ./checkpoints/${MODEL}/training_state.json
+        --max-gradient-norm 10.0
+    if_fails: "Gradient clipping not applied, loss spike, or NaN propagation"
+    applies_to:
+      - checkpoints/albor-base-50m/
+      - checkpoints/albor-base-350m/
+
+  - id: FALSIFY-ALBOR-003
+    rule: "Reproducibility"
+    prediction: "Two runs with seed=42 produce identical checkpoints at step 1000"
+    test_script: |
+      # Train twice with identical config and seed=42
+      # Compare BLAKE3 hashes of checkpoint-step-1000.safetensors
+      # Assert equality
+      apr train apply configs/train/pretrain-50m.yaml --seed 42 --max-steps 1000
+        --output-dir ./checkpoints/repro-run-1/
+      apr train apply configs/train/pretrain-50m.yaml --seed 42 --max-steps 1000
+        --output-dir ./checkpoints/repro-run-2/
+      b3sum ./checkpoints/repro-run-1/checkpoint-step-1000.safetensors
+            ./checkpoints/repro-run-2/checkpoint-step-1000.safetensors
+      # Assert hashes match
+    if_fails: "Non-deterministic operation (async GPU, HashMap ordering, etc.)"
+    resource_estimate: "2x 50M model training to step 1000 (~30 minutes total)"

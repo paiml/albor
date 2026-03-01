@@ -1,0 +1,57 @@
+# Falsification tests: Distillation Correctness
+# FALSIFY-ALBOR-004 through FALSIFY-ALBOR-006
+#
+# These tests verify knowledge distillation is mathematically correct
+# and produces measurable improvement over the base model.
+
+tests:
+  - id: FALSIFY-ALBOR-004
+    rule: "KD loss validity"
+    prediction: "KL(teacher || student) >= 0 for all batches"
+    test_script: |
+      # Run distillation for 100 steps, log per-batch KL divergence
+      # Assert KL >= -1e-7 for all batches (allowing floating-point epsilon)
+      apr distill apply configs/train/distill.yaml
+        --stage train --max-steps 100 --log-kl
+        --output-dir ./checkpoints/falsify-kd/
+      # Parse log, extract kl_loss per step
+      # Assert min(kl_loss) >= -1e-7
+    if_fails: "Log-domain computation error or softmax numerical instability"
+    contract: "contracts/knowledge-distillation-kernel-v1.yaml"
+    obligation: "KD-001"
+
+  - id: FALSIFY-ALBOR-005
+    rule: "Distillation value"
+    prediction: "albor-distill avg benchmark > albor-base avg benchmark"
+    test_script: |
+      # Run full eval suite on both models
+      # Compute paired scores across all benchmarks
+      # Paired t-test with p < 0.05
+      apr eval apply --model ./checkpoints/albor-base-350m/
+        --tasks humaneval,mbpp,arc_easy,hellaswag,piqa,lambada
+        --output ./eval/base-results.json --seed 42
+      apr eval apply --model ./checkpoints/albor-distill/
+        --tasks humaneval,mbpp,arc_easy,hellaswag,piqa,lambada
+        --output ./eval/distill-results.json --seed 42
+      # Compare: distill scores > base scores (paired t-test, p < 0.05)
+    if_fails: "Teacher logits corrupted, temperature too high/low, or alpha miscalibrated"
+    depends_on:
+      - checkpoints/albor-base-350m/checkpoint-best.safetensors
+      - checkpoints/albor-distill/checkpoint-best.safetensors
+
+  - id: FALSIFY-ALBOR-006
+    rule: "Data pipeline integrity"
+    prediction: "Pre-computed teacher logits match live teacher inference within 1e-4"
+    test_script: |
+      # Sample 100 batches from training data
+      # Run live teacher inference on same batches
+      # Compare stored logits vs live logits
+      # Assert max element-wise difference < 1e-4
+      apr distill verify --config configs/train/distill.yaml
+        --stored-logits ./data/teacher-logits/
+        --sample-batches 100
+        --tolerance 1e-4
+    if_fails: "Serialization precision loss, wrong batch ordering, or teacher model mismatch"
+    depends_on:
+      - data/teacher-logits/
+      - Qwen/Qwen3-Coder-Next loaded on intel

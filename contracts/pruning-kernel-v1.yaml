@@ -1,0 +1,88 @@
+# pruning-kernel-v1.yaml — ALB-016
+#
+# Provable contract for model pruning: WANDA and magnitude pruning.
+# Pruning zeroes out low-importance weights to reduce model size and inference cost.
+
+contract:
+  name: "pruning-kernel"
+  version: "1.0"
+  component: "entrenar"
+  gap_id: "ALB-016"
+  priority: "medium"
+
+equations:
+  wanda:
+    latex: "\\text{score}(w_{ij}) = |w_{ij}| \\cdot \\|X_j\\|_2"
+    description: "WANDA: weight magnitude times activation norm — prune lowest scores"
+
+  magnitude:
+    latex: "\\text{score}(w_{ij}) = |w_{ij}|"
+    description: "Magnitude pruning: prune weights with smallest absolute values"
+
+  sparsity:
+    latex: "s = \\frac{|\\{w : w = 0\\}|}{|w|}"
+    description: "Sparsity ratio: fraction of weights that are exactly zero"
+
+obligations:
+  - id: "PRUNE-001"
+    name: "Sparsity invariant"
+    level: 3
+    property: "After pruning with target sparsity s, exactly s% of weights are zero (within +/-0.1%)"
+    test: "proptest with random weight matrices and sparsity targets"
+    falsification: "FALSIFY-ALBOR-008"
+
+  - id: "PRUNE-002"
+    name: "Score ordering preserved"
+    level: 3
+    property: "All pruned weights have scores <= all surviving weights"
+    test: "proptest: compute scores, verify partition is correct"
+
+  - id: "PRUNE-003"
+    name: "WANDA activation dependency"
+    level: 3
+    property: "WANDA score depends on both weight magnitude and input activation norm"
+    test: "Two weights with same magnitude but different activation norms get different scores"
+
+  - id: "PRUNE-004"
+    name: "Zero sparsity is identity"
+    level: 2
+    property: "Pruning with sparsity=0 returns the original model unchanged"
+    test: "Direct assertion: output weights == input weights"
+
+  - id: "PRUNE-005"
+    name: "Full sparsity zeroes all"
+    level: 2
+    property: "Pruning with sparsity=1.0 zeroes all prunable weights"
+    test: "Direct assertion: all prunable weights are zero"
+
+  - id: "PRUNE-006"
+    name: "Layer exclusion"
+    level: 2
+    property: "Embedding and output projection layers are excluded from pruning by default"
+    test: "Prune model, verify embedding layer weights unchanged"
+
+inputs:
+  model:
+    type: "ModelWeights"
+    constraints: "valid model with finite weights"
+
+  method:
+    type: "enum"
+    values: ["wanda", "magnitude"]
+
+  sparsity:
+    type: "f32"
+    constraints: "in [0.0, 1.0]"
+
+  calibration_data:
+    type: "Option<Tensor<f32>>"
+    constraints: "required for WANDA (activation norms), optional for magnitude"
+
+outputs:
+  pruned_model:
+    type: "ModelWeights"
+    constraints: "same architecture, sparsity matches target, all weights finite"
+
+  sparsity_achieved:
+    type: "f32"
+    constraints: "within 0.1% of target sparsity"

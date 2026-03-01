@@ -1,0 +1,79 @@
+# gradient-accumulation-kernel-v1.yaml — ALB-017
+#
+# Provable contract for gradient accumulation.
+# Accumulating gradients over N micro-batches must be numerically equivalent
+# to computing the gradient on the full batch, within floating-point tolerance.
+#
+# This is critical: gradient accumulation is how we achieve large effective
+# batch sizes (512K tokens) on a single 4090 with limited VRAM.
+
+contract:
+  name: "gradient-accumulation-kernel"
+  version: "1.0"
+  component: "entrenar"
+  gap_id: "ALB-017"
+  priority: "high"
+
+equations:
+  accumulation:
+    latex: "G_{accum} = \\frac{1}{N} \\sum_{i=1}^{N} g_i \\approx g_{full}"
+    description: "Accumulated gradient over N micro-batches approximates full-batch gradient"
+
+  loss_scaling:
+    latex: "\\mathcal{L}_{scaled} = \\frac{1}{N} \\mathcal{L}_{micro}"
+    description: "Each micro-batch loss is scaled by 1/N before backward pass"
+
+obligations:
+  - id: "GA-001"
+    name: "Numerical equivalence"
+    level: 4                               # Kani bounded model check
+    property: "||G_accum - G_full|| < epsilon for N micro-batches (epsilon = 1e-5 for fp32, 1e-3 for fp16)"
+    test: "Compute gradient both ways on 1000 random inputs, assert max element-wise diff within tolerance"
+
+  - id: "GA-002"
+    name: "Loss scaling correctness"
+    level: 3
+    property: "Total loss = mean of micro-batch losses (not sum)"
+    test: "proptest: compute loss with accumulation=N and accumulation=1 on same data"
+
+  - id: "GA-003"
+    name: "Gradient zeroing"
+    level: 3
+    property: "Gradients are zeroed before each accumulation cycle (no stale gradients)"
+    test: "Run two accumulation cycles, verify gradients from cycle 1 don't leak into cycle 2"
+
+  - id: "GA-004"
+    name: "Step count correctness"
+    level: 2
+    property: "Optimizer step is called once per N micro-batches, not once per micro-batch"
+    test: "Track optimizer.step() call count over 3N micro-batches, assert exactly 3 calls"
+
+  - id: "GA-005"
+    name: "Mixed precision accumulation"
+    level: 3
+    property: "Gradients accumulated in fp32 even when forward pass uses fp16"
+    test: "Verify accumulation buffer dtype is fp32 when mixed_precision='fp16'"
+
+  - id: "GA-006"
+    name: "Gradient clipping after accumulation"
+    level: 3
+    property: "Gradient clipping is applied to the accumulated gradient, not to individual micro-batch gradients"
+    test: "Set clip=1.0, inject one large micro-batch gradient, verify clipping happens once on total"
+
+inputs:
+  micro_batch_gradients:
+    type: "Vec<Tensor<f32>>"
+    constraints: "N tensors of identical shape, all finite"
+
+  accumulation_steps:
+    type: "usize"
+    constraints: "> 0"
+
+  mixed_precision:
+    type: "Option<String>"
+    constraints: "one of ['fp16', 'bf16', None]"
+
+outputs:
+  accumulated_gradient:
+    type: "Tensor<f32>"
+    constraints: "same shape as inputs, all finite, dtype is fp32"

@@ -1,0 +1,97 @@
+# configs/train/distill.yaml — Knowledge distillation from Qwen3-Coder-Next
+#
+# Two-phase distillation:
+#   Phase 1 (precompute): Run teacher on intel (300GB RAM, CPU), save logits
+#   Phase 2 (train): Train student on lambda (4090) using pre-computed logits
+#
+# Teacher: Qwen3-Coder-Next 80B (MoE, 3B active, DeltaNet + Gated Attention)
+# Student: albor-base-350m (LLaMA-style dense, from pretrain-350m.yaml)
+#
+# Cross-machine distillation:
+#   intel: teacher inference (CPU fp16, ~160GB model + ~140GB KV cache)
+#   lambda: student training (GPU fp16, ~13GB VRAM)
+
+teacher:
+  model: "Qwen/Qwen3-Coder-Next"
+  cache_dir: "/data/albor/models/teacher"
+  precision: "fp16"                        # Full precision for logit quality
+  machine: "intel"
+  top_k_logits: 128                        # Save top-128 logits per position
+  batch_size: 4                            # CPU inference batch size
+  max_seq_len: 2048                        # Match student context length
+
+student:
+  checkpoint: "./checkpoints/albor-base-350m/checkpoint-best.safetensors"
+  config: "configs/train/pretrain-350m.yaml"
+
+distillation:
+  temperature: 4.0                         # Softens teacher distribution
+  alpha: 0.5                               # KD_loss = α·KL·T² + (1-α)·CE
+  loss: "kl_divergence"                    # KL(σ(z_t/T) ∥ σ(z_s/T))
+
+precompute:
+  output_dir: "./data/teacher-logits/"
+  format: "parquet"                        # Sharded Parquet via alimentar
+  data_source: "./data/tokenized/train/"
+  subset_tokens: 500_000_000               # Start with 500M tokens (curated subset)
+  shard_size: 100_000                      # Records per Parquet shard
+
+data:
+  teacher_logits: "./data/teacher-logits/"
+  train: "data/tokenized/train/"
+  val: "data/tokenized/val/"
+  batch_size: 8
+  seq_len: 2048
+  tokenizer: "models/albor-tokenizer/tokenizer.json"
+
+optimizer:
+  name: "adamw"
+  lr: 1.0e-4                               # Lower LR for distillation fine-tuning
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "distillation"
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 500
+  gradient_accumulation: 16                # Global batch = 8 * 16 * 2048 = 256K tokens
+  mixed_precision: "fp16"
+  output_dir: "./checkpoints/albor-distill"
+  save_interval: 500
+
+monitoring:
+  terminal:
+    enabled: true
+    refresh_rate: 1000
+    metrics: ["loss", "kd_loss", "ce_loss", "learning_rate", "gradient_norm"]
+    charts:
+      - type: "loss_curve"
+        metric: "loss"
+        window: 50
+        show_eta: true
+
+  tracking:
+    enabled: true
+    backend: "sqlite"
+    experiment: "albor-distill-350m"
+    tags:
+      model: "albor-350m"
+      stage: "distill"
+      teacher: "Qwen3-Coder-Next-80B"
+      temperature: "4.0"
+      alpha: "0.5"
+
+  system:
+    enabled: true
+    interval: 5000
+    metrics: ["gpu_utilization", "memory", "temperature"]
+
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded — Andon stop"
+    - condition: "kd_loss < 0"
+      action: "stop"
+      message: "KL divergence negative — numerical instability"

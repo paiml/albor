@@ -1,0 +1,104 @@
+# configs/data-mix.yaml — Training data composition
+#
+# Defines source weights and upsampling for the ~10B token training mix.
+# Following the phi-1 playbook: 80% Python/Python-adjacent, 20% general.
+# Local ground truth corpora (Tier 1) are upsampled 10x for maximum signal.
+#
+# Usage:
+#   alimentar mix --config configs/data-mix.yaml --seed 42 --shuffle
+
+target_tokens: 10_000_000_000             # ~10B total
+
+sources:
+  # ─────────────────────────────────────────────────────────
+  # Tier 1: Local Ground Truth (upsampled 10x)
+  # Highest quality — curated, tested, type-annotated, CI-validated
+  # ─────────────────────────────────────────────────────────
+
+  depyler:
+    path: "./data/local/depyler.parquet"
+    weight: 0.025
+    upsample: 10
+    license: "MIT"
+    description: "Type-annotated Python from depyler transpiler examples + tdd-book"
+    files: 1_845
+    quality: "transpiler-validated, property-tested, 27 stdlib modules"
+
+  hf-ground-truth:
+    path: "./data/local/hf-gtc.parquet"
+    weight: 0.025
+    upsample: 10
+    license: "MIT"
+    description: "Production HuggingFace recipes, 98%+ test coverage"
+    files: 11_928
+    quality: "zero lint violations, full CI"
+
+  jax-ground-truth:
+    path: "./data/local/jax-gtc.parquet"
+    weight: 0.025
+    upsample: 10
+    license: "MIT"
+    description: "JAX numerical computing, 100% test coverage"
+    files: 2_697
+    quality: "full type checking, numerical computing patterns"
+
+  vllm-ground-truth:
+    path: "./data/local/vllm-gtc.parquet"
+    weight: 0.025
+    upsample: 10
+    license: "MIT"
+    description: "Production vLLM inference optimization code"
+    files: 1_118
+    quality: "production inference patterns"
+
+  # ─────────────────────────────────────────────────────────
+  # Tier 2: Bulk Code (natural frequency)
+  # High volume, good diversity, standard quality
+  # ─────────────────────────────────────────────────────────
+
+  starcoder-python:
+    path: "./data/starcoder-python/"
+    weight: 0.40
+    upsample: 1
+    license: "Apache 2.0"
+    description: "StarCoder Python subset from bigcode/starcoderdata"
+    tokens_est: 4_000_000_000
+    quality: "deduplicated, license-filtered"
+
+  # ─────────────────────────────────────────────────────────
+  # Tier 3: Educational / General (supplements code)
+  # ─────────────────────────────────────────────────────────
+
+  fineweb-edu:
+    path: "./data/fineweb-edu/"
+    weight: 0.20
+    upsample: 1
+    license: "ODC-BY"
+    description: "Educational web text for docstring understanding"
+    tokens_est: 2_000_000_000
+    quality: "quality-filtered educational content"
+
+  python-docs:
+    path: "./data/processed/python-docs.parquet"
+    weight: 0.10
+    upsample: 1
+    license: "CC BY-SA"
+    description: "Python docs, PEPs, Stack Overflow — API knowledge"
+    tokens_est: 1_000_000_000
+    quality: "official documentation, community answers"
+
+processing:
+  seed: 42
+  shuffle: true
+  deduplication: "minhash"                 # Near-duplicate removal
+  quality_check: true                      # Run alimentar quality check before mixing
+  output_dir: "./data/mixed/"
+
+fim:
+  enabled: true                            # Fill-in-the-Middle data transform
+  rate: 0.5                                # 50% of code sequences get FIM transform
+  mode: "psm"                              # Prefix-Suffix-Middle (default)
+  sentinel_tokens:                         # Special tokens for FIM
+    prefix: "<fim_prefix>"
+    suffix: "<fim_suffix>"
+    middle: "<fim_middle>"
