@@ -1,6 +1,6 @@
-# 10. Pipeline Orchestration (`apr pipeline` + forjar DAG)
+# 10. Pipeline Orchestration
 
-### 10.1 Architecture: One Manifest, One DAG
+## 10.1 Architecture: One Manifest, One DAG
 
 The entire albor pipeline — from bare metal to published model — lives in a
 single YAML manifest: `configs/pipeline/albor.yaml`. Forjar's DAG engine
@@ -49,7 +49,7 @@ apr pipeline drift                               # Detect unauthorized state cha
 - **bashrs linted**: All shell fragments in task `command:` fields are validated
   by bashrs (Rash v6.65) at plan time. No unvalidated shell reaches execution.
 
-### 10.2 Pipeline Manifest: `configs/pipeline/albor.yaml`
+## 10.2 Pipeline Manifest: `configs/pipeline/albor.yaml`
 
 ```yaml
 version: "1.0"
@@ -89,8 +89,9 @@ resources:
   vulkan-driver:
     type: package
     machine: intel
+    provider: apt
     state: present
-    names: [mesa-vulkan-drivers, vulkan-tools, libvulkan-dev]
+    packages: [mesa-vulkan-drivers, vulkan-tools, libvulkan-dev]
 
   data-dir:
     type: file
@@ -337,7 +338,7 @@ policy:
   bashrs_lint: true            # Validate all task command: fields via bashrs
 ```
 
-### 10.3 Pipeline Workflow
+## 10.3 Pipeline Workflow
 
 ```bash
 # Show full DAG with time/resource estimates (no side effects)
@@ -359,7 +360,7 @@ apr pipeline apply configs/pipeline/albor.yaml
 apr pipeline apply configs/pipeline/albor.yaml --target train-350m --force
 ```
 
-### 10.4 The `task` Resource Type (ALB-027)
+## 10.4 The `task` Resource Type (ALB-027)
 
 The `task` resource is what makes forjar a pipeline orchestrator, not just an
 infrastructure tool. It runs an arbitrary command, tracks completion, and
@@ -382,7 +383,7 @@ If any of these fail, the task is re-run. For training jobs that crashed
 mid-run, the `command` itself includes `--resume` logic (e.g., `apr train
 apply` auto-detects and resumes from the latest checkpoint).
 
-### 10.5 Why Not Makefile / Shell Scripts
+## 10.5 Why Not Makefile / Shell Scripts
 
 | Approach | DAG | State | Resume | Multi-Machine | Lint |
 |----------|-----|-------|--------|---------------|------|
@@ -391,3 +392,5 @@ apply` auto-detects and resumes from the latest checkpoint).
 | Shell scripts | Sequential only | None | Manual | Manual SSH | ShellCheck (external) |
 
 The Makefile and shell scripts are eliminated. One manifest. One DAG. One tool.
+
+---

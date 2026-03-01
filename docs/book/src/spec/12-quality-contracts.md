@@ -5,7 +5,7 @@ specification with Popperian falsification tests, property-based probar tests,
 and Kani bounded model checking harnesses. This is not optional — it is a
 first-class deliverable alongside the model.
 
-### 12.1 Verification Ladder
+## 12.1 Verification Ladder
 
 Four levels of assurance, from cheapest to most rigorous:
 
@@ -20,12 +20,12 @@ Level 0: Code review                 ─── HUMAN (necessary but insufficient
 **Requirement**: Every kernel reaches at least Level 3. Critical kernels
 (softmax, attention, cross-entropy, KD loss) reach Level 4.
 
-### 12.2 Contract Registry for Albor
+## 12.2 Contract Registry for Albor
 
 Albor requires contracts for every kernel in the training + post-training pipeline.
 Many already exist in provable-contracts; new ones must be written.
 
-#### Existing Contracts (bind to aprender implementations)
+### Existing Contracts (bind to aprender implementations)
 
 | Contract | Equations | Obligations | Status |
 |----------|-----------|-------------|--------|
@@ -40,7 +40,7 @@ Many already exist in provable-contracts; new ones must be written.
 | `gqa-kernel-v1.yaml` | Grouped Query Attention | Equivalence to MHA when groups=heads | Exists |
 | `swiglu-kernel-v1.yaml` | SwiGLU FFN | Gating invariants | Exists |
 
-#### New Contracts Required for Albor (ALB-013 through ALB-017)
+### New Contracts Required for Albor (ALB-013 through ALB-017)
 
 | Contract (NEW) | Key Equations | Key Obligations | Priority |
 |----------------|---------------|-----------------|----------|
@@ -50,7 +50,7 @@ Many already exist in provable-contracts; new ones must be written.
 | `pruning-kernel-v1.yaml` | WANDA: score = |w| · ‖x‖₂; magnitude: score = |w| | Sparsity invariant (exactly k% weights zeroed), score ordering preserved | Medium |
 | `gradient-accumulation-kernel-v1.yaml` | G_accum = (1/N)·Σ g_i ≈ g_full | Numerical equivalence within tolerance, loss scaling correctness | High |
 
-### 12.3 Contract Workflow for Each Kernel
+## 12.3 Contract Workflow for Each Kernel
 
 ```bash
 # 1. Write or validate YAML contract
@@ -74,12 +74,12 @@ pv audit contracts/knowledge-distillation-kernel-v1.yaml \
 pv status contracts/knowledge-distillation-kernel-v1.yaml
 ```
 
-### 12.4 Falsification Tests: Albor-Specific
+## 12.4 Falsification Tests: Albor-Specific
 
 Every claim in this specification must be falsifiable. Below are the concrete
 falsification tests for Albor's key properties.
 
-#### Training Correctness
+### Training Correctness
 
 ```yaml
 # FALSIFY-ALBOR-001: Loss decreases monotonically (smoothed)
@@ -104,7 +104,7 @@ falsification tests for Albor's key properties.
   if_fails: "Non-deterministic operation (async GPU, HashMap ordering, etc.)"
 ```
 
-#### Distillation Correctness
+### Distillation Correctness
 
 ```yaml
 # FALSIFY-ALBOR-004: KL divergence is non-negative
@@ -129,7 +129,7 @@ falsification tests for Albor's key properties.
   if_fails: "Serialization precision loss, wrong batch ordering, or teacher model mismatch"
 ```
 
-#### Post-Training Invariants
+### Post-Training Invariants
 
 ```yaml
 # FALSIFY-ALBOR-007: Merge interpolation bound
@@ -154,7 +154,7 @@ falsification tests for Albor's key properties.
   if_fails: "Quantization calibration data insufficient or block size wrong"
 ```
 
-### 12.5 Verification DAG (Albor End-to-End)
+## 12.5 Verification DAG (Albor End-to-End)
 
 Like the Qwen 3.5 verification DAG in provable-contracts, Albor composes
 sub-contracts into a full model verification:
@@ -187,3 +187,5 @@ pruning ────────── post-training ─── albor-pruned
 Each node in this DAG is a contract. `pv graph contracts/ --format mermaid`
 renders the full dependency graph. A change to any sub-contract triggers
 re-verification of all dependents.
+
+---

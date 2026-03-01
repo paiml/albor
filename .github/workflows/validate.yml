@@ -1,0 +1,78 @@
+name: Validate Configs & Contracts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'configs/**'
+      - 'contracts/**'
+      - '.github/workflows/validate.yml'
+  pull_request:
+    paths:
+      - 'configs/**'
+      - 'contracts/**'
+
+jobs:
+  validate-yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate YAML syntax
+        run: |
+          pip install yamllint
+          echo "--- Validating config YAML syntax ---"
+          for f in configs/**/*.yaml configs/*.yaml; do
+            echo "  $f"
+            python3 -c "import yaml; yaml.safe_load(open('$f'))" || exit 1
+          done
+          echo "--- Validating contract YAML syntax ---"
+          for f in contracts/*.yaml; do
+            echo "  $f"
+            python3 -c "import yaml; yaml.safe_load(open('$f'))" || exit 1
+          done
+          echo "All YAML files parse successfully"
+
+  validate-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pv (provable-contracts)
+        run: cargo install provable-contracts-cli
+
+      - name: Validate contracts with pv
+        run: |
+          echo "--- pv validate ---"
+          for f in contracts/*.yaml; do
+            echo "  Validating: $f"
+            pv validate "$f"
+          done
+          echo ""
+          echo "--- pv coverage ---"
+          pv coverage contracts
+          echo ""
+          echo "--- pv graph ---"
+          pv graph contracts
+
+  validate-forjar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install forjar
+        run: cargo install forjar
+
+      - name: Validate infra manifest with forjar
+        run: |
+          echo "--- forjar validate (infra-only) ---"
+          forjar validate -f configs/pipeline/infra-only.yaml
+          echo ""
+          echo "--- forjar graph ---"
+          forjar graph -f configs/pipeline/infra-only.yaml
