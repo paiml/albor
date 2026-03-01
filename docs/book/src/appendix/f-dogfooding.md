@@ -63,6 +63,9 @@
 | `bashrs audit` | `bashrs audit Makefile` | **PASS** (comprehensive audit) | — |
 | `entrenar validate` | `entrenar validate pretrain-350m-manifest.yaml` | **PASS** (architecture overrides bridge through) | ~~ALB-021~~ FIXED |
 | `entrenar shorthand` | `vocab_size: "32K"` in YAML manifest | **PASS** (parses to 32768) | ~~ALB-022~~ FIXED |
+| `apr merge --plan` | `apr merge a.apr b.apr --plan --strategy slerp -o merged.apr` | **PASS** (validates inputs, shows strategy, sizes) | ~~ALB-023~~ FIXED |
+| `apr export --plan` | `apr export model.apr --plan --format gguf -o model.gguf` | **PASS** (validates format, shows plan) | ~~ALB-023~~ FIXED |
+| `apr publish --plan` | `apr publish dir repo --plan` | **PASS** (alias for --dry-run) | ~~ALB-023~~ FIXED |
 
 ## Contract Validation Detail
 
@@ -313,6 +316,36 @@ Phase 2 (requires ALB-009 inference): generates completions via realizar engine.
 Sample benchmark: `configs/eval/python-basic.jsonl` (10 problems).
 
 Commit: `aprender@4e61297e` → `apr eval --task code` works.
+
+### ALB-023: Plan/apply contract for all apr subcommands (FIXED)
+
+Added `--plan` flag to the remaining action commands that lacked plan mode:
+
+- **`apr merge --plan`**: Validates input files exist, parses strategy, validates
+  weights, shows model count and total input size. Exits 0 on valid, non-zero on error.
+- **`apr export --plan`**: Validates model file exists, format is supported,
+  shows input size and target format. Supports batch mode plan.
+- **`apr publish --plan`**: Alias for existing `--dry-run`. Preview model card
+  and file list without uploading.
+
+Pre-dispatch contract validation (RosettaStone tensor checks) is now skipped
+in plan mode to allow plan on empty/placeholder files.
+
+Full coverage audit:
+| Command | Plan Mode | Type |
+|---------|-----------|------|
+| train | plan/apply subcommands | Pre-existing |
+| tokenize | plan/apply subcommands | Pre-existing |
+| quantize | --plan flag | Pre-existing |
+| finetune | --plan flag | Pre-existing |
+| prune | --plan flag | Pre-existing |
+| distill | --plan flag | Pre-existing |
+| eval | --task plan | Pre-existing |
+| merge | --plan flag | **New** |
+| export | --plan flag | **New** |
+| publish | --plan flag | **New** |
+
+Commit: `aprender@526a1e4b` → All action commands have plan mode.
 
 ## Tool Availability
 
