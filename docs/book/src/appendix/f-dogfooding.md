@@ -23,7 +23,7 @@
 | `forjar validate` | `forjar validate -f albor.yaml` | **PASS** (2 machines, 22 resources) | ~~ALB-027~~ FIXED |
 | `forjar graph` | `forjar graph -f infra-only.yaml` | **PASS** (Mermaid output) | — |
 | `apr finetune --plan` | `apr finetune --plan --model-size 350M --vram 24` | **PASS** (VRAM estimate correct) | — |
-| `apr train plan` | `apr train plan configs/train/pretrain-350m.yaml` | **FAIL** (expects `--data` flag, not config file) | ALB-009 |
+| `apr train plan --task pretrain` | `apr train plan --task pretrain --config pretrain-350m.yaml` | **PASS** (validates config, shows arch/params) | ~~ALB-009~~ FIXED |
 | `apr distill --plan` | `apr distill --plan` | **PASS** (exists, needs config-driven workflow) | ALB-011 |
 | `apr quantize --plan` | `apr quantize --plan <file>` | **PASS** (plan mode works) | — |
 | `apr prune --plan` | `apr prune --plan <file>` | **PASS** (plan mode exists) | — |
@@ -54,7 +54,7 @@
 | `pmat analyze makefile` | `pmat analyze makefile Makefile` | **PASS** (64% quality score) | — |
 | `pv lean` | `pv lean contracts/kd-v1.yaml` | **PASS** (6 Lean 4 theorem stubs generated) | — |
 | `pv lean-status` | `pv lean-status contracts/` | **PASS** (0% L4 coverage, 4 sorry debt) | — |
-| `apr train plan` | `apr train plan --data <JSONL>` | **PASS** (exists, classification only) | ALB-009 |
+| `apr train plan --task classify` | `apr train plan --data <JSONL>` | **PASS** (classification fine-tuning) | — |
 | `apr merge` | `apr merge --strategy slerp` | **PASS** (SLERP, TIES, DARE supported) | — |
 | `apr export --list-formats` | `apr export --list-formats` | **PASS** (SafeTensors, GGUF, MLX) | — |
 | `apr publish` | `apr publish <dir> <repo>` | **PASS** (HF Hub publish exists) | — |
@@ -322,6 +322,32 @@ Phase 2 (requires ALB-009 inference): generates completions via realizar engine.
 Sample benchmark: `configs/eval/python-basic.jsonl` (10 problems).
 
 Commit: `aprender@4e61297e` → `apr eval --task code` works.
+
+### ALB-009: apr train plan/apply for causal LM pre-training (FIXED)
+
+Extended `apr train plan/apply` from classification-only to support causal LM
+pre-training via YAML config files:
+
+- **`apr train plan --task pretrain --config <yaml>`**: Loads config via
+  `entrenar::config::load_config()`, validates with `validate_config()`,
+  displays model architecture, data config, optimizer, and training params.
+  JSON output supported for CI integration.
+- **`apr train apply --task pretrain --config <yaml>`**: Calls
+  `entrenar::config::train_from_yaml()` which routes to TransformerTrainer
+  with CausalLMLoss for next-token prediction training.
+
+The albor pretrain config (`configs/train/pretrain-350m.yaml`) was updated
+to match entrenar's `TrainSpec` schema: `model.path`, `model.mode: transformer`,
+`model.architecture` overrides, `training.mode: causal_lm`.
+
+Entrenar's training infrastructure was already ~90% ready:
+- `CausalLMLoss` for next-token prediction loss
+- `TransformerTrainer` with gradient accumulation, mixed precision
+- `TrainSpec` YAML schema with `ModelMode::Transformer` and `TrainingMode::CausalLm`
+
+The gap was in the CLI routing — `apr train` only accepted `--task classify`.
+
+Commit: `aprender@d79ed943` → `apr train plan --task pretrain` works.
 
 ### ALB-028: apr pipeline plan/apply/status/validate (FIXED)
 
