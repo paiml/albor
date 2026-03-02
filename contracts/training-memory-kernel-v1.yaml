@@ -72,10 +72,13 @@ equations:
   total_memory:
     formula: "M_total = M_weights + M_grad + M_opt + M_act + M_cuda"
     domain: "M_cuda ≈ 512 MB (CUDA context, cuBLAS workspace, allocator overhead)"
-    codomain: "M_total: total estimated VRAM in bytes"
+    codomain: "M_total: total estimated memory in bytes"
     invariants:
       - "M_total is an upper bound — actual usage may be lower due to tensor reuse"
       - "Does not include KV cache (inference only, not training)"
+      - "entrenar hybrid mode: weights/grads/optimizer live in CPU RAM; only matmul operands transfer to GPU"
+      - "In hybrid mode, VRAM ≈ M_cuda + max(matmul_operand_pair); CPU RAM ≈ M_weights + M_grad + M_opt + M_act"
+      - "M_total represents peak system memory (CPU+GPU) needed, not VRAM alone"
 
 proof_obligations:
   - type: equivalence

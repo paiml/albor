@@ -1,0 +1,131 @@
+# training-gpu-kernel-v1.yaml — ALB-040
+#
+# Provable contract for GPU-resident pretraining via CudaTransformerTrainer.
+# Validates numerical equivalence, transfer efficiency, and GPU utilization.
+
+metadata:
+  version: "1.0.0"
+  created: "2026-03-02"
+  author: "PAIML Engineering"
+  description: "GPU-resident pretraining kernel — CudaTransformerBlock wired into TransformerTrainer"
+  references:
+    - "classify_pipeline.rs GPU training pattern (ENT-151, ENT-152)"
+    - "training-memory-kernel-v1.yaml (VRAM estimation)"
+  depends_on:
+    - "training-memory-kernel-v1"
+
+equations:
+  pcie_transfers_per_step:
+    formula: |
+      T = 3 (constant)
+      Transfer 1 (H2D): hidden = S × H × 4 bytes
+      Transfer 2 (D2H): logits = S × V × 4 bytes
+      Transfer 3 (H2D): grad_logits = S × V × 4 bytes
+      Total bytes per step = S × (H + 2V) × 4
+    domain: |
+      S: seq_len, H: hidden_size, V: vocab_size
+    codomain: "T = 3: exactly 3 PCIe transfers per training step"
+    invariants:
+      - "Embedding lookup stays on CPU (scatter-gather, not matmul)"
+      - "Cross-entropy loss + softmax backward stays on CPU"
+      - "All transformer block forward/backward/optimizer on GPU"
+      - "RMSNorm forward/backward on GPU"
+      - "LM head GEMM forward/backward on GPU"
+
+  transfer_overhead:
+    formula: |
+      overhead_ms = total_bytes / bandwidth
+      For PCIe 4.0 x16: bandwidth = 32 GB/s
+      For 350M model (H=1024, V=32K, S=2048):
+        total = 2048 × (1024 + 2×32768) × 4 = 544 MB
+        overhead = 544 MB / 32 GB/s = 17 ms
+    domain: "Architecture params + PCIe bandwidth"
+    codomain: "Transfer overhead in milliseconds (theoretical)"
+    invariants:
+      - "Transfer overhead < 5% of compute time for models >= 350M params"
+      - "GPU compute time dominates for large models"
+
+  gpu_utilization:
+    formula: |
+      util = compute_time / (compute_time + transfer_time + sync_time)
+    domain: "Measured via nvidia-smi dmon or CUDA events"
+    codomain: "GPU utilization ratio [0, 1]"
+    invariants:
+      - "util > 0.70 for models >= 350M params with batch_size >= 4"
+      - "Previous CPU autograd achieved ~0.07 (7%) due to 16K transfers/step"
+
+proof_obligations:
+  - type: equivalence
+    property: "GPU training loss matches CPU training loss"
+    formal: "|loss_gpu(step=N) - loss_cpu(step=N)| < epsilon for all N in [1, 100]"
+    tolerance: 1e-3
+    applies_to: numerical_equivalence
+
+  - type: invariant
+    property: "Exactly 3 PCIe transfers per step"
+    formal: "count(H2D) + count(D2H) = 3 per train_step_single() call"
+    tolerance: 0
+    applies_to: pcie_transfers_per_step
+
+  - type: bound
+    property: "GPU utilization exceeds 70%"
+    formal: "gpu_util >= 0.70 during training (measured over 100+ steps)"
+    applies_to: gpu_utilization
+
+  - type: invariant
+    property: "Weight sync preserves values"
+    formal: "sync_weights_to_cpu() => |w_cpu[i] - w_gpu[i]| == 0 for all i"
+    tolerance: 0
+    applies_to: weight_sync
+
+  - type: invariant
+    property: "Graceful fallback on CUDA failure"
+    formal: "CudaTransformerTrainer::new() Err => TransformerTrainer used instead"
+    tolerance: 0
+    applies_to: fallback
+
+falsification_tests:
+  - id: FALSIFY-GPU-001
+    rule: "GPU and CPU training produce equivalent loss"
+    prediction: "After 10 steps with identical init, |loss_gpu - loss_cpu| < 1e-3"
+    test: |
+      Build TransformerConfig::tiny(), create both CudaTransformerTrainer
+      and TransformerTrainer with same weights. Run 10 steps on same data.
+      Compare final loss values.
+    if_fails: "Numerical divergence in GPU kernels or incorrect gradient flow"
+
+  - id: FALSIFY-GPU-002
+    rule: "Saved weights differ from init after GPU training"
+    prediction: "model.safetensors weights != init weights after 10+ steps"
+    test: |
+      Train 10 steps on GPU, save, reload weights.
+      Verify at least one layer's weights changed from initialization.
+    if_fails: "Weight sync broken or optimizer not updating GPU weights"
+
+  - id: FALSIFY-GPU-003
+    rule: "Fallback works when CUDA unavailable"
+    prediction: "train_from_yaml succeeds with use_cuda=true but no GPU"
+    test: "Run with CUDA feature disabled, verify CPU training executes"
+    if_fails: "Fallback path broken or non-CUDA stub missing"
+
+  - id: FALSIFY-GPU-004
+    rule: "GPU utilization > 70% for 350M model"
+    prediction: "nvidia-smi dmon shows >70% GPU utilization during training"
+    test: |
+      Start training with albor-base-350m.yaml config.
+      Sample nvidia-smi every 1s for 60s.
+      Compute average GPU utilization.
+    if_fails: "Unexpected PCIe bottleneck, kernel launch overhead, or memory contention"
+
+qa_gate:
+  id: F-GPU-001
+  name: "GPU-Resident Pretraining Contract"
+  description: "CudaTransformerTrainer correctness and efficiency"
+  checks:
+    - "numerical_equivalence"
+    - "transfer_count_invariant"
+    - "gpu_utilization_bound"
+    - "weight_sync_exact"
+    - "graceful_fallback"
+  pass_criteria: "All 4 falsification tests pass"
+  falsification: "Use mismatched hidden_size to detect weight shape errors"
