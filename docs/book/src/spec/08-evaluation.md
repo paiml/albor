@@ -182,6 +182,14 @@ instead of trained weights due to broken autograd gradient flow. Root cause:
 backward). All 20 model parameters now receive gradients during training.
 See [GitHub #36](https://github.com/paiml/albor/issues/36).
 
+**Gap ALB-059** (**FIXED**): GEMM backward constructor args n/k swapped in
+entrenar — baked wrong compile-time stride constants into PTX. Output rows
+overflowed into optimizer state buffers, causing NaN in AdamW. The 50-step
+test model trained with this bug had loss 10.39→6.07; after the fix, loss
+improved to 10.39→5.92. All evaluation results should use the post-fix
+checkpoint (`entrenar@846ae0c`). Additionally, all optimizer m/v buffers
+are now zero-initialized (cuMemAlloc returns uninitialized VRAM).
+
 ### 8.6 Local Evaluation Infrastructure
 
 The following scripts provide model evaluation independently of `apr eval`:
@@ -202,7 +210,7 @@ python scripts/eval-perplexity.py checkpoints/albor-base-350m/ \
     --data data/pretokenized-2048/val/val.parquet \
     --max-sequences 100 --seq-len 2048 --threshold 30
 
-# Evaluate via apr serve API (when ALB-037 is fixed)
+# Evaluate via apr serve API (ALB-037 FIXED — realizar loads trained checkpoints)
 python scripts/eval-code.py configs/eval/humaneval-subset.jsonl \
     --api http://localhost:8080 --samples 10
 
