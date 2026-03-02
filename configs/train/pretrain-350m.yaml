@@ -4,13 +4,16 @@
 # hyperparameters for the final base model. This is the config that runs
 # for 3-7 days on the RTX 4090.
 #
-# VRAM budget (fp16 mixed precision, RTX 4090 24GB):
-#   Weights:      ~700 MB
-#   Optimizer:  ~2,800 MB (AdamW fp32 m+v)
-#   Gradients:    ~700 MB
-#   Activations: ~9,200 MB (grad ckpt, batch=8, seq=2048)
-#   Total:     ~13,400 MB (55.8% of 24,576 MB)
-#   Headroom:  ~11,176 MB
+# VRAM budget (GPU-resident CudaTransformerTrainer, RTX 4090 24GB):
+#   24 blocks (weights+AdamW m+v+workspace): ~17 GB
+#   LM head (weights+AdamW+logits):          ~1.5 GB
+#   System (Xorg/desktop):                   ~1 GB
+#   Total:                                  ~19.5 GB
+#   Headroom:                                ~5 GB
+#
+# NOTE: seq=2048+batch=8 OOM'd at block 21 (stale GPU procs).
+# seq=2048+batch=4 OOM'd at LM head (logits [4,2048,32768]=1GB too large).
+# seq=1024+batch=4 fits: logits [4,1024,32768]=512MB, attention 4x smaller.
 
 model:
   path: "."                                  # From scratch (random init)
@@ -22,14 +25,14 @@ model:
     num_key_value_heads: 4                  # GQA 4:1 ratio
     intermediate_size: 4096                 # SwiGLU FFN (gate + up + down)
     vocab_size: 32768                       # ByteLevel BPE (v2 tokenizer)
-    max_position_embeddings: 2048           # Context length
+    max_position_embeddings: 1024           # Context length (2048 OOM'd on 4090)
     rms_norm_eps: 1.0e-5
 
 data:
   train: "data/pretokenized-2048/train/"      # Pre-tokenized with ByteLevel BPE v2, 2048-token chunks
   val: "data/pretokenized-2048/val/"
-  batch_size: 8                             # Micro-batch per step
-  seq_len: 2048
+  batch_size: 4                             # Micro-batch (batch=8 OOM'd at LM head alloc)
+  seq_len: 1024                            # Truncated from 2048 (OOM at full length)
   tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
   input_column: "input_ids"                 # Pre-tokenized: List<u32> column
 
@@ -46,11 +49,11 @@ training:
   grad_clip: 1.0
   lr_scheduler: "cosine"
   warmup_steps: 2000
-  gradient_accumulation: 32                 # Global batch = 8 * 32 * 2048 = 512K tokens
+  gradient_accumulation: 128                # Global batch = 4 * 128 * 1024 = 512K tokens
   mixed_precision: "fp16"
   output_dir: "./checkpoints/albor-base-350m"
   save_interval: 1000
-  max_steps: 5000                           # ~2.6B tokens (8*32*2048*5000)
+  max_steps: 5000                           # ~2.6B tokens (4*128*1024*5000)
 
 monitoring:
   terminal:

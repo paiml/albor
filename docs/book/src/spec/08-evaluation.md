@@ -168,9 +168,11 @@ apr eval apply \
 **Gap ALB-006**: ~~Verify `apr eval plan/apply` supports these benchmark tasks
 natively.~~ FIXED: `apr eval` supports perplexity and classification eval.
 
-**Gap ALB-037**: `apr eval` loads SafeTensors models but ignores weights during
-inference (identical perplexity regardless of weight content). Workaround:
-`scripts/eval-perplexity.py` implements pure-Python transformer inference.
+**Gap ALB-037** (**FIXED**): `apr eval` previously ignored loaded weights during
+inference. Now fixed — `realizar run` loads trained SafeTensors checkpoints and
+generates from learned weights. Verified end-to-end with 350M test checkpoint
+(218 tensors loaded, tokens generated). `scripts/eval-perplexity.py` provides
+independent pure-Python perplexity evaluation.
 
 **Gap ALB-038** (**FIXED**): entrenar previously saved initialization weights
 instead of trained weights due to broken autograd gradient flow. Root cause:

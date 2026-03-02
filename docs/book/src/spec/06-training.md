@@ -13,9 +13,9 @@
 | Warmup steps | 2000 | ~0.2% of total steps |
 | Min LR | 3e-5 | 10% of peak (standard) |
 | Gradient clipping | 1.0 (global norm) | Stability |
-| Batch size (global) | 512K tokens | ~256 sequences x 2048 tokens |
-| Micro-batch (4090) | 8-16 | Tuned to VRAM |
-| Gradient accumulation | 16-32 steps | Reach global batch size |
+| Batch size (global) | 512K tokens | ~512 sequences x 1024 tokens |
+| Micro-batch (4090) | 4 | GPU-resident (batch=8 OOM at seq≥1024) |
+| Gradient accumulation | 128 steps | Reach global batch size |
 | Total training tokens | 10B | ~19,531 steps at 512K tokens/step |
 | Mixed precision | fp16 (CUDA) | Hardware-appropriate |
 
@@ -106,7 +106,51 @@ apr train apply configs/train/pretrain-350m.yaml \
 `apr train validate` is an alias for `apr train plan --strict` — schema-only
 checking without resource estimation. Fast enough for CI.
 
-### 6.4 Checkpointing Strategy
+### 6.4 GPU-Resident Training (CudaTransformerTrainer)
+
+The `CudaTransformerTrainer` (ALB-040) keeps all 24 transformer blocks
+GPU-resident, reducing PCIe transfers from ~16K/step to exactly 3:
+
+```
+Transfer 1 (H2D): embedding hidden states   ~S×H×4 bytes
+Transfer 2 (D2H): logits for cross-entropy  ~S×V×4 bytes
+Transfer 3 (H2D): grad_logits to GPU        ~S×V×4 bytes
+```
+
+Each `CudaTransformerBlock` holds its own weights, AdamW optimizer states
+(m + v), and shares a `CudaGradWorkspace` for forward/backward activation
+buffers. The per-block interleaved backward+optimizer pattern overwrites
+the shared workspace each layer — memory cost is O(1 block), not O(24 blocks)
+for activations.
+
+**VRAM budget (actual, RTX 4090 24GB):**
+
+| Component | Memory |
+|-----------|--------|
+| 24 blocks (weights + AdamW m + v) | ~5 GB |
+| Shared workspace (activation/gradient buffers) | ~10-12 GB (depends on seq_len) |
+| LM head (weights + AdamW + logits buffer) | ~1-2.5 GB |
+| System (Xorg/desktop) | ~1 GB |
+
+At `seq_len=512, batch=4`: fits comfortably (~18 GB used).
+At `seq_len=1024, batch=4`: fits (~19.5 GB used).
+At `seq_len=2048, batch=4`: OOM at LM head alloc (logits [4,2048,32768] too large).
+At `seq_len=2048, batch=8`: OOM at block 21 upload.
+
+**Dogfooding results:**
+
+| Config | Steps | Loss | Time | Status |
+|--------|-------|------|------|--------|
+| 50M test (seq=512, batch=4) | 50 | 10.39→6.07 | 396s | PASS |
+| 350M full (seq=1024, batch=4, accum=128) | 5000 | IN PROGRESS | ~20h | RUNNING |
+
+**Training stability contracts verified (ALB-044):**
+- C-EMBED-GRAD-001: Activation gradient clipped at GPU→CPU boundary
+- C-HYPERPARAMS-001: All optimizer params flow from YAML config
+- C-BUFSIZE-001: Buffer sizes algebraically verified (ALB-043 fix)
+- C-GRADFLOW-001: All trainable parameters receive gradients (ALB-038 fix)
+
+### 6.5 Checkpointing Strategy
 
 | Aspect | Design |
 |--------|--------|
@@ -117,13 +161,13 @@ checking without resource estimation. Fast enough for CI.
 | Resume | `--resume checkpoint-step-5000.json` |
 | Export | `apr publish --format safetensors` for HuggingFace |
 
-### 6.5 Experiment Tracking & Training Monitoring
+### 6.6 Experiment Tracking & Training Monitoring
 
 entrenar has a full monitoring stack built in, and presentar provides rich
 terminal visualization. Albor uses both — no external tools (no W&B, no
 MLflow, no TensorBoard). Sovereign monitoring, sovereign visualization.
 
-#### 6.5.1 Monitoring Config: `configs/train/pretrain-350m.yaml` (monitoring section)
+#### 6.6.1 Monitoring Config: `configs/train/pretrain-350m.yaml` (monitoring section)
 
 ```yaml
 monitoring:
@@ -160,7 +204,7 @@ monitoring:
       message: "Gradient explosion — Andon stop"
 ```
 
-#### 6.5.2 What Entrenar Monitors Automatically
+#### 6.6.2 What Entrenar Monitors Automatically
 
 | Component | What It Does | Already Built? |
 |-----------|-------------|----------------|
@@ -180,7 +224,7 @@ monitoring:
 | `Braille/Sparkline` | High-resolution terminal charts (2x4 dots/cell, 8-level sparklines) | Yes (presentar) |
 | `Heatmap` widget | 2D matrix with CIELAB perceptual color gradients | Yes (presentar) |
 
-#### 6.5.3 Live Monitoring During Training
+#### 6.6.3 Live Monitoring During Training
 
 ```bash
 # Terminal 1 (lambda): Run training
@@ -207,7 +251,7 @@ apr profile ./checkpoints/albor-base-350m/ --prompt "def fibonacci(n):"
 batuta stack status
 ```
 
-#### 6.5.4 Experiment Lifecycle
+#### 6.6.4 Experiment Lifecycle
 
 Each training run creates two data streams:
 
@@ -241,7 +285,7 @@ checkpoints/albor-base-350m/
   cross-run comparison, metric queries, artifact tracking. Read-only during
   training — no lock contention with the writer.
 
-#### 6.5.5 Presentar Visualization: Rich Terminal Dashboards
+#### 6.6.5 Presentar Visualization: Rich Terminal Dashboards
 
 presentar (`presentar-terminal`) provides **ML-specific visualization widgets**
 that go far beyond entrenar's built-in `TuiMonitor`. The connection point is
@@ -313,7 +357,7 @@ Both TUI and WASM are **first-class deliverables**, not stretch goals.
 The terminal TUI is the primary interface (SSH to lambda/intel). The WASM
 dashboard is the shareable artifact for model cards and teaching.
 
-#### 6.5.6 No External Dependencies
+#### 6.6.6 No External Dependencies
 
 | What Others Use | What Albor Uses Instead | Why |
 |-----------------|------------------------|-----|
