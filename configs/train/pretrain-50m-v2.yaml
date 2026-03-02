@@ -1,0 +1,44 @@
+# configs/train/pretrain-50m-v2.yaml — 50M validation with ByteLevel BPE v2
+#
+# Uses pre-tokenized data (input_ids column) and ByteLevel BPE tokenizer.
+# Validates the v2 tokenizer pipeline before committing to 350M training.
+
+model:
+  path: "."
+  mode: transformer
+  architecture:
+    hidden_size: 512
+    num_hidden_layers: 12
+    num_attention_heads: 8
+    num_key_value_heads: 2
+    intermediate_size: 2048
+    vocab_size: 32768
+    max_position_embeddings: 2048
+    rms_norm_eps: 1.0e-5
+
+data:
+  train: "data/pretokenized-128/train/"
+  val: "data/pretokenized/val/"
+  batch_size: 4
+  seq_len: 128
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 6.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 0
+  gradient_accumulation: 4
+  mixed_precision: "fp16"
+  output_dir: "./checkpoints/albor-base-50m-v2"
+  save_interval: 50
+  max_steps: 200

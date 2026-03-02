@@ -13,7 +13,7 @@
 #   Headroom:  ~11,176 MB
 
 model:
-  path: "checkpoints/albor-base-350m"       # Output path (initialized from scratch)
+  path: "."                                  # From scratch (random init)
   mode: transformer                         # LLM transformer mode
   architecture:
     hidden_size: 1024                       # d_model
@@ -21,20 +21,24 @@ model:
     num_attention_heads: 16                 # d_head = 64
     num_key_value_heads: 4                  # GQA 4:1 ratio
     intermediate_size: 4096                 # SwiGLU FFN (gate + up + down)
-    vocab_size: 32768                       # BPE, power of 2 for GPU efficiency
+    vocab_size: 32768                       # ByteLevel BPE (v2 tokenizer)
     max_position_embeddings: 2048           # Context length
     rms_norm_eps: 1.0e-5
 
 data:
-  train: "data/tokenized/train/"
+  train: "data/pretokenized-2048/train/"      # Pre-tokenized with ByteLevel BPE v2, 2048-token chunks
+  val: "data/pretokenized-2048/val/"
   batch_size: 8                             # Micro-batch per step
   seq_len: 2048
-  tokenizer: "models/albor-tokenizer/tokenizer.json"
-  input_column: "text"
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"                 # Pre-tokenized: List<u32> column
 
 optimizer:
   name: "adamw"
   lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
 
 training:
   mode: "causal_lm"
@@ -46,3 +50,37 @@ training:
   mixed_precision: "fp16"
   output_dir: "./checkpoints/albor-base-350m"
   save_interval: 1000
+  max_steps: 5000                           # ~2.6B tokens (8*32*2048*5000)
+
+monitoring:
+  terminal:
+    enabled: true
+    refresh_rate: 1000
+    metrics: ["loss", "learning_rate", "gradient_norm"]
+    charts:
+      - type: "loss_curve"
+        metric: "loss"
+        window: 100
+        show_eta: true
+
+  tracking:
+    enabled: true
+    backend: "sqlite"
+    experiment: "albor-pretrain-350m"
+    tags:
+      model: "albor-350m"
+      stage: "pretrain"
+      data: "python-code-59M-tokens"
+
+  system:
+    enabled: true
+    interval: 5000
+    metrics: ["gpu_utilization", "memory", "temperature"]
+
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded — Andon stop"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion — Andon stop"

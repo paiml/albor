@@ -76,6 +76,8 @@
 | `entrenar train` (50M) | `entrenar train pretrain-50m-test.yaml` | **PASS** (demo batches, 465ms, loss 10.34→9.67) | ALB-033 (tokenizer format) |
 | `apr train apply` (50M) | `apr train apply --task pretrain --config pretrain-50m-test.yaml` | **PASS** (10-row micro, 5 batches, 2.1s CUDA) | ALB-034 (max_steps ignored) |
 | `apr train apply` (50M full) | `apr train apply --task pretrain --config pretrain-50m.yaml` | **PASS** (500 rows, 125 batches, 31 steps, 110.7s CUDA, loss 10.3→4.42) | ALB-034 (max_steps) |
+| `apr train apply` (50M v2) | `apr train apply --task pretrain --config pretrain-50m-v2.yaml` | **PASS** (pre-tokenized ByteLevel BPE, 108.5s CUDA, loss→5.51) | — |
+| `apr train plan` (350M) | `apr train plan --task pretrain --config pretrain-350m.yaml` | **PASS** (config validated, ready for apply) | — |
 | `entrenar validate` | `entrenar validate pretrain-350m-manifest.yaml` | **PASS** (architecture overrides bridge through) | ~~ALB-021~~ FIXED |
 | `entrenar shorthand` | `vocab_size: "32K"` in YAML manifest | **PASS** (parses to 32768) | ~~ALB-022~~ FIXED |
 | `apr merge --plan` | `apr merge a.apr b.apr --plan --strategy slerp -o merged.apr` | **PASS** (validates inputs, shows strategy, sizes) | ~~ALB-023~~ FIXED |

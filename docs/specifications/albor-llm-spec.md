@@ -2340,14 +2340,14 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 - [x] Write `gradient-accumulation-kernel-v1.yaml` contract (ALB-017 — DOGFOODING, passes `pv validate`)
 - [x] Write `configs/train/pretrain-50m.yaml` (model arch + training + monitoring)
 - [x] Train albor-50M on 4090 — DONE: 500 rows, 125 batches, 31 optimizer steps, 110.7s CUDA training. Loss: 10.3→4.42 (perplexity 30802→5.4). Model saved: `checkpoints/albor-base-50m/model.safetensors` (249MB, 62M params). Gaps found: ALB-033 (tokenizer format), ALB-034 (max_steps ignored).
-- [ ] Validate `apr monitor` attaches to running training (live TUI)
-- [ ] Validate Andon alerts fire on NaN/Inf (inject a bad batch to test)
+- [ ] Validate `apr monitor` attaches to running training (live TUI) — BLOCKED: entrenar does not write `training_state.json` during training (only `final_model.json` at completion). Requires ALB-025.
+- [ ] Validate Andon alerts fire on NaN/Inf (inject a bad batch to test) — BLOCKED: same, requires real-time state
 - [x] ~~Fix ALB-009~~ FIXED: `apr train plan/apply` with causal LM pre-training (`aprender@d79ed943`)
 - [x] Verify FALSIFY-ALBOR-001 (loss decreases) — CORROBORATED: loss 10.3→4.42 over 31 steps (monotonic decrease confirmed by final < initial)
 - [x] ~~Fix ALB-006~~ FIXED: `apr eval --task code` with pass@1 scoring (`aprender@4e61297e`)
 - [ ] Verify FALSIFY-ALBOR-002 (gradient bounds) — not yet tested (no per-step gradient norm reporting)
-- [ ] `pv audit` on all existing kernel contracts used in training
-- [ ] **Milestone**: Training loop converges, monitoring works, all kernel contracts pass
+- [x] `pv audit` on all existing kernel contracts — PASS: 5/5 contracts (13 equations, 29 obligations, 19 falsification tests, 7 Kani harnesses), 0 findings
+- [ ] **Milestone**: Training loop converges ✓, monitoring blocked (ALB-025), all kernel contracts pass ✓
 
 ### Phase 3: Base Model — 350M Pre-Training (Week 2-4)
 - [ ] Write `configs/train/pretrain-350m.yaml` (model arch + training + monitoring)

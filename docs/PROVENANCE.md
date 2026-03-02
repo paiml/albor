@@ -36,8 +36,32 @@ Tool: alimentar 0.2.6, mix seed=42
 | tokenizer/vocab.json | 32,768 | 100,000 | 2022.5s | `aca6fa72...` |
 | tokenizer/merges.txt | 32,518 merges | — | — | `7cf4dede...` |
 
-- Algorithm: BPE
+- Algorithm: BPE (whitespace-split, `</w>` suffix)
 - Tool: `apr tokenize apply` (aprender)
 - Corpus: 100K lines from mixed training data (real newlines, one code line per line)
 - Special tokens: `<unk>` (0), `<s>` (1), `</s>` (2), `<pad>` (3)
 - Python pattern coverage: 8/8 (def, return, self, import, class, for, if, in)
+- Limitation: normalizes whitespace (see ALB-036)
+
+## ByteLevel BPE Tokenizer (v2)
+
+| File | Vocab Size | Training Data | SHA-256 |
+|------|-----------|---------------|---------|
+| models/albor-tokenizer-v2/tokenizer.json | 32,768 | 5.6M lines (corpus-raw.txt) | `d999cc9e...` |
+
+- Algorithm: ByteLevel BPE (preserves whitespace, newlines, indentation)
+- Tool: Python `tokenizers` library (HuggingFace)
+- Pre-tokenizer: ByteLevel (add_prefix_space=False)
+- Special tokens: `<unk>`, `<s>`, `</s>`, `<pad>`, `<|fim_prefix|>`, `<|fim_suffix|>`, `<|fim_middle|>`
+- Roundtrip: 6/6 PASS (preserves Python indentation)
+
+## Pre-Tokenized Data
+
+| File | Sequences | Seq Length | Total Tokens | SHA-256 |
+|------|-----------|-----------|--------------|---------|
+| data/pretokenized-2048/train/train.parquet | 22,079 | 2048 | 45,217,792 | `4f54e422...` |
+| data/pretokenized-2048/val/val.parquet | 814 | 2048 | 1,667,072 | `c9c1d093...` |
+
+- Tokenizer: ByteLevel BPE v2
+- Chunking: non-overlapping 2048-token segments (remainder dropped)
+- Column: `input_ids` (List<u32>)

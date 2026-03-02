@@ -115,10 +115,42 @@ All data files use a consistent schema:
 SHA-256 hashes for all data artifacts are recorded in `docs/PROVENANCE.md`.
 Each split uses a different random seed for reproducibility.
 
+## ByteLevel BPE Tokenizer (v2)
+
+The v1 tokenizer (from `apr tokenize apply`) normalizes whitespace, which loses
+Python indentation. The v2 tokenizer uses ByteLevel BPE (like GPT-2/CodeLlama):
+
+```python
+from tokenizers import Tokenizer, models, trainers, pre_tokenizers, decoders
+tokenizer = Tokenizer(models.BPE())
+tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+tokenizer.decoder = decoders.ByteLevel()
+trainer = trainers.BpeTrainer(vocab_size=32768, special_tokens=[...])
+tokenizer.train(["corpus-raw.txt"], trainer)
+tokenizer.save("models/albor-tokenizer-v2/tokenizer.json")
+```
+
+- Vocab: 32,768 (same size, different encoding)
+- Roundtrip: 6/6 PASS (preserves newlines, indentation, blank lines)
+- Merges: 32,557
+
+## Pre-Tokenized Data
+
+Training data pre-tokenized and chunked for efficient training:
+
+| Dataset | Sequences | Seq Length | Total Tokens | Format |
+|---------|-----------|-----------|--------------|--------|
+| pretokenized-2048/train | 22,079 | 2048 | 45.2M | Parquet (input_ids: List<u32>) |
+| pretokenized-2048/val | 814 | 2048 | 1.7M | Parquet (input_ids: List<u32>) |
+
+Pre-tokenization avoids the entrenar↔aprender BPE compatibility issue (ALB-033)
+and enables direct `input_ids` column loading.
+
 ## Tools Used
 
 - `alimentar import local` — JSONL to Parquet conversion
 - `alimentar mix` — weighted sampling with upsampling
 - `alimentar fim` — Fill-in-the-Middle augmentation
-- `apr tokenize plan/apply` — BPE vocabulary training
+- `apr tokenize plan/apply` — BPE vocabulary training (v1, whitespace-split)
+- Python `tokenizers` — ByteLevel BPE training (v2, whitespace-preserving)
 - `entrenar` (parquet feature) — Parquet-to-LMBatch bridge for training
