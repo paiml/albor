@@ -32,8 +32,8 @@ pre-tokenized data. It serves as the foundation for:
 - **Epochs**: 1 (single pass over 22,079 sequences)
 - **Batches**: 2,760 micro-batches, ~86 optimizer steps
 - **Max Steps**: 5,000 (config; training completes at ~86 steps due to data size)
-- **Loss**: TBD → TBD
-- **Perplexity**: TBD (target: < 30)
+- **Loss**: TBD (training in progress — no per-step logging, ALB-035)
+- **Perplexity**: TBD (blocked: ALB-038 — checkpoint contains initialization weights)
 
 ## Tokenizer
 
@@ -64,13 +64,18 @@ pre-tokenized data. It serves as the foundation for:
 1. Single epoch on 45.2M tokens (typical base models train on 10B+ tokens)
 2. Python-only training data (no multilingual code)
 3. No FIM training (fill-in-the-middle not applied to this run)
-4. Evaluation blocked by ALB-037 (realizar weight loading bug)
-5. No real-time training metrics (ALB-035)
+4. Checkpoint broken by ALB-038 (entrenar saves initialization, not trained weights)
+5. Evaluation also blocked by ALB-037 (realizar weight loading bug)
+6. No real-time training metrics (ALB-035)
 
 ## Known Gaps
 
 - **ALB-035**: No `training_state.json` during training (only `final_model.json` at end)
 - **ALB-037**: `apr eval` ignores loaded weights (blocks perplexity/code evaluation)
+- **ALB-038**: entrenar saves initialization weights to SafeTensors, not trained weights.
+  All 24 layers will be byte-identical. Norm weights will be exactly 1.0. The trained
+  weights exist only in GPU memory during training and are never serialized. This is the
+  root cause blocking all evaluation. See [GitHub #36](https://github.com/paiml/albor/issues/36).
 
 ## Data Provenance
 

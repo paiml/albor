@@ -10,6 +10,11 @@
 - [ ] All existing kernel contracts pass `pv audit` (Level 2+)
 - [ ] `pmat comply check` passes on all modified components
 
+**Current blockers for Phase 3 completion:**
+- ALB-038 (Critical): entrenar saves initialization weights, not trained weights
+- ALB-035: No per-step loss logging during training
+- ALB-037: realizar ignores loaded weights during inference
+
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen3-Coder-Next demonstrated
 - [ ] albor-distill-350m outperforms albor-base-350m on all code benchmarks
