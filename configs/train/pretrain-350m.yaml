@@ -52,7 +52,7 @@ training:
   gradient_accumulation: 128                # Global batch = 4 * 128 * 1024 = 512K tokens
   mixed_precision: "fp16"
   output_dir: "./checkpoints/albor-base-350m"
-  save_interval: 1000
+  save_interval: 25
   max_steps: 5000                           # ~2.6B tokens (4*128*1024*5000)
 
 monitoring:

@@ -7,13 +7,13 @@
 | Name | albor-base-50m |
 | Version | 1.0 (pipeline validation) |
 | Type | Decoder-only Transformer (LLaMA-style) |
-| Parameters | 62M (398.5M architecture with 50M-scale hidden dim) |
+| Parameters | ~62M (hidden=512, layers=12 — "50M" is approximate label) |
 | Architecture | hidden=512, layers=12, heads=8, kv_heads=2, ffn=2048 |
-| Vocab Size | 32,768 (BPE, whitespace-split v1) |
-| Context Length | 128 tokens (validation; architecture supports 2048) |
+| Vocab Size | 32,768 (BPE, whitespace-split v1; later upgraded to ByteLevel BPE v2) |
+| Context Length | 128 tokens (validation run; architecture supports 2048) |
 | Training Data | 500 rows Python code, 64K tokens |
 | Training Time | 110.7 seconds (CUDA on RTX 4090) |
-| Framework | entrenar 0.7.5 + realizar (CUDA) |
+| Framework | entrenar + realizar (CUDA, CudaTransformerTrainer) |
 
 ## Intended Use
 

@@ -22,6 +22,8 @@ A **350M-parameter decoder-only transformer** trained entirely in Rust with zero
 1. Produce a **usable Python code assist model** that runs anywhere Rust compiles
 2. Identify and fix every gap in the [Sovereign AI stack](https://github.com/paiml) that blocks end-to-end LLM development
 
+**Current status (2026-03-02):** Phase 3 — 350M pre-training on RTX 4090 via GPU-resident `CudaTransformerTrainer`. 50-step test verified (loss 10.39→6.07), full training running. 22 upstream gaps fixed, 7 provable contracts pass audit.
+
 ## Leaderboard Target
 
 [Big Code Models Leaderboard](https://huggingface.co/spaces/bigcode/bigcode-models-leaderboard) — **no sub-1B model has ever appeared on this board.** Albor aims to be the first.
@@ -41,8 +43,8 @@ A **350M-parameter decoder-only transformer** trained entirely in Rust with zero
 LLaMA-style decoder-only transformer
 ├── 24 layers, 1024 hidden dim, 16 attention heads, 4 KV heads (GQA)
 ├── SwiGLU FFN (4096 intermediate), RoPE, RMSNorm (pre-norm)
-├── 32,768 vocab (BPE), 2048 context length
-├── ~354M parameters, fits in 4090 VRAM with optimizer state
+├── 32,768 vocab (ByteLevel BPE v2), 1024 context (GPU-resident; 2048 arch max)
+├── ~370M parameters, GPU-resident with AdamW optimizer on 4090 (12 GB VRAM)
 └── Fill-in-the-middle (FIM) trained for code completion
 ```
 

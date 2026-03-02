@@ -29,25 +29,25 @@ Trainer). One file, one truth. `apr train validate` lints it before GPU time.
 # configs/train/pretrain-350m.yaml — Albor 350M pre-training config
 
 model:
-  preset: "llama"                          # LLaMA-style decoder-only transformer
-  hidden_size: 1024                        # d_model
-  num_layers: 24
-  num_attention_heads: 16                  # d_head = 64
-  num_kv_heads: 4                          # GQA 4:1 ratio
-  intermediate_size: 4096                  # SwiGLU FFN (gate + up + down)
-  vocab_size: 32_768                       # BPE, power of 2 for GPU efficiency
-  max_position_embeddings: 2048            # Context length
-  rms_norm_eps: 1.0e-5
-  tie_word_embeddings: false
-  dropout: 0.0                             # Modern practice: regularize via data
+  path: "."                                  # From scratch (random init)
+  mode: transformer                         # LLM transformer mode
+  architecture:
+    hidden_size: 1024                       # d_model
+    num_hidden_layers: 24
+    num_attention_heads: 16                 # d_head = 64
+    num_key_value_heads: 4                  # GQA 4:1 ratio
+    intermediate_size: 4096                 # SwiGLU FFN (gate + up + down)
+    vocab_size: 32768                       # ByteLevel BPE (v2 tokenizer)
+    max_position_embeddings: 1024           # Context length (2048 OOM'd on 4090)
+    rms_norm_eps: 1.0e-5
 
 data:
-  train: "data/tokenized/train/"
-  val: "data/tokenized/val/"
-  batch_size: 8                            # Micro-batch per step
-  seq_len: 2048
-  tokenizer: "models/albor-tokenizer/tokenizer.json"
-  input_column: "text"
+  train: "data/pretokenized-2048/train/"    # Pre-tokenized ByteLevel BPE v2
+  val: "data/pretokenized-2048/val/"
+  batch_size: 4                             # Micro-batch (batch=8 OOM'd)
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"                 # Pre-tokenized: List<u32> column
 
 optimizer:
   name: "adamw"
@@ -62,10 +62,11 @@ training:
   grad_clip: 1.0
   lr_scheduler: "cosine"
   warmup_steps: 2000
-  gradient_accumulation: 32                # Global batch = 8 * 32 * 2048 = 512K tokens
+  gradient_accumulation: 128               # Global batch = 4 * 128 * 1024 = 512K tokens
   mixed_precision: "fp16"
   output_dir: "./checkpoints/albor-base-350m"
-  save_interval: 1000
+  save_interval: 25
+  max_steps: 5000
 ```
 
 **Note on YAML numeric formatting**: YAML supports underscore notation natively
