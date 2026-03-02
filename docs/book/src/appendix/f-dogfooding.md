@@ -7,7 +7,7 @@
 
 | Tool | Command | Result | Gap |
 |------|---------|--------|-----|
-| `pv validate` | `pv validate contracts/*.yaml` | **PASS** (all 5 contracts) | — |
+| `pv validate` | `pv validate contracts/*.yaml` | **PASS** (all 7 contracts) | — |
 | `pv coverage` | `pv coverage contracts` | **PASS** (100% obligation coverage) | — |
 | `pv graph` | `pv graph contracts` | **PASS** (8 nodes, correct deps) | — |
 | `pv probar` | `pv probar contracts/*.yaml` | **PASS** (generates property tests) | — |
@@ -17,7 +17,7 @@
 | `pv status` | `pv status contracts/*.yaml` | **PASS** (equation/obligation counts) | — |
 | `pv audit` | `pv audit contracts/*.yaml` | **PASS** (no findings) | — |
 | `pv equations` | `pv equations contracts/*.yaml` | **PASS** (formatted equations) | — |
-| `pv book` | `pv book contracts/` | **PASS** (5 mdBook pages) | — |
+| `pv book` | `pv book contracts/` | **PASS** (7 mdBook pages) | — |
 | `pv lean` | `pv lean contracts/*.yaml` | **INFO** (needs `lean:` metadata blocks) | — |
 | `forjar validate` | `forjar validate -f infra-only.yaml` | **PASS** (2 machines, 6 resources) | — |
 | `forjar validate` | `forjar validate -f albor.yaml` | **PASS** (2 machines, 22 resources) | ~~ALB-027~~ FIXED |
@@ -84,6 +84,9 @@
 | `apr export --plan` | `apr export model.apr --plan --format gguf -o model.gguf` | **PASS** (validates format, shows plan) | ~~ALB-023~~ FIXED |
 | `apr publish --plan` | `apr publish dir repo --plan` | **PASS** (alias for --dry-run) | ~~ALB-023~~ FIXED |
 | `apr train apply` (350M) | `apr train apply --task pretrain --config pretrain-350m.yaml` | **IN PROGRESS** (2760 batches, 398.5M params, 6.4GB VRAM, ~20h est.) | — |
+| `pv validate` (memory) | `pv validate contracts/training-memory-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-039 |
+| `pv validate` (GPU) | `pv validate contracts/training-gpu-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-040 |
+| `apr train apply` (50M CUDA) | `apr train apply --config pretrain-50m-v2-test.yaml` | **PASS** (3 steps, loss 10.4→11.7, GPU forward+backward) | ~~ALB-041~~ FIXED |
 | `apr eval` (50M safetensors) | `apr eval checkpoints/albor-base-50m/model.safetensors --dataset custom` | **FAIL** (PPL 679,614 — weights ignored) | ALB-037 |
 | `eval-code.py` (validate) | `python scripts/eval-code.py configs/eval/python-intermediate.jsonl --validate-only` | **PASS** (15/15 canonical solutions) | — |
 | `eval-code.py` (HumanEval) | `python scripts/eval-code.py configs/eval/humaneval-subset.jsonl --validate-only` | **PASS** (20/20 canonical solutions) | — |
@@ -93,25 +96,25 @@
 
 ## Contract Validation Detail
 
-All 5 contracts initially **failed** `pv validate` because they used a custom schema
-(`contract:` top-level key, `latex:` field, `obligations:` list). After rewriting to
-match the actual `pv` schema (`metadata:`, `formula:`, `proof_obligations:`, `falsification_tests:`),
-all 5 pass with 0 errors.
+All 7 contracts pass `pv validate` with 0 errors. The original 5 were rewritten from
+a custom schema to match `pv`'s schema (`metadata:`, `formula:`, `proof_obligations:`,
+`falsification_tests:`). The two new training kernel contracts (ALB-039, ALB-040) were
+written directly in the correct schema.
 
 ```
 pv coverage contracts
 ---------------------
-Contracts:            5
-Equations:            13
-Obligations:          29
-Falsification tests:  19
-Kani harnesses:       7
+Contracts:            7
+Equations:            22
+Obligations:          39
+Falsification tests:  26
+Kani harnesses:       8
 Overall coverage:     100.0%
 ```
 
 ## pv generate Detail
 
-`pv generate` produces 4 files per contract (20 total):
+`pv generate` produces 4 files per contract (28 total):
 
 | Type | Content | Example |
 |------|---------|---------|
@@ -120,7 +123,7 @@ Overall coverage:     100.0%
 | `*_kani.rs` | Kani verification harnesses | 2 harnesses with `stub_float` strategy |
 | `*_book.md` | mdBook page with equations, deps, obligations | Mermaid dependency graph, LaTeX equations |
 
-`pv book contracts/` generates 5 contract pages directly into mdBook format.
+`pv book contracts/` generates 7 contract pages directly into mdBook format.
 These have been integrated into the albor mdBook under "Kernel Contracts".
 
 ## Pipeline Manifest Validation Detail

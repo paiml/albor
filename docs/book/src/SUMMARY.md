@@ -30,6 +30,8 @@
 - [Gradient Accumulation](./contracts/gradient-accumulation-kernel-v1.md)
 - [Model Merging](./contracts/model-merging-kernel-v1.md)
 - [Pruning](./contracts/pruning-kernel-v1.md)
+- [Training Memory](./contracts/training-memory-kernel-v1.md)
+- [Training GPU](./contracts/training-gpu-kernel-v1.md)
 
 # Model Cards
 

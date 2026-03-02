@@ -55,7 +55,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-016 | [#17](https://github.com/paiml/albor/issues/17) | provable-contracts | Pruning contract (WANDA, magnitude) | Medium | DOGFOODING | `pruning-kernel-v1.yaml` — committed and passes `pv validate`. Sparsity invariant, score ordering. Needs binding. |
 | ALB-017 | [#18](https://github.com/paiml/albor/issues/18) | provable-contracts | Gradient accumulation contract | High | DOGFOODING | `gradient-accumulation-kernel-v1.yaml` — committed and passes `pv validate`. Numerical equivalence, gradient zeroing. Needs binding. |
 
-**Contract coverage report** (`pv coverage contracts`): 5 contracts, 13 equations, 29 obligations, 19 falsification tests, 7 Kani harnesses, **100% obligation coverage**. All contracts at impl=0/N — waiting for upstream bindings.
+**Contract coverage report** (`pv coverage contracts`): 7 contracts, 22 equations, 39 obligations, 26 falsification tests, 8 Kani harnesses, **100% obligation coverage**. All contracts at impl=0/N — waiting for upstream bindings.
 
 ### 11.4 Dogfooding-Discovered Gaps
 
@@ -71,6 +71,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-037 | [#35](https://github.com/paiml/albor/issues/35) | realizar | SafeTensors inference ignores loaded weights | High | DOGFOODING | Root cause: ALB-038 (training didn't modify weights). Secondary: entrenar didn't save config.json for realizar. Fixed: `entrenar@6097780` saves HuggingFace config.json. Pending end-to-end verification with trained model. |
 | ALB-038 | [#36](https://github.com/paiml/albor/issues/36) | entrenar | Saves initialization weights, not trained weights | Critical | **FIXED** | Root cause: `RMSNorm::forward_batched()` created tensors with no backward op, blocking all gradient flow. Attention `forward()` also broke Q/K/V gradients. Fixed in `entrenar@91ba9da` (norm backward) and `entrenar@1ede409` (attention backward). All 20 model parameters now receive gradients. |
 | ALB-040 | [#38](https://github.com/paiml/albor/issues/38) | entrenar | GPU-resident pretraining — wire CudaTransformerBlock into TransformerTrainer | Critical | DOGFOODING | `CudaTransformerTrainer` in `cuda_trainer.rs` follows classify_pipeline.rs pattern. 3 PCIe transfers/step vs 16K. Auto-detect CUDA with graceful CPU fallback. Contract: `training-gpu-kernel-v1.yaml`. Pending 350M training verification. |
+| ALB-041 | [#39](https://github.com/paiml/albor/issues/39) | entrenar | D2D buffer size mismatch in CudaTransformerBlock backward_attention | High | **FIXED** | `backward_attention()` used `gate_out` (intermediate_size) as temp buffer for `grad_hidden` accumulation, but D2D copy requires exact size match. Fixed: use `o_proj_out` (hidden_size). Also added seq_len truncation and error logging in `CudaTransformerTrainer`. (`entrenar@a48e3d2`) |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
 
