@@ -15,6 +15,7 @@
         plan-finetune plan-finetune-lora plan-pretrain-50m plan-pretrain-350m \
         train-50m train-350m \
         eval-validate eval-perplexity-50m eval-perplexity-350m \
+        eval-suite-50m eval-suite-350m \
         validate-checkpoint-50m validate-checkpoint-350m validate-convergence \
         training-status \
         book book-serve dogfood dogfood-batuta dogfood-playbook \
@@ -116,6 +117,12 @@ eval-perplexity-50m: ## Evaluate 50M model perplexity (needs checkpoint)
 	.venv/bin/python scripts/eval-perplexity.py checkpoints/albor-base-50m/ \
 		--data data/pretokenized-128/train/train.parquet \
 		--max-sequences 50 --seq-len 128 --threshold 200
+
+eval-suite-350m: ## Run full evaluation suite on 350M model
+	bash scripts/run-eval-suite.sh checkpoints/albor-base-350m/
+
+eval-suite-50m: ## Run full evaluation suite on 50M model (quick mode)
+	bash scripts/run-eval-suite.sh checkpoints/albor-base-50m/ --quick
 
 eval-perplexity-350m: ## Evaluate 350M model perplexity (needs checkpoint)
 	.venv/bin/python scripts/eval-perplexity.py checkpoints/albor-base-350m/ \

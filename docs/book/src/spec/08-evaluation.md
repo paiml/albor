@@ -172,23 +172,39 @@ natively.~~ FIXED: `apr eval` supports perplexity and classification eval.
 inference (identical perplexity regardless of weight content). Workaround:
 `scripts/eval-perplexity.py` implements pure-Python transformer inference.
 
+**Gap ALB-038**: entrenar saves initialization weights to SafeTensors instead
+of trained weights. All layers are byte-identical, norm weights are exactly 1.0.
+Training loss decreases in GPU memory (10.3→4.42 for 50M) but the checkpoint
+file contains the pre-training initialization template. This is the root cause
+blocking all model evaluation. See [GitHub #36](https://github.com/paiml/albor/issues/36).
+
 ### 8.6 Local Evaluation Infrastructure
 
 The following scripts provide model evaluation independently of `apr eval`:
 
 ```bash
+# Validate checkpoint integrity (fast, detects ALB-038)
+python scripts/eval-perplexity.py checkpoints/albor-base-350m/ --validate-checkpoint
+
 # Validate all canonical solutions (no model needed)
 python scripts/eval-code.py configs/eval/python-intermediate.jsonl --validate-only
 python scripts/eval-code.py configs/eval/humaneval-subset.jsonl --validate-only
 
-# Evaluate via apr serve API (when ALB-037 is fixed)
-python scripts/eval-code.py configs/eval/humaneval-subset.jsonl \
-    --api http://localhost:8080 --samples 10
+# Full evaluation suite (orchestrates all steps)
+bash scripts/run-eval-suite.sh checkpoints/albor-base-350m/
 
 # Perplexity on pre-tokenized validation data
 python scripts/eval-perplexity.py checkpoints/albor-base-350m/ \
     --data data/pretokenized-2048/val/val.parquet \
     --max-sequences 100 --seq-len 2048 --threshold 30
+
+# Evaluate via apr serve API (when ALB-037 is fixed)
+python scripts/eval-code.py configs/eval/humaneval-subset.jsonl \
+    --api http://localhost:8080 --samples 10
+
+# Training convergence validation (FALSIFY-ALBOR-001)
+python scripts/validate-training-convergence.py \
+    checkpoints/albor-base-350m/training.log
 
 # Convert entrenar checkpoint format for realizar
 python scripts/convert-checkpoint.py checkpoints/albor-base-350m/ \
@@ -198,3 +214,25 @@ python scripts/convert-checkpoint.py checkpoints/albor-base-350m/ \
 **Benchmark datasets:**
 - `configs/eval/python-intermediate.jsonl` — 15 intermediate Python problems
 - `configs/eval/humaneval-subset.jsonl` — 20 HumanEval-format problems
+
+### 8.7 Weight Convention & Checkpoint Format
+
+entrenar stores linear layer weights as **[in_features, out_features]** in
+row-major (C) order, and computes forward pass as `x @ W` (no transpose).
+This differs from the HuggingFace convention of **[out_features, in_features]**
+with `x @ W.T`.
+
+| Component | Convention | Forward | Example: gate_proj |
+|-----------|-----------|---------|-------------------|
+| entrenar (training) | [in, out] | `x @ W` | [512, 2048] |
+| HuggingFace (standard) | [out, in] | `x @ W.T` | [2048, 512] |
+| realizar (inference) | [out, in] | `x @ W.T` | [2048, 512] |
+
+The `convert-checkpoint.py` script handles the conversion:
+1. Reads 1D flat tensors from entrenar SafeTensors
+2. Reshapes as [in, out] (entrenar convention)
+3. Transposes to [out, in] (HuggingFace/realizar convention)
+4. Writes new SafeTensors with proper 2D shapes
+
+Embeddings (`model.embed_tokens.weight`) are stored as [vocab, hidden] in
+both conventions (indexed by token ID for row lookup).
