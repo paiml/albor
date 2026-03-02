@@ -12,7 +12,8 @@
 .DELETE_ON_ERROR:
 
 .PHONY: validate validate-contracts validate-forjar validate-yaml validate-makefile \
-        plan-finetune plan-finetune-lora \
+        plan-finetune plan-finetune-lora plan-pretrain-50m plan-pretrain-350m \
+        train-50m train-350m \
         book book-serve dogfood dogfood-batuta dogfood-playbook \
         lint clean help
 
@@ -79,6 +80,24 @@ plan-finetune-lora: ## apr finetune plan with LoRA
 	@echo "--- apr finetune plan (350M, LoRA, 24GB VRAM) ---"
 	apr finetune --plan --model-size 350M --vram 24 --method lora --rank 16
 
+plan-pretrain-50m: ## Validate 50M pre-training config
+	apr train plan --task pretrain --config configs/train/pretrain-50m.yaml
+
+plan-pretrain-350m: ## Validate 350M pre-training config
+	apr train plan --task pretrain --config configs/train/pretrain-350m.yaml
+
+# ═══════════════════════════════════════════════════════════
+# TRAIN (execute training runs)
+# ═══════════════════════════════════════════════════════════
+
+train-50m: ## Train 50M validation model (~2 min)
+	@mkdir -p checkpoints/albor-base-50m
+	apr train apply --task pretrain --config configs/train/pretrain-50m.yaml
+
+train-350m: ## Train 350M base model (~20 hours)
+	@mkdir -p checkpoints/albor-base-350m
+	apr train apply --task pretrain --config configs/train/pretrain-350m.yaml
+
 # ═══════════════════════════════════════════════════════════
 # BOOK (mdBook build and serve)
 # ═══════════════════════════════════════════════════════════
@@ -129,6 +148,18 @@ dogfood: ## Run full dogfooding suite — exercise all tools
 	@echo ""
 	@echo "--- 9. bashrs make lint (sovereign Makefile linter) ---"
 	@bashrs make lint Makefile 2>&1 | tail -3
+	@echo ""
+	@echo "--- 10. apr train plan (50M) ---"
+	@apr train plan --task pretrain --config configs/train/pretrain-50m.yaml 2>&1 | tail -5
+	@echo ""
+	@echo "--- 11. apr train plan (350M) ---"
+	@apr train plan --task pretrain --config configs/train/pretrain-350m.yaml 2>&1 | tail -5
+	@echo ""
+	@echo "--- 12. pv audit (all contracts) ---"
+	@for f in contracts/*.yaml; do \
+		echo -n "  $$f: "; \
+		pv audit "$$f" 2>&1 | grep -c "No audit findings" | xargs -I{} sh -c '[ {} -ge 1 ] && echo "PASS" || echo "FINDINGS"'; \
+	done
 	@echo ""
 	@echo "==========================================================="
 	@echo " Dogfooding complete. See gap register for blocked items."
