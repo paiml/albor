@@ -31,6 +31,9 @@ tokenizer/
 models/
 outputs/
 
+# Python virtual environment
+.venv/
+
 # pmat index cache
 .pmat/
 

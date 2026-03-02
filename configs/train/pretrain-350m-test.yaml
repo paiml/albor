@@ -1,0 +1,40 @@
+# 350M timing test — 20 sequences, measure per-batch time
+model:
+  path: "."
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 2048
+    rms_norm_eps: 1.0e-5
+
+data:
+  train: "data/pretokenized-2048/train-micro/"
+  val: "data/pretokenized-2048/val/"
+  batch_size: 8
+  seq_len: 2048
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 0
+  gradient_accumulation: 1
+  mixed_precision: "fp16"
+  output_dir: "./checkpoints/albor-350m-test"
+  save_interval: 1
+  max_steps: 2

@@ -2350,7 +2350,7 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 - [ ] **Milestone**: Training loop converges ✓, monitoring blocked (ALB-025), all kernel contracts pass ✓
 
 ### Phase 3: Base Model — 350M Pre-Training (Week 2-4)
-- [ ] Write `configs/train/pretrain-350m.yaml` (model arch + training + monitoring)
+- [x] Write `configs/train/pretrain-350m.yaml` — DONE: uses pre-tokenized ByteLevel BPE v2 data, 22K sequences × 2048 tokens, full monitoring + Andon alerts
 - [ ] Train albor-base-350m on 4090, checkpoint every 1000 steps
 - [ ] Monitor training via `apr monitor` from intel box over SSH
 - [ ] Run eval on intel concurrently
