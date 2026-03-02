@@ -1883,6 +1883,9 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-028 | [#5](https://github.com/paiml/albor/issues/5) | apr (aprender) | `apr pipeline plan/apply` wrapping forjar DAG engine | Critical | **FIXED** | `apr pipeline plan` shows full DAG with 23 resources across 2 machines. `apr pipeline apply` converges via forjar engine. `apr pipeline status` shows state. `apr pipeline validate` checks manifest. Shells out to forjar binary (decoupled). (`aprender@e653d5ca`) |
 | ALB-033 | [#31](https://github.com/paiml/albor/issues/31) | apr (aprender) | `apr tokenize` → entrenar tokenizer.json format gap | Medium | DOGFOODING | `apr tokenize apply` produces `vocab.json` + `merges.txt` but entrenar expects HuggingFace `tokenizer.json`. Manual Python conversion needed. Workaround: Python `tokenizers` lib with Split pre-tokenizer + BPE decoder (`</w>` suffix). |
 | ALB-034 | [#32](https://github.com/paiml/albor/issues/32) | entrenar | `max_steps` config not respected in training loop | Medium | OPEN | Training runs all available batches instead of stopping at `max_steps`. Config: `max_steps: 2`, actual: "Steps completed: 5". |
+| ALB-035 | [#33](https://github.com/paiml/albor/issues/33) | entrenar | Does not write `training_state.json` during training | Medium | OPEN | entrenar only writes `final_model.json` at completion. No real-time state file blocks `apr monitor` and Andon alerts. |
+| ALB-036 | [#34](https://github.com/paiml/albor/issues/34) | apr (aprender) | BPE tokenizer normalizes whitespace — breaks Python indentation | Medium | DOGFOODING | `apr tokenize apply` uses `split_whitespace()` pre-tokenizer which destroys Python-critical indentation. Workaround: ByteLevel BPE v2 trained with Python `tokenizers` library. |
+| ALB-037 | [#35](https://github.com/paiml/albor/issues/35) | realizar | SafeTensors inference ignores loaded weights | High | OPEN | `apr eval` produces identical perplexity (679,614) regardless of weight content (1D flat, 2D reshaped, transposed). Inference engine does not apply loaded weights during forward pass. Blocks model evaluation. |
 
 ### 11.2 Distributed Training Gaps (Stretch / Future)
 
@@ -2351,9 +2354,11 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 
 ### Phase 3: Base Model — 350M Pre-Training (Week 2-4)
 - [x] Write `configs/train/pretrain-350m.yaml` — DONE: uses pre-tokenized ByteLevel BPE v2 data, 22K sequences × 2048 tokens, full monitoring + Andon alerts
-- [ ] Train albor-base-350m on 4090, checkpoint every 1000 steps
-- [ ] Monitor training via `apr monitor` from intel box over SSH
-- [ ] Run eval on intel concurrently
+- [x] Train albor-base-350m on 4090 — STARTED: 2760 batches loaded, 398.5M params, ~6.4GB VRAM, 25.8s/batch estimated, ~20h total. PID 1647651.
+- [x] Build evaluation infrastructure — DONE: `scripts/eval-code.py` (pass@k code completion), `scripts/eval-perplexity.py` (pure-Python transformer inference), `scripts/convert-checkpoint.py` (reshape 1D→2D SafeTensors). Benchmarks: 15 intermediate + 20 HumanEval problems, all canonical solutions validated.
+- [ ] Discovered ALB-037: realizar ignores loaded weights during inference (GitHub #35). Blocks `apr eval` and `apr serve`. Workaround: pure-Python inference script.
+- [ ] Monitor training via `apr monitor` from intel box over SSH — BLOCKED: ALB-025
+- [ ] Run eval on intel concurrently — BLOCKED: ALB-037 (realizar weight loading)
 - [ ] Validate loss curve, perplexity convergence (from `training_state.json`)
 - [ ] Tune hyperparameters (LR, batch size, warmup)
 - [ ] Verify FALSIFY-ALBOR-003 (checkpoint determinism)

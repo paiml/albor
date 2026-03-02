@@ -64,6 +64,11 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-029 | [#28](https://github.com/paiml/albor/issues/28) | batuta | `batuta falsify` false positives on project repos | Medium | **FIXED** | Fixed upstream in `batuta@905a862`: AI-01 searches `configs/`, AI-04 excludes `book-output/`, AI-05 detects pv/forjar validation. Score: 72.2% → 73.1%. |
 | ALB-030 | [#29](https://github.com/paiml/albor/issues/29) | batuta | `batuta stack status` fails without Cargo.toml | Low | **FIXED** | Fixed upstream in `batuta@371557a`: Falls back to binary detection, discovers 11 installed PAIML tools with versions. |
 | ALB-031 | [#30](https://github.com/paiml/albor/issues/30) | batuta | `batuta hf search` returns mock/placeholder data | Low | OPEN | `batuta hf search model "code completion"` returns live HuggingFace Hub results instead of placeholder models. |
+| ALB-033 | [#31](https://github.com/paiml/albor/issues/31) | apr (aprender) | `apr tokenize` → entrenar tokenizer.json format gap | Medium | DOGFOODING | `apr tokenize apply` produces vocab.json + merges.txt but entrenar expects HuggingFace tokenizer.json. Workaround: Python `tokenizers` lib. |
+| ALB-034 | [#32](https://github.com/paiml/albor/issues/32) | entrenar | `max_steps` config not respected in training loop | Medium | OPEN | Training runs all available batches instead of stopping at `max_steps`. |
+| ALB-035 | [#33](https://github.com/paiml/albor/issues/33) | entrenar | Does not write `training_state.json` during training | Medium | OPEN | No real-time state file blocks `apr monitor` and Andon alerts. |
+| ALB-036 | [#34](https://github.com/paiml/albor/issues/34) | apr (aprender) | BPE tokenizer normalizes whitespace | Medium | DOGFOODING | `split_whitespace()` pre-tokenizer destroys Python indentation. Workaround: ByteLevel BPE v2. |
+| ALB-037 | [#35](https://github.com/paiml/albor/issues/35) | realizar | SafeTensors inference ignores loaded weights | High | OPEN | `apr eval` produces identical perplexity regardless of weight content. Blocks model evaluation. |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
 

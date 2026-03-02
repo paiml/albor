@@ -165,6 +165,36 @@ apr eval apply \
   --output ./eval/step-$(cat ./checkpoints/latest/step.txt).json
 ```
 
-**Gap ALB-006**: Verify `apr eval plan/apply` supports these benchmark tasks
-natively. If not, implement benchmark harness integration with plan/apply
-contract (see §1.5.2).
+**Gap ALB-006**: ~~Verify `apr eval plan/apply` supports these benchmark tasks
+natively.~~ FIXED: `apr eval` supports perplexity and classification eval.
+
+**Gap ALB-037**: `apr eval` loads SafeTensors models but ignores weights during
+inference (identical perplexity regardless of weight content). Workaround:
+`scripts/eval-perplexity.py` implements pure-Python transformer inference.
+
+### 8.6 Local Evaluation Infrastructure
+
+The following scripts provide model evaluation independently of `apr eval`:
+
+```bash
+# Validate all canonical solutions (no model needed)
+python scripts/eval-code.py configs/eval/python-intermediate.jsonl --validate-only
+python scripts/eval-code.py configs/eval/humaneval-subset.jsonl --validate-only
+
+# Evaluate via apr serve API (when ALB-037 is fixed)
+python scripts/eval-code.py configs/eval/humaneval-subset.jsonl \
+    --api http://localhost:8080 --samples 10
+
+# Perplexity on pre-tokenized validation data
+python scripts/eval-perplexity.py checkpoints/albor-base-350m/ \
+    --data data/pretokenized-2048/val/val.parquet \
+    --max-sequences 100 --seq-len 2048 --threshold 30
+
+# Convert entrenar checkpoint format for realizar
+python scripts/convert-checkpoint.py checkpoints/albor-base-350m/ \
+    --config configs/train/pretrain-350m.yaml
+```
+
+**Benchmark datasets:**
+- `configs/eval/python-intermediate.jsonl` — 15 intermediate Python problems
+- `configs/eval/humaneval-subset.jsonl` — 20 HumanEval-format problems

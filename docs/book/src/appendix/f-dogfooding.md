@@ -83,6 +83,11 @@
 | `apr merge --plan` | `apr merge a.apr b.apr --plan --strategy slerp -o merged.apr` | **PASS** (validates inputs, shows strategy, sizes) | ~~ALB-023~~ FIXED |
 | `apr export --plan` | `apr export model.apr --plan --format gguf -o model.gguf` | **PASS** (validates format, shows plan) | ~~ALB-023~~ FIXED |
 | `apr publish --plan` | `apr publish dir repo --plan` | **PASS** (alias for --dry-run) | ~~ALB-023~~ FIXED |
+| `apr train apply` (350M) | `apr train apply --task pretrain --config pretrain-350m.yaml` | **IN PROGRESS** (2760 batches, 398.5M params, 6.4GB VRAM, ~20h est.) | — |
+| `apr eval` (50M safetensors) | `apr eval checkpoints/albor-base-50m/model.safetensors --dataset custom` | **FAIL** (PPL 679,614 — weights ignored) | ALB-037 |
+| `eval-code.py` (validate) | `python scripts/eval-code.py configs/eval/python-intermediate.jsonl --validate-only` | **PASS** (15/15 canonical solutions) | — |
+| `eval-code.py` (HumanEval) | `python scripts/eval-code.py configs/eval/humaneval-subset.jsonl --validate-only` | **PASS** (20/20 canonical solutions) | — |
+| `convert-checkpoint.py` (50M) | `python scripts/convert-checkpoint.py checkpoints/albor-base-50m/` | **PASS** (110→111 tensors, 85 reshaped, lm_head created) | ALB-037 |
 
 ## Contract Validation Detail
 
