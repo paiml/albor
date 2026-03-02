@@ -5,7 +5,7 @@
 # before committing GPU days to the 350M run.
 
 model:
-  path: "checkpoints/albor-base-50m"       # Output path (initialized from scratch)
+  path: "."                                  # From scratch (no pre-existing model)
   mode: transformer                         # LLM transformer mode
   architecture:
     hidden_size: 512                        # d_model
@@ -20,8 +20,8 @@ model:
 data:
   train: "data/tokenized/train/"
   val: "data/tokenized/val/"
-  batch_size: 16                           # Larger micro-batch — model fits easily
-  seq_len: 2048
+  batch_size: 4                            # Keep small for validation
+  seq_len: 128                             # Short sequences for validation (full 2048 for production)
   tokenizer: "models/albor-tokenizer/tokenizer.json"
   input_column: "text"
 
@@ -38,11 +38,11 @@ training:
   grad_clip: 1.0
   lr_scheduler: "cosine"
   warmup_steps: 500
-  gradient_accumulation: 8                 # Global batch = 16 * 8 * 2048 = 256K tokens
+  gradient_accumulation: 4                 # Global batch = 4 * 4 * 128 = 2K tokens
   mixed_precision: "fp16"
   output_dir: "./checkpoints/albor-base-50m"
-  save_interval: 500
-  max_steps: 5_000                         # Quick validation run (~1.3B tokens)
+  save_interval: 100
+  max_steps: 200                           # Quick validation run (~200 gradient steps)
 
 monitoring:
   terminal:
