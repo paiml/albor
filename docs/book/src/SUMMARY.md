@@ -34,6 +34,7 @@
 # Model Cards
 
 - [albor-base-50m](./model-cards/albor-base-50m.md)
+- [albor-base-350m](./model-cards/albor-base-350m.md)
 
 # Appendices
 
