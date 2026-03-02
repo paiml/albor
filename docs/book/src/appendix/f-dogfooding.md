@@ -111,6 +111,8 @@
 | `apr runs diff` | `apr runs diff <a> <b> --global` | **PASS** (side-by-side sparklines, config diff, loss comparison, verdict) | ~~ALB-051~~ FIXED |
 | `apr runs diff --json` | `apr runs diff <a> <b> --global --json` | **PASS** (structured JSON: summaries, config_diff, verdict for LLM agents) | ~~ALB-051~~ FIXED |
 | `apr monitor` (widget composition) | `TrainingDashboard` composes `Layout`, `Border`, `Meter`, `GpuPanel`, `Sparkline`, `Text` | **PASS** (builds clean, widget tree rebuilt each frame, panel verification wired) | ~~ALB-057~~ FIXED |
+| `apr experiment view --global --json` | `apr experiment view --global --json` | **PASS** (JSON output with experiments, run_ids, loss_values, params from SQLite) | ~~ALB-024~~ FIXED |
+| `apr experiment view --global` | `apr experiment view --global` | **PASS** (ratatui TUI: run table, sparkline, braille loss chart, j/k navigation) | ~~ALB-024~~ FIXED |
 
 ## Contract Validation Detail
 
