@@ -82,6 +82,8 @@ jobs:
 
   validate-playbook:
     runs-on: ubuntu-latest
+    # batuta has local path deps (trueno-rag) not yet on crates.io
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
