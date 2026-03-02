@@ -68,7 +68,7 @@
 | `apr eval --task plan` | `apr eval model --task plan --data bench.jsonl` | **PASS** (dry-run validation) | ~~ALB-006~~ FIXED |
 | `alimentar mix` (test) | `alimentar mix ...parquet:0.25 -o test.parquet -n 200 --seed 456` | **PASS** (200 rows, 50 per corpus) | — |
 | `alimentar fim` (prod) | `alimentar fim mixed.parquet -o mixed-fim.parquet --rate 0.5 --format psm` | **PASS** (17,070 rows, PSM FIM 50%) | — |
-| `apr tokenize apply` (prod) | `apr tokenize apply --data corpus.txt --vocab-size 32768 --algorithm bpe -o tokenizer/` | **IN PROGRESS** (17,070 docs, 197MB) | — |
+| `apr tokenize apply` (prod) | `apr tokenize apply --data corpus-raw.txt --vocab-size 32768 --algorithm bpe -o tokenizer/ --max-lines 100000` | **PASS** (32,768 vocab, 2022.5s, 8/8 Python patterns) | ~~ALB-001~~ FIXED |
 | `alimentar quality` | `alimentar quality profiles` | **PASS** (ml-training profile) | — |
 | `alimentar convert` | `alimentar convert` | **PASS** (format conversion) | — |
 | `bashrs score` | `bashrs score Makefile` | **PASS** (D grade, 5.2/10) | — |

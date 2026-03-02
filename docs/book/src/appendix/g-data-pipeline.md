@@ -63,10 +63,18 @@ apr tokenize apply \
   --data corpus-raw.txt \
   --vocab-size 32768 \
   --algorithm bpe \
+  --max-lines 100000 \
   -o tokenizer/
 ```
 
-Output: `tokenizer/vocab.json` + `tokenizer/merges.txt`
+Results:
+- Final vocab size: 32,768
+- Merges: 32,518
+- Training time: 2022.5s (~33.7 min)
+- Training data: 100K lines of Python code
+- Special tokens: `<unk>`, `<s>`, `</s>`, `<pad>`
+- Python pattern coverage: 8/8 (`def`, `return`, `self`, `import`, `class`, `for`, `if`, `in`)
+- Output: `tokenizer/vocab.json` + `tokenizer/merges.txt`
 
 ## Parquet Schema
 

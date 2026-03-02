@@ -28,3 +28,16 @@ Tool: alimentar 0.2.6, mix seed=42
 - HF downsampled from 11,493 to 5,121
 - FIM: PSM format, 50% rate, seed 42
 - Schema: `{text: Utf8, source: Utf8, file: Utf8}`
+
+## BPE Tokenizer
+
+| File | Vocab Size | Lines Trained | Training Time | SHA-256 |
+|------|-----------|---------------|---------------|---------|
+| tokenizer/vocab.json | 32,768 | 100,000 | 2022.5s | `aca6fa72...` |
+| tokenizer/merges.txt | 32,518 merges | — | — | `7cf4dede...` |
+
+- Algorithm: BPE
+- Tool: `apr tokenize apply` (aprender)
+- Corpus: 100K lines from mixed training data (real newlines, one code line per line)
+- Special tokens: `<unk>` (0), `<s>` (1), `</s>` (2), `<pad>` (3)
+- Python pattern coverage: 8/8 (def, return, self, import, class, for, if, in)

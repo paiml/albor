@@ -27,6 +27,9 @@ checkpoints/
 /eval/
 state/
 .entrenar/
+tokenizer/
+models/
+outputs/
 
 # pmat index cache
 .pmat/
