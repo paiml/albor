@@ -217,7 +217,7 @@ monitoring:
 | `CheckpointCallback` | Saves best model + metadata (epoch, is_best, timestamp) | Yes (entrenar) |
 | `EarlyStopping` | Patience-based stopping on loss plateau | Yes (entrenar) |
 | `Andon alerts` | Toyota Way: Critical/Error/Warning/Info severity levels | Yes (entrenar) |
-| `TuiMonitor` | Detached terminal dashboard with Braille loss curves | Yes (entrenar) |
+| `TuiMonitor` | Detached terminal dashboard composing presentar widgets (ALB-057) | Yes (entrenar + presentar) |
 | `DriftDetector` | PSI, KS, Wasserstein distribution shift detection | Yes (entrenar) |
 | `JsonFileStore` | Real-time metrics to `training_state.json` (atomic writes) | Yes (entrenar) |
 | `LossCurve` widget | Training loss over epochs with EMA smoothing | Yes (presentar) |
@@ -311,9 +311,11 @@ All operations are best-effort — storage failures never block training.
 #### 6.6.5 Presentar Visualization: Rich Terminal Dashboards
 
 presentar (`presentar-terminal`) provides **ML-specific visualization widgets**
-that go far beyond entrenar's built-in `TuiMonitor`. The connection point is
-entrenar's SQLite experiment store (`.entrenar/experiments.db`), which holds
-all metrics, params, and artifacts across runs.
+that entrenar's `TrainingDashboard` now composes directly (ALB-057). The
+dashboard builds a widget tree from `Layout::rows()` of `Border`-wrapped
+section panels, each containing `Meter`, `GpuPanel`, `Sparkline`, or `Text`
+widgets. The connection point for historical data is entrenar's SQLite
+experiment store (`.entrenar/experiments.db`).
 
 **Live training dashboard** (`apr monitor` — reads `training_state.json`):
 

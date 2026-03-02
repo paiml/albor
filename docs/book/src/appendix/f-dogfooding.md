@@ -108,6 +108,9 @@
 | `realizar run` (350M v2) | `realizar run checkpoints/albor-350m-cuda-test/model.safetensors "def fibonacci("` | **PASS** (24 layers, 32768 vocab, 50 tokens, 1.9 tok/s, garbage output expected from 5-step model) | — |
 | `pv audit` (all) | `pv audit contracts/*.yaml` (7 contracts) | **PASS** (0 findings, 22 equations, 43 obligations, 26 falsification tests) | — |
 | `batuta falsify --critical-only` | `batuta falsify . --critical-only` | **PARTIAL** (3/5 pass, 80.0% score, AI-01/AI-05 partial) | — |
+| `apr runs diff` | `apr runs diff <a> <b> --global` | **PASS** (side-by-side sparklines, config diff, loss comparison, verdict) | ~~ALB-051~~ FIXED |
+| `apr runs diff --json` | `apr runs diff <a> <b> --global --json` | **PASS** (structured JSON: summaries, config_diff, verdict for LLM agents) | ~~ALB-051~~ FIXED |
+| `apr monitor` (widget composition) | `TrainingDashboard` composes `Layout`, `Border`, `Meter`, `GpuPanel`, `Sparkline`, `Text` | **PASS** (builds clean, widget tree rebuilt each frame, panel verification wired) | ~~ALB-057~~ FIXED |
 
 ## Contract Validation Detail
 
