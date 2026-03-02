@@ -6,12 +6,16 @@ on:
     paths:
       - 'configs/**'
       - 'contracts/**'
+      - 'scripts/**'
+      - 'docs/book/**'
       - 'Makefile'
       - '.github/workflows/validate.yml'
   pull_request:
     paths:
       - 'configs/**'
       - 'contracts/**'
+      - 'scripts/**'
+      - 'docs/book/**'
       - 'Makefile'
 
 jobs:
@@ -116,3 +120,35 @@ jobs:
           echo ""
           echo "--- bashrs classify ---"
           bashrs classify Makefile
+
+  build-book:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mdBook
+        run: |
+          mkdir -p /tmp/mdbook
+          curl -sSL https://github.com/rust-lang/mdBook/releases/download/v0.4.40/mdbook-v0.4.40-x86_64-unknown-linux-gnu.tar.gz | tar xz -C /tmp/mdbook
+          echo "/tmp/mdbook" >> $GITHUB_PATH
+
+      - name: Build mdBook
+        run: cd docs/book && mdbook build
+
+  validate-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate Python scripts syntax
+        run: |
+          for f in scripts/*.py; do
+            echo "  Checking: $f"
+            python3 -c "import ast; ast.parse(open('$f').read())" || exit 1
+          done
+          echo "All Python scripts parse successfully"
