@@ -13,7 +13,10 @@
 **Current blockers for Phase 3 completion:**
 - ~~ALB-038 (Critical): entrenar saves initialization weights, not trained weights~~ **FIXED** (`entrenar@91ba9da`, `@1ede409`)
 - ~~ALB-035: No per-step loss logging during training~~ **FIXED** (`entrenar@5d41a96`)
-- ~~ALB-037: realizar ignores loaded weights during inference~~ **DOGFOODING** (root cause was ALB-038; config.json save added in `entrenar@6097780`)
+- ~~ALB-041: D2D buffer mismatch in backward_attention~~ **FIXED** (`entrenar@a48e3d2`)
+- ALB-037: realizar ignores loaded weights — **DOGFOODING** (config.json save fixed; pending e2e verification)
+- ALB-040: GPU-resident pretraining — **DOGFOODING** (CudaTransformerTrainer working on 50M; pending 350M run)
+- ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
 
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen3-Coder-Next demonstrated
@@ -29,10 +32,10 @@
 - [ ] Benchmark trajectory published showing improvement at each stage
 - [ ] **Submitted to Big Code Models Leaderboard** — first sub-1B model on the board
 - [ ] **Q4 model: <50ms/token on CPU, <10ms/token on GPU** (code completion latency)
-- [ ] Critical path gaps (ALB-001, 006, 009, 010, 011, 018) closed with upstream fixes
+- [x] Critical path gaps (ALB-001, 006, 009, 011, 018) closed with upstream fixes; ALB-010 (Qwen3-Coder-Next) remains OPEN
 - [ ] Models published on HuggingFace as `paiml/albor-python-*`
 - [ ] Q4 quantized model < 100MB, runs on consumer hardware
-- [ ] **All 5 new contracts written and verified** (ALB-013 through ALB-017)
+- [ ] **All 7 kernel contracts written and verified** (ALB-013–017, ALB-039–040)
 - [ ] **batuta falsify: Toyota Standard grade (≥90/108)**
 - [ ] **pmat TDG: Grade A on all touched components**
 - [ ] **Test coverage ≥ 95%, mutation score ≥ 85% on all new code**
