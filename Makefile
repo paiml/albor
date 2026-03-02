@@ -14,7 +14,9 @@
 .PHONY: validate validate-contracts validate-forjar validate-yaml validate-makefile \
         plan-finetune plan-finetune-lora plan-pretrain-50m plan-pretrain-350m \
         train-50m train-350m \
-        eval-validate eval-perplexity-50m eval-perplexity-350m training-status \
+        eval-validate eval-perplexity-50m eval-perplexity-350m \
+        validate-checkpoint-50m validate-checkpoint-350m validate-convergence \
+        training-status \
         book book-serve dogfood dogfood-batuta dogfood-playbook \
         lint clean help
 
@@ -119,6 +121,16 @@ eval-perplexity-350m: ## Evaluate 350M model perplexity (needs checkpoint)
 	.venv/bin/python scripts/eval-perplexity.py checkpoints/albor-base-350m/ \
 		--data data/pretokenized-2048/val/val.parquet \
 		--max-sequences 100 --seq-len 2048 --threshold 30
+
+validate-checkpoint-50m: ## Validate 50M checkpoint integrity (ALB-038 detection)
+	.venv/bin/python scripts/eval-perplexity.py checkpoints/albor-base-50m/ --validate-checkpoint
+
+validate-checkpoint-350m: ## Validate 350M checkpoint integrity (ALB-038 detection)
+	.venv/bin/python scripts/eval-perplexity.py checkpoints/albor-base-350m/ --validate-checkpoint
+
+validate-convergence: ## Validate training convergence (FALSIFY-ALBOR-001)
+	.venv/bin/python scripts/validate-training-convergence.py \
+		checkpoints/albor-base-350m/training.log
 
 training-status: ## Check 350M training status
 	@echo "--- Training Process ---"

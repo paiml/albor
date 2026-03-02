@@ -81,7 +81,16 @@ def save_safetensors(path: Path, tensors: dict[str, tuple[np.ndarray, str]]):
 
 
 def _build_shape_table(hidden, ffn, vocab, heads, kv_heads):
-    """Build lookup table mapping tensor name patterns to shapes."""
+    """Build lookup table mapping tensor name patterns to shapes.
+
+    entrenar stores linear weights as [in_features, out_features] and
+    computes x @ W (no transpose). This table maps to HuggingFace
+    convention [out_features, in_features] for realizar compatibility.
+
+    NOTE: Since the flat data is in [in, out] order, we reshape to
+    [in, out] then transpose. The shapes here are the FINAL target
+    shapes after transposition.
+    """
     head_dim = hidden // heads
     kv_dim = kv_heads * head_dim
     return {
@@ -130,11 +139,24 @@ def extract_tensors(header, data):
 
 
 def reshape_tensor(name, arr, hidden, ffn, vocab, heads, kv_heads):
-    """Reshape a single tensor, returning new array."""
+    """Reshape a single tensor, converting from entrenar to HuggingFace format.
+
+    entrenar stores linear weights as flat [in, out]. HuggingFace expects
+    [out, in]. For non-square matrices, we reshape as [in, out] then transpose.
+    For square matrices and embeddings, direct reshape produces the correct result.
+    """
     target = infer_shape(name, arr.size, hidden, ffn, vocab, heads, kv_heads)
     if math.prod(target) != arr.size:
         return arr  # cannot reshape, keep as-is
-    return arr.reshape(target)
+
+    # Embeddings and norms don't need transposition
+    if "embed_tokens" in name or "lm_head" in name or len(target) == 1:
+        return arr.reshape(target)
+
+    # Linear weights: reshape as [in, out] (entrenar convention), then transpose
+    out_dim, in_dim = target  # HuggingFace target shape
+    entrenar_shape = (in_dim, out_dim)
+    return arr.reshape(entrenar_shape).T
 
 
 def convert_checkpoint(checkpoint_dir, hidden, layers, heads, kv_heads, ffn, vocab):

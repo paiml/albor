@@ -88,6 +88,8 @@
 | `eval-code.py` (validate) | `python scripts/eval-code.py configs/eval/python-intermediate.jsonl --validate-only` | **PASS** (15/15 canonical solutions) | — |
 | `eval-code.py` (HumanEval) | `python scripts/eval-code.py configs/eval/humaneval-subset.jsonl --validate-only` | **PASS** (20/20 canonical solutions) | — |
 | `convert-checkpoint.py` (50M) | `python scripts/convert-checkpoint.py checkpoints/albor-base-50m/` | **PASS** (110→111 tensors, 85 reshaped, lm_head created) | ALB-037 |
+| `eval-perplexity.py --validate` | `python scripts/eval-perplexity.py checkpoints/albor-base-50m/ --validate-checkpoint` | **FAIL** (layers byte-identical, norms at 1.0) | ALB-038 |
+| checkpoint analysis | byte-compare layers 0-11 q_proj, gate_proj | **FAIL** (all 12 layers byte-identical — initialization weights saved, not trained) | ALB-038 |
 
 ## Contract Validation Detail
 

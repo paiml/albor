@@ -68,7 +68,8 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-034 | [#32](https://github.com/paiml/albor/issues/32) | entrenar | `max_steps` config not respected in training loop | Medium | OPEN | Training runs all available batches instead of stopping at `max_steps`. |
 | ALB-035 | [#33](https://github.com/paiml/albor/issues/33) | entrenar | Does not write `training_state.json` during training | Medium | OPEN | No real-time state file blocks `apr monitor` and Andon alerts. |
 | ALB-036 | [#34](https://github.com/paiml/albor/issues/34) | apr (aprender) | BPE tokenizer normalizes whitespace | Medium | DOGFOODING | `split_whitespace()` pre-tokenizer destroys Python indentation. Workaround: ByteLevel BPE v2. |
-| ALB-037 | [#35](https://github.com/paiml/albor/issues/35) | realizar | SafeTensors inference ignores loaded weights | High | OPEN | `apr eval` produces identical perplexity regardless of weight content. Blocks model evaluation. |
+| ALB-037 | [#35](https://github.com/paiml/albor/issues/35) | realizar | SafeTensors inference ignores loaded weights | High | OPEN | `apr eval` produces identical perplexity regardless of weight content. Blocks model evaluation. May be secondary to ALB-038. |
+| ALB-038 | [#36](https://github.com/paiml/albor/issues/36) | entrenar | Saves initialization weights, not trained weights | Critical | OPEN | All layers are byte-identical in checkpoint. Norm weights exactly 1.0. Training loss decreases (10.3→4.42) but saved weights are initialization template. Blocks ALL evaluation and downstream phases. |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
 

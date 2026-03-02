@@ -2,19 +2,29 @@
 """Evaluate model perplexity on held-out data.
 
 Pure-Python Qwen2/LLaMA transformer inference for perplexity evaluation.
-Loads entrenar SafeTensors checkpoints directly.
+Loads entrenar SafeTensors checkpoints directly using entrenar's weight
+convention: weights are [in_features, out_features], computed as x @ W.
 
-NOTE: `apr eval` has a weight-loading bug (ALB-037, GitHub #35) where
-realizar ignores loaded weights during inference. This script provides
-a workaround using pure NumPy inference.
+KNOWN ISSUE: entrenar has a checkpoint bug (ALB-038, GitHub #36) where
+it saves initialization weights instead of trained weights. All layers
+contain byte-identical data. This script includes --validate-checkpoint
+to detect this condition. Until ALB-038 is fixed, perplexity results
+will be meaningless (close to random baseline).
+
+Also: `apr eval` has a weight-loading bug (ALB-037, GitHub #35) where
+realizar ignores loaded weights during inference.
 
 IMPORTANT: Data must be pre-tokenized with the SAME tokenizer used during
 training. Using mismatched tokenizer IDs will produce garbage results.
 
 Usage:
+    # Validate checkpoint integrity (fast, no data needed)
+    python scripts/eval-perplexity.py checkpoints/albor-base-50m/ \
+        --validate-checkpoint
+
     # 50M model (v2 tokenizer, pre-tokenized data)
     python scripts/eval-perplexity.py checkpoints/albor-base-50m/ \
-        --data data/pretokenized-128/train/train.parquet \
+        --data data/pretokenized-2048/train/train.parquet \
         --max-sequences 50 --seq-len 128
 
     # 350M model (v2 tokenizer, pre-tokenized data)
@@ -148,13 +158,17 @@ class TransformerModel:
         print(f"Loaded {len(self.weights)} tensors from {load_path.name}")
 
     def _infer_shape(self, name, flat_size, head_dim):
-        """Infer proper 2D shape from tensor name pattern."""
+        """Infer proper 2D shape from tensor name pattern.
+
+        entrenar stores weights as [in_features, out_features] and computes
+        x @ W (no transpose). Embedding is [vocab, hidden] for row indexing.
+        """
         h, ffn, v, kv = self.hidden_size, self.intermediate_size, self.vocab_size, self.num_kv_heads
         kv_dim = kv * head_dim
         shape_table = {
             "embed_tokens": (v, h), "lm_head": (v, h),
-            "q_proj": (h, h), "k_proj": (kv_dim, h), "v_proj": (kv_dim, h), "o_proj": (h, h),
-            "gate_proj": (ffn, h), "up_proj": (ffn, h), "down_proj": (h, ffn),
+            "q_proj": (h, h), "k_proj": (h, kv_dim), "v_proj": (h, kv_dim), "o_proj": (h, h),
+            "gate_proj": (h, ffn), "up_proj": (h, ffn), "down_proj": (ffn, h),
         }
         for pattern, shape in shape_table.items():
             if pattern in name:
@@ -172,15 +186,18 @@ class TransformerModel:
 
         input_ids: [seq_len] numpy array of token IDs
         Returns: [seq_len, vocab_size] logits
+
+        Weight convention: entrenar stores [in_features, out_features]
+        and computes x @ W (no transpose) for linear projections.
         """
         seq_len = len(input_ids)
 
-        # Embedding lookup
+        # Embedding lookup: embed is [vocab, hidden], index by row
         x = self._get("model.embed_tokens.weight")[input_ids]  # [seq_len, hidden]
 
         head_dim = self.hidden_size // self.num_heads
-        kv_head_dim = head_dim
         gqa_groups = self.num_heads // self.num_kv_heads
+        scale = 1.0 / math.sqrt(head_dim)
 
         for i in range(self.num_layers):
             prefix = f"model.layers.{i}"
@@ -192,10 +209,10 @@ class TransformerModel:
                 self.rms_norm_eps,
             )
 
-            # QKV projections
-            q = normed @ self._get(f"{prefix}.self_attn.q_proj.weight").T
-            k = normed @ self._get(f"{prefix}.self_attn.k_proj.weight").T
-            v = normed @ self._get(f"{prefix}.self_attn.v_proj.weight").T
+            # QKV projections: x @ W (no transpose)
+            q = normed @ self._get(f"{prefix}.self_attn.q_proj.weight")
+            k = normed @ self._get(f"{prefix}.self_attn.k_proj.weight")
+            v = normed @ self._get(f"{prefix}.self_attn.v_proj.weight")
 
             # Reshape for multi-head attention
             q = q.reshape(seq_len, self.num_heads, head_dim)
@@ -211,53 +228,37 @@ class TransformerModel:
                 k = np.repeat(k, gqa_groups, axis=1)
                 v = np.repeat(v, gqa_groups, axis=1)
 
-            # Attention: [seq, heads, head_dim] -> scores
-            scale = 1.0 / math.sqrt(head_dim)
-            # q: [seq, heads, dim], k: [seq, heads, dim]
-            scores = np.einsum("shd,thd->sht", q, k) * scale
-
-            # Causal mask
-            mask = np.triu(np.full((seq_len, seq_len), -1e9), k=1)
-            scores += mask[:, :, np.newaxis].transpose(0, 2, 1)
-            # Fix: scores is [s, h, t], mask should be [s, 1, t]
-            # Actually let me redo this properly
-            scores = np.einsum("shd,thd->hst", q, k) * scale  # [heads, seq, seq]
+            # Attention: [heads, seq, seq]
+            scores = np.einsum("shd,thd->hst", q, k) * scale
             mask = np.triu(np.full((seq_len, seq_len), -1e9), k=1)
             scores = scores + mask[np.newaxis, :, :]
+            attn = softmax(scores, axis=-1)
 
-            attn = softmax(scores, axis=-1)  # [heads, seq, seq]
+            # Apply attention to values: v [seq, heads, dim] -> [heads, seq, dim]
+            v_t = v.transpose(1, 0, 2)
+            out = np.einsum("hst,htd->hsd", attn, v_t)
+            out = out.transpose(1, 0, 2).reshape(seq_len, -1)
 
-            # Apply attention to values
-            # v: [seq, heads, dim] -> [heads, seq, dim]
-            v_t = v.transpose(1, 0, 2)  # [heads, seq, dim]
-            out = np.einsum("hst,htd->hsd", attn, v_t)  # [heads, seq, dim]
-            out = out.transpose(1, 0, 2).reshape(seq_len, -1)  # [seq, hidden]
-
-            # Output projection
-            attn_out = out @ self._get(f"{prefix}.self_attn.o_proj.weight").T
-
-            # Residual
+            # Output projection: x @ W (no transpose)
+            attn_out = out @ self._get(f"{prefix}.self_attn.o_proj.weight")
             x = x + attn_out
 
-            # Post-attention norm + MLP
+            # Post-attention norm + SwiGLU MLP
             normed = rms_norm(
                 x,
                 self._get(f"{prefix}.post_attention_layernorm.weight"),
                 self.rms_norm_eps,
             )
-
-            # SwiGLU MLP
-            gate = normed @ self._get(f"{prefix}.mlp.gate_proj.weight").T
-            up = normed @ self._get(f"{prefix}.mlp.up_proj.weight").T
+            gate = normed @ self._get(f"{prefix}.mlp.gate_proj.weight")
+            up = normed @ self._get(f"{prefix}.mlp.up_proj.weight")
             mlp_out = silu(gate) * up
-            mlp_out = mlp_out @ self._get(f"{prefix}.mlp.down_proj.weight").T
-
+            mlp_out = mlp_out @ self._get(f"{prefix}.mlp.down_proj.weight")
             x = x + mlp_out
 
         # Final norm
         x = rms_norm(x, self._get("model.norm.weight"), self.rms_norm_eps)
 
-        # LM head (tied embeddings)
+        # LM head: embed is [vocab, hidden], so logits = x @ embed.T
         lm_weight = self.weights.get(
             "lm_head.weight",
             self._get("model.embed_tokens.weight"),
@@ -265,6 +266,38 @@ class TransformerModel:
         logits = x @ lm_weight.T  # [seq_len, vocab_size]
 
         return logits
+
+
+def validate_checkpoint(model):
+    """Check if checkpoint contains trained weights or initialization.
+
+    Returns True if checkpoint appears valid, False if it contains
+    initialization data (ALB-038).
+    """
+    problems = []
+
+    # Check 1: Are norm weights exactly 1.0?
+    norm_w = model._get("model.layers.0.input_layernorm.weight")
+    if np.allclose(norm_w, 1.0, atol=1e-7):
+        problems.append("LayerNorm weights are exactly 1.0 (never updated)")
+
+    # Check 2: Are different layers byte-identical?
+    if model.num_layers >= 2:
+        w0 = model._get("model.layers.0.self_attn.q_proj.weight")
+        w1 = model._get("model.layers.1.self_attn.q_proj.weight")
+        if np.array_equal(w0, w1):
+            problems.append("Layer 0 and Layer 1 q_proj are identical (ALB-038)")
+
+    if problems:
+        print("WARNING: Checkpoint validation FAILED")
+        for p in problems:
+            print(f"  - {p}")
+        print("  Checkpoint likely contains initialization weights, not trained weights.")
+        print("  See: https://github.com/paiml/albor/issues/36")
+        return False
+
+    print("Checkpoint validation: PASS (weights appear trained)")
+    return True
 
 
 def compute_perplexity(model, sequences, seq_len):
@@ -281,12 +314,7 @@ def compute_perplexity(model, sequences, seq_len):
         logits = model.forward(tokens)
         dt = time.time() - t0
 
-        # Cross-entropy: compare logits[:-1] with targets tokens[1:]
-        log_probs = logits[:-1] - np.log(
-            np.sum(np.exp(logits[:-1] - np.max(logits[:-1], axis=-1, keepdims=True)),
-                   axis=-1, keepdims=True)
-        ) - np.max(logits[:-1], axis=-1, keepdims=True)
-        # Actually compute log_softmax properly
+        # Log-softmax for cross-entropy
         max_logits = np.max(logits[:-1], axis=-1, keepdims=True)
         shifted = logits[:-1] - max_logits
         log_sum_exp = np.log(np.sum(np.exp(shifted), axis=-1, keepdims=True))
@@ -312,10 +340,10 @@ def compute_perplexity(model, sequences, seq_len):
 def main():
     parser = argparse.ArgumentParser(description="Evaluate model perplexity")
     parser.add_argument("checkpoint_dir", type=Path)
-    parser.add_argument("--data", type=Path, required=True,
+    parser.add_argument("--data", type=Path,
                         help="Parquet file with pre-tokenized data (input_ids column)")
-    parser.add_argument("--text-data", type=Path,
-                        help="Parquet file with text data (text column)")
+    parser.add_argument("--validate-checkpoint", action="store_true",
+                        help="Only validate checkpoint integrity (no data needed)")
     parser.add_argument("--max-sequences", type=int, default=50)
     parser.add_argument("--seq-len", type=int, default=128)
     parser.add_argument("--threshold", type=float, default=30.0,
@@ -326,6 +354,16 @@ def main():
     model = TransformerModel(args.checkpoint_dir)
     print(f"  Architecture: hidden={model.hidden_size}, layers={model.num_layers}, "
           f"heads={model.num_heads}, kv_heads={model.num_kv_heads}")
+
+    # Always validate checkpoint
+    print()
+    ckpt_valid = validate_checkpoint(model)
+
+    if args.validate_checkpoint:
+        sys.exit(0 if ckpt_valid else 1)
+
+    if not args.data:
+        parser.error("--data is required unless --validate-checkpoint is used")
 
     print(f"\nLoading data from {args.data}...")
     import pyarrow.parquet as pq
@@ -341,6 +379,9 @@ def main():
     sequences = sequences[:args.max_sequences]
     print(f"  Sequences: {len(sequences)}, seq_len cap: {args.seq_len}")
 
+    if not ckpt_valid:
+        print("\nWARNING: Proceeding with invalid checkpoint — results will be meaningless")
+
     print(f"\nComputing perplexity...")
     t0 = time.time()
     ppl, ce, n_tokens = compute_perplexity(model, sequences, args.seq_len)
@@ -355,6 +396,8 @@ def main():
     print(f"  Tokens:         {n_tokens:,}")
     print(f"  Time:           {elapsed:.1f}s ({n_tokens/elapsed:.0f} tok/s)")
     print(f"  Sequences:      {len(sequences)}")
+    if not ckpt_valid:
+        print(f"  ** UNRELIABLE: Checkpoint failed validation (ALB-038) **")
     print(f"{'='*60}")
 
     sys.exit(0 if passed else 1)
