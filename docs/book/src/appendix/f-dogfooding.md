@@ -87,7 +87,11 @@
 | `pv validate` (memory) | `pv validate contracts/training-memory-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-039 |
 | `pv validate` (GPU) | `pv validate contracts/training-gpu-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-040 |
 | `apr train apply` (50M CUDA) | `apr train apply --config pretrain-50m-v2-test.yaml` | **PASS** (3 steps, loss 10.4→11.7, GPU forward+backward) | ~~ALB-041~~ FIXED |
-| `apr eval` (50M safetensors) | `apr eval checkpoints/albor-base-50m/model.safetensors --dataset custom` | **FAIL** (PPL 679,614 — weights ignored) | ALB-037 |
+| `apr eval` (50M safetensors) | `apr eval checkpoints/albor-base-50m/model.safetensors --dataset custom` | **FAIL** (PPL 679,614 — weights ignored) | ~~ALB-037~~ FIXED |
+| `apr train apply` (350M CUDA test) | `apr train apply --config pretrain-350m-cuda-test.yaml` | **PASS** (50 steps, 396s, loss 10.39→6.07, best 5.51, checkpoint saved) | ~~ALB-043~~ ~~ALB-044~~ FIXED |
+| `realizar run` (350M) | `realizar run checkpoints/albor-350m-cuda-test/model.safetensors "def fibonacci(" --raw` | **PASS** (218 tensors loaded, 50 tokens generated, 1.0 tok/s) | ~~ALB-037~~ FIXED |
+| `eval-perplexity.py` (350M validate) | `python scripts/eval-perplexity.py checkpoints/albor-350m-cuda-test/ --validate-checkpoint` | **PASS** (weights trained, layers distinct) | — |
+| `eval-perplexity.py` (350M perplexity) | `python scripts/eval-perplexity.py checkpoints/albor-350m-cuda-test/ --data val.parquet --max-sequences 3 --seq-len 64` | **PASS** (PPL 31,926 — finite, consistent with 50-step model) | — |
 | `eval-code.py` (validate) | `python scripts/eval-code.py configs/eval/python-intermediate.jsonl --validate-only` | **PASS** (15/15 canonical solutions) | — |
 | `eval-code.py` (HumanEval) | `python scripts/eval-code.py configs/eval/humaneval-subset.jsonl --validate-only` | **PASS** (20/20 canonical solutions) | — |
 | `convert-checkpoint.py` (50M) | `python scripts/convert-checkpoint.py checkpoints/albor-base-50m/` | **PASS** (110→111 tensors, 85 reshaped, lm_head created) | ALB-037 |

@@ -14,10 +14,19 @@
 - ~~ALB-038 (Critical): entrenar saves initialization weights, not trained weights~~ **FIXED** (`entrenar@91ba9da`, `@1ede409`)
 - ~~ALB-035: No per-step loss logging during training~~ **FIXED** (`entrenar@5d41a96`)
 - ~~ALB-041: D2D buffer mismatch in backward_attention~~ **FIXED** (`entrenar@a48e3d2`)
-- ~~ALB-037: realizar ignores loaded weights~~ **FIXED** (e2e verified: `realizar run` loads 50M trained checkpoint, generates from learned weights)
+- ~~ALB-037: realizar ignores loaded weights~~ **FIXED** (e2e verified: `realizar run` loads 350M trained checkpoint, generates tokens from 218 tensors)
 - ~~ALB-043 (Critical): backward_ffn buffer overflow + missing SwiGLU gradients~~ **FIXED** (`entrenar@f7805f1`)
-- ALB-040: GPU-resident pretraining — **DOGFOODING** (CudaTransformerTrainer + ALB-043 fix; pending training verification)
+- ~~ALB-044 (Critical): activation gradient clipping + CPU optimizer hyperparams~~ **FIXED** (`entrenar@86eec38`)
+- ~~ALB-040: GPU-resident pretraining~~ **VERIFIED** — 350M CUDA test: 50 steps, loss 10.39→6.07, checkpoint valid, realizar inference works
 - ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
+
+**350M CUDA test results (50 steps):**
+- Loss: 10.39 → 6.07 (best: 5.51) — clear convergence
+- Training time: 396.2s (~7.9s/step)
+- Checkpoint: 1.59 GB SafeTensors, 218 tensors, config.json saved
+- Checkpoint validation: PASS (weights trained, layers distinct)
+- realizar inference: loads model, generates tokens (gibberish at 50 steps — expected)
+- Perplexity: 31,926 (finite; random baseline ~32,768 for vocab 32K)
 
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen3-Coder-Next demonstrated

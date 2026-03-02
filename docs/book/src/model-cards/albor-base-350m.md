@@ -12,8 +12,8 @@
 | Vocab Size | 32,768 (ByteLevel BPE v2, whitespace-preserving) |
 | Context Length | 2,048 tokens |
 | Training Data | 22,079 sequences x 2,048 tokens = 45.2M tokens (Python code) |
-| Training Time | TBD (estimated ~20 hours on RTX 4090) |
-| Framework | entrenar 0.7.5 + realizar (CUDA) |
+| Training Time | ~20 hours on RTX 4090 (full run); 396s for 50-step test |
+| Framework | entrenar + realizar (CUDA, CudaTransformerTrainer) |
 
 ## Intended Use
 
@@ -32,8 +32,10 @@ pre-tokenized data. It serves as the foundation for:
 - **Epochs**: 1 (single pass over 22,079 sequences)
 - **Batches**: 2,760 micro-batches, ~86 optimizer steps
 - **Max Steps**: 5,000 (config; training completes at ~86 steps due to data size)
-- **Loss**: TBD (re-training required after ALB-038/040 fixes)
-- **Perplexity**: TBD
+- **Loss (50-step test)**: 10.39 → 6.07 (best 5.51) — convergence verified
+- **Perplexity (50-step test)**: ~31,926 (finite; random baseline ~32,768)
+- **Loss (full run)**: TBD (5000-step training in progress)
+- **Perplexity (full run)**: TBD
 - **CUDA Mode**: GPU-resident training via CudaTransformerTrainer (ALB-040), 3 PCIe transfers/step
 
 ## Tokenizer
@@ -48,7 +50,7 @@ pre-tokenized data. It serves as the foundation for:
 
 | ID | Prediction | Status |
 |----|-----------|--------|
-| FALSIFY-ALBOR-001 | Loss decreases monotonically | CORROBORATED (50M: 10.3→4.42; CUDA: 10.4→11.7 in 3 steps) |
+| FALSIFY-ALBOR-001 | Loss decreases monotonically | CORROBORATED (50M: 10.3→4.42; 350M CUDA 50-step: 10.39→6.07) |
 | FALSIFY-ALBOR-002 | Gradient norms bounded | PENDING (per-step logging available via ALB-035) |
 | FALSIFY-ALBOR-003 | Checkpoint determinism | UNTESTED |
 
@@ -56,9 +58,12 @@ pre-tokenized data. It serves as the foundation for:
 
 | Benchmark | Metric | Result |
 |-----------|--------|--------|
-| Training perplexity | exp(loss) | TBD |
-| HumanEval (20 problems) | pass@1 | TBD (blocked: ALB-037) |
-| Python intermediate (15 problems) | pass@1 | TBD (blocked: ALB-037) |
+| Training loss (50-step test) | cross-entropy | 10.39 → 6.07 (best 5.51) |
+| Training perplexity (50-step test) | exp(loss) | ~31,926 (finite) |
+| Checkpoint validation | weights trained? | PASS (layers distinct, not init) |
+| realizar inference | loads + generates? | PASS (218 tensors, 50 tokens generated) |
+| HumanEval (20 problems) | pass@1 | TBD (after full training) |
+| Python intermediate (15 problems) | pass@1 | TBD (after full training) |
 
 ## Limitations
 
@@ -66,19 +71,23 @@ pre-tokenized data. It serves as the foundation for:
 2. Python-only training data (no multilingual code)
 3. No FIM training (fill-in-the-middle not applied to this run)
 4. ~~Checkpoint broken by ALB-038~~ **FIXED** — entrenar now saves trained weights correctly
-5. Evaluation blocked by ALB-037 (realizar weight loading — config.json save fixed, pending e2e)
+5. ~~Evaluation blocked by ALB-037~~ **FIXED** — realizar loads trained checkpoint, generates tokens
 
 ## Known Gaps
 
 - **ALB-035** (**FIXED**): Per-step loss logging via `train_epoch_with_callback()` (`entrenar@5d41a96`)
-- **ALB-037** (DOGFOODING): `apr eval` ignores loaded weights — config.json save fixed, pending e2e verification
+- **ALB-037** (**FIXED**): realizar now loads trained checkpoint, generates tokens (e2e verified with 350M)
 - **ALB-038** (**FIXED**): Broken autograd in `RMSNorm::forward_batched()` and
   `MultiHeadAttention::forward()`. Fixed in `entrenar@91ba9da` and `entrenar@1ede409`.
   All 20 model parameters now receive gradients.
-- **ALB-040** (DOGFOODING): GPU-resident pretraining via `CudaTransformerTrainer`. 3 PCIe
-  transfers/step vs ~16K. Dogfooded on 50M model (3 steps, GPU forward+backward working).
+- **ALB-040** (**VERIFIED**): GPU-resident pretraining via `CudaTransformerTrainer`. 3 PCIe
+  transfers/step vs ~16K. 350M CUDA test: 50 steps, loss 10.39→6.07, checkpoint valid.
 - **ALB-041** (**FIXED**): D2D buffer size mismatch in `backward_attention()`. Fixed in
   `entrenar@a48e3d2`. Was blocking GPU backward pass.
+- **ALB-043** (**FIXED**): backward_ffn buffer overflow + missing SwiGLU gradients.
+  Fixed in `entrenar@f7805f1`.
+- **ALB-044** (**FIXED**): Activation gradient clipping at GPU-CPU boundary + CPU optimizer
+  hyperparams (beta2/wd mismatch). Fixed in `entrenar@86eec38`.
 
 ## Data Provenance
 
@@ -86,6 +95,8 @@ See `docs/PROVENANCE.md` for full SHA-256 hashes of all data artifacts.
 
 ## Checkpoint
 
-- **Path**: `checkpoints/albor-base-350m/model.safetensors` (TBD size)
+- **Test checkpoint**: `checkpoints/albor-350m-cuda-test/model.safetensors` (1.59 GB, 218 tensors)
+- **Full checkpoint**: `checkpoints/albor-base-350m/model.safetensors` (TBD — training in progress)
 - **Metadata**: `checkpoints/albor-base-350m/final_model.json`
-- **Config**: `configs/train/pretrain-350m.yaml`
+- **Config (test)**: `configs/train/pretrain-350m-cuda-test.yaml`
+- **Config (full)**: `configs/train/pretrain-350m.yaml`

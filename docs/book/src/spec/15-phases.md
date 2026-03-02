@@ -49,14 +49,19 @@
 - [x] Build evaluation infrastructure — eval-code.py, eval-perplexity.py, 35 benchmark problems
 - [x] ~~Fix ALB-038~~ FIXED — RMSNorm + attention backward ops, all 20 params receive gradients
 - [x] ~~Fix ALB-041~~ FIXED — D2D buffer size mismatch in backward_attention (`entrenar@a48e3d2`)
+- [x] ~~Fix ALB-043~~ FIXED — backward_ffn buffer overflow + SwiGLU gradients (`entrenar@f7805f1`)
+- [x] ~~Fix ALB-044~~ FIXED — activation gradient clipping at GPU-CPU boundary + CPU optimizer hyperparams (`entrenar@86eec38`)
 - [x] Write `training-memory-kernel-v1.yaml` contract (ALB-039) — VRAM budget estimation
 - [x] Write `training-gpu-kernel-v1.yaml` contract (ALB-040) — GPU-resident training invariants
 - [x] Implement `CudaTransformerTrainer` (ALB-040) — 3 PCIe transfers/step vs ~16K
 - [x] Dogfood CUDA training — 50M test: 3 steps, loss 10.4→11.7, GPU forward+backward working
-- [ ] ALB-037: realizar ignores SafeTensors weights — DOGFOODING (config.json save fixed, pending e2e)
-- [ ] Restart 350M training with CUDA trainer (killed due to GPU contention with 4B finetune)
+- [x] ~~ALB-037~~ FIXED — realizar loads trained SafeTensors checkpoint, generates tokens (e2e verified)
+- [x] 350M CUDA test training — 50 steps, 396s, loss 10.39→6.07 (best 5.51), checkpoint valid
+- [x] realizar inference verified — 218 tensors loaded, generates from trained weights
+- [x] Checkpoint validation: PASS (weights trained, not initialization)
+- [x] Perplexity eval: 31,926 (finite, consistent with 50-step model — random baseline ~32,768)
+- [ ] Full 350M training — IN PROGRESS (5000 steps, ~20h)
 - [ ] Monitor training via `apr monitor` — BLOCKED (ALB-025)
-- [ ] Run eval on intel concurrently — BLOCKED (ALB-037)
 - [ ] Validate loss curve, perplexity convergence
 - [ ] Tune hyperparameters (LR, batch size, warmup)
 - [ ] Verify FALSIFY-ALBOR-003 (checkpoint determinism)

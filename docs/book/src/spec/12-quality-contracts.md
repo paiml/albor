@@ -314,6 +314,9 @@ When GPU backward produces activation gradients that flow to a CPU optimizer,
 those gradients must be clipped to `max_grad_norm` before the CPU processes
 them.
 
+**Status: VERIFIED** — 350M CUDA test (50 steps) produces zero NaN in embedding
+weights. Fix in `entrenar@86eec38`.
+
 ```yaml
 motivation: |
   Per-block gradient clipping in CudaGradWorkspace only clips WEIGHT gradients.
@@ -334,6 +337,9 @@ falsification: |
 
 Every optimizer hyperparameter in the YAML config must reach the actual
 optimizer constructor. No implicit defaults.
+
+**Status: VERIFIED** — 350M CUDA test uses explicit `AdamW::new()` with
+YAML config values (beta2=0.95, wd=0.1). Fix in `entrenar@86eec38`.
 
 ```yaml
 obligation: |
