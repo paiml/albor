@@ -11,7 +11,7 @@
 - [ ] `pmat comply check` passes on all modified components
 
 **Current blockers for Phase 3 completion:**
-- ALB-038 (Critical): entrenar saves initialization weights, not trained weights
+- ~~ALB-038 (Critical): entrenar saves initialization weights, not trained weights~~ **FIXED** (`entrenar@91ba9da`, `@1ede409`)
 - ALB-035: No per-step loss logging during training
 - ALB-037: realizar ignores loaded weights during inference
 

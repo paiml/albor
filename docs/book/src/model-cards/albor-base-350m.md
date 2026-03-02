@@ -33,7 +33,7 @@ pre-tokenized data. It serves as the foundation for:
 - **Batches**: 2,760 micro-batches, ~86 optimizer steps
 - **Max Steps**: 5,000 (config; training completes at ~86 steps due to data size)
 - **Loss**: TBD (training in progress — no per-step logging, ALB-035)
-- **Perplexity**: TBD (blocked: ALB-038 — checkpoint contains initialization weights)
+- **Perplexity**: TBD (re-training required after ALB-038 fix)
 
 ## Tokenizer
 
@@ -64,7 +64,7 @@ pre-tokenized data. It serves as the foundation for:
 1. Single epoch on 45.2M tokens (typical base models train on 10B+ tokens)
 2. Python-only training data (no multilingual code)
 3. No FIM training (fill-in-the-middle not applied to this run)
-4. Checkpoint broken by ALB-038 (entrenar saves initialization, not trained weights)
+4. ~~Checkpoint broken by ALB-038~~ **FIXED** — entrenar now saves trained weights correctly
 5. Evaluation also blocked by ALB-037 (realizar weight loading bug)
 6. No real-time training metrics (ALB-035)
 
@@ -72,10 +72,9 @@ pre-tokenized data. It serves as the foundation for:
 
 - **ALB-035**: No `training_state.json` during training (only `final_model.json` at end)
 - **ALB-037**: `apr eval` ignores loaded weights (blocks perplexity/code evaluation)
-- **ALB-038**: entrenar saves initialization weights to SafeTensors, not trained weights.
-  All 24 layers will be byte-identical. Norm weights will be exactly 1.0. The trained
-  weights exist only in GPU memory during training and are never serialized. This is the
-  root cause blocking all evaluation. See [GitHub #36](https://github.com/paiml/albor/issues/36).
+- **ALB-038** (**FIXED**): Root cause was broken autograd in `RMSNorm::forward_batched()` and
+  `MultiHeadAttention::forward()`. Fixed in `entrenar@91ba9da` and `entrenar@1ede409`.
+  All 20 model parameters now receive gradients. Re-training required.
 
 ## Data Provenance
 

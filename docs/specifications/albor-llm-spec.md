@@ -1886,7 +1886,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-035 | [#33](https://github.com/paiml/albor/issues/33) | entrenar | Does not write `training_state.json` during training | Medium | OPEN | entrenar only writes `final_model.json` at completion. No real-time state file blocks `apr monitor` and Andon alerts. |
 | ALB-036 | [#34](https://github.com/paiml/albor/issues/34) | apr (aprender) | BPE tokenizer normalizes whitespace — breaks Python indentation | Medium | DOGFOODING | `apr tokenize apply` uses `split_whitespace()` pre-tokenizer which destroys Python-critical indentation. Workaround: ByteLevel BPE v2 trained with Python `tokenizers` library. |
 | ALB-037 | [#35](https://github.com/paiml/albor/issues/35) | realizar | SafeTensors inference ignores loaded weights | High | OPEN | `apr eval` produces identical perplexity (679,614) regardless of weight content (1D flat, 2D reshaped, transposed). Inference engine does not apply loaded weights during forward pass. Blocks model evaluation. |
-| ALB-038 | [#36](https://github.com/paiml/albor/issues/36) | entrenar | Saves initialization weights to SafeTensors, not trained weights | Critical | OPEN | Each layer has unique weights after training; norm weights != 1.0; perplexity matches training loss. |
+| ALB-038 | [#36](https://github.com/paiml/albor/issues/36) | entrenar | Saves initialization weights to SafeTensors, not trained weights | Critical | **FIXED** | Root cause: `RMSNorm::forward_batched()` created tensors with no backward op; `MultiHeadAttention::forward()` broke Q/K/V gradients. Fixed in `entrenar@91ba9da` (norm backward) and `entrenar@1ede409` (attention backward). All 20 model parameters now receive gradients. |
 
 ### 11.2 Distributed Training Gaps (Stretch / Future)
 
@@ -2358,7 +2358,7 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 - [x] Train albor-base-350m on 4090 — STARTED: 2760 batches loaded, 398.5M params, ~6.4GB VRAM, 25.8s/batch estimated, ~20h total. PID 1647651.
 - [x] Build evaluation infrastructure — DONE: `scripts/eval-code.py` (pass@k code completion), `scripts/eval-perplexity.py` (pure-Python transformer inference), `scripts/convert-checkpoint.py` (reshape 1D→2D SafeTensors). Benchmarks: 15 intermediate + 20 HumanEval problems, all canonical solutions validated.
 - [ ] Discovered ALB-037: realizar ignores loaded weights during inference (GitHub #35). Blocks `apr eval` and `apr serve`. Workaround: pure-Python inference script.
-- [ ] Discovered ALB-038: entrenar saves initialization weights to SafeTensors, not trained weights (GitHub #36). Checkpoint contains pre-training init values. Blocks meaningful evaluation.
+- [x] **FIXED ALB-038**: Root cause was broken autograd in `RMSNorm::forward_batched()` (no backward op) and `MultiHeadAttention::forward()` (Q/K/V gradient chain broken). Fixed in `entrenar@91ba9da` and `entrenar@1ede409`. All 20 model parameters now receive gradients. Re-training required.
 - [ ] Monitor training via `apr monitor` from intel box over SSH — BLOCKED: ALB-025
 - [ ] Run eval on intel concurrently — BLOCKED: ALB-037 (realizar weight loading)
 - [ ] Validate loss curve, perplexity convergence (from `training_state.json`)

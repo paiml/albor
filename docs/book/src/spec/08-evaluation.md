@@ -172,11 +172,13 @@ natively.~~ FIXED: `apr eval` supports perplexity and classification eval.
 inference (identical perplexity regardless of weight content). Workaround:
 `scripts/eval-perplexity.py` implements pure-Python transformer inference.
 
-**Gap ALB-038**: entrenar saves initialization weights to SafeTensors instead
-of trained weights. All layers are byte-identical, norm weights are exactly 1.0.
-Training loss decreases in GPU memory (10.3→4.42 for 50M) but the checkpoint
-file contains the pre-training initialization template. This is the root cause
-blocking all model evaluation. See [GitHub #36](https://github.com/paiml/albor/issues/36).
+**Gap ALB-038** (**FIXED**): entrenar previously saved initialization weights
+instead of trained weights due to broken autograd gradient flow. Root cause:
+`RMSNorm::forward_batched()` created tensors with no backward op, and
+`MultiHeadAttention::forward()` broke Q/K/V gradient chain. Fixed in
+`entrenar@91ba9da` (RMSNorm backward) and `entrenar@1ede409` (attention
+backward). All 20 model parameters now receive gradients during training.
+See [GitHub #36](https://github.com/paiml/albor/issues/36).
 
 ### 8.6 Local Evaluation Infrastructure
 
