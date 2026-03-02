@@ -2327,7 +2327,7 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 - [x] Write `bpe-tokenizer-kernel-v1.yaml` contract (ALB-014 — DOGFOODING, passes `pv validate`)
 - [x] `pv probar` + `pv kani` on tokenizer contract (roundtrip, FIM sentinel tests generated)
 - [x] Train BPE tokenizer on mixed corpus — `apr tokenize apply --vocab-size 32768 --algorithm bpe` (17,070 docs, 197MB)
-- [ ] Verify FALSIFY roundtrip: `decode(encode(text)) = text` for all test data
+- [x] Verify FALSIFY roundtrip: `decode(encode(text)) = text` — 9/9 pass (word-boundary BPE, space-split pre-tokenizer)
 - [x] Tokenize all data into sharded Parquet (~~fix ALB-007~~ FIXED — Parquet→LMBatch bridge working, `entrenar@a5a2fb7`)
 - [x] Apply FIM transforms to code sequences — `alimentar fim` PSM 50% rate (17,070 rows → mixed-fim.parquet)
 - [x] Create train/val/test splits via `alimentar` — train: 17,070 / val: 500 / test: 200
