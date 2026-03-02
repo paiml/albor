@@ -31,6 +31,10 @@
 - [Model Merging](./contracts/model-merging-kernel-v1.md)
 - [Pruning](./contracts/pruning-kernel-v1.md)
 
+# Model Cards
+
+- [albor-base-50m](./model-cards/albor-base-50m.md)
+
 # Appendices
 
 - [Batuta Oracle](./appendix/a-oracle.md)
