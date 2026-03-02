@@ -31,24 +31,26 @@
 - [ ] Record SHA-256 hashes + provenance manifest for all data artifacts
 - [ ] `pmat comply check --strict` on alimentar changes
 
-### Phase 2: Pipeline Validation — 50M Model (Week 2)
-- [ ] Write `gradient-accumulation-kernel-v1.yaml` contract (ALB-017)
-- [ ] Write `configs/train/pretrain-50m.yaml` (model arch + training + monitoring)
-- [ ] Train albor-50M on 4090 (hours, not days)
-- [ ] Validate `apr monitor` attaches to running training (live TUI)
-- [ ] Validate Andon alerts fire on NaN/Inf (inject a bad batch to test)
-- [ ] Fix ALB-009 if `apr train` lacks pre-training support
-- [ ] Verify FALSIFY-ALBOR-001 (loss decreases) and FALSIFY-ALBOR-002 (gradient bounds)
-- [ ] Run eval (fix ALB-006 if needed)
-- [ ] `pv audit` on all existing kernel contracts used in training
-- [ ] **Milestone**: Training loop converges, monitoring works, all kernel contracts pass
+### Phase 2: Pipeline Validation — 50M Model (Week 2) -- COMPLETE
+- [x] Write `gradient-accumulation-kernel-v1.yaml` contract (ALB-017)
+- [x] Write `configs/train/pretrain-50m.yaml` (model arch + training + monitoring)
+- [x] Train albor-50M on 4090 — 500 rows, 31 steps, 110.7s, loss 10.3→4.42
+- [ ] Validate `apr monitor` — BLOCKED (ALB-025: no training_state.json)
+- [ ] Validate Andon alerts — BLOCKED (ALB-025)
+- [x] ~~Fix ALB-009~~ FIXED
+- [x] Verify FALSIFY-ALBOR-001 (loss decreases) — CORROBORATED
+- [ ] Verify FALSIFY-ALBOR-002 (gradient bounds) — needs per-step reporting
+- [x] `pv audit` — PASS: 5/5 contracts, 0 findings
+- [ ] **Milestone**: Training loop converges ✓, monitoring blocked, contracts pass ✓
 
-### Phase 3: Base Model — 350M Pre-Training (Week 2-4)
-- [ ] Write `configs/train/pretrain-350m.yaml` (model arch + training + monitoring)
-- [ ] Train albor-base-350m on 4090, checkpoint every 1000 steps
-- [ ] Monitor training via `apr monitor` from intel box over SSH
-- [ ] Run eval on intel concurrently
-- [ ] Validate loss curve, perplexity convergence (from `training_state.json`)
+### Phase 3: Base Model — 350M Pre-Training (Week 2-4) -- IN PROGRESS
+- [x] Write `configs/train/pretrain-350m.yaml` — pre-tokenized ByteLevel BPE v2, 22K×2048 tokens
+- [x] Train albor-base-350m on 4090 — STARTED (2760 batches, ~20h est.)
+- [x] Build evaluation infrastructure — eval-code.py, eval-perplexity.py, 35 benchmark problems
+- [ ] Discovered ALB-037: realizar ignores weights — blocks `apr eval`
+- [ ] Monitor training via `apr monitor` — BLOCKED (ALB-025)
+- [ ] Run eval on intel concurrently — BLOCKED (ALB-037)
+- [ ] Validate loss curve, perplexity convergence
 - [ ] Tune hyperparameters (LR, batch size, warmup)
 - [ ] Verify FALSIFY-ALBOR-003 (checkpoint determinism)
 - [ ] `pmat tdg check-regression` on all touched components
