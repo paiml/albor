@@ -32,8 +32,9 @@ pre-tokenized data. It serves as the foundation for:
 - **Epochs**: 1 (single pass over 22,079 sequences)
 - **Batches**: 2,760 micro-batches, ~86 optimizer steps
 - **Max Steps**: 5,000 (config; training completes at ~86 steps due to data size)
-- **Loss**: TBD (training in progress — no per-step logging, ALB-035)
-- **Perplexity**: TBD (re-training required after ALB-038 fix)
+- **Loss**: TBD (re-training required after ALB-038/040 fixes)
+- **Perplexity**: TBD
+- **CUDA Mode**: GPU-resident training via CudaTransformerTrainer (ALB-040), 3 PCIe transfers/step
 
 ## Tokenizer
 
@@ -47,8 +48,8 @@ pre-tokenized data. It serves as the foundation for:
 
 | ID | Prediction | Status |
 |----|-----------|--------|
-| FALSIFY-ALBOR-001 | Loss decreases monotonically | PENDING (350M run) |
-| FALSIFY-ALBOR-002 | Gradient norms bounded | UNTESTED (no per-step reporting, ALB-035) |
+| FALSIFY-ALBOR-001 | Loss decreases monotonically | CORROBORATED (50M: 10.3→4.42; CUDA: 10.4→11.7 in 3 steps) |
+| FALSIFY-ALBOR-002 | Gradient norms bounded | PENDING (per-step logging available via ALB-035) |
 | FALSIFY-ALBOR-003 | Checkpoint determinism | UNTESTED |
 
 ## Evaluation
@@ -65,16 +66,19 @@ pre-tokenized data. It serves as the foundation for:
 2. Python-only training data (no multilingual code)
 3. No FIM training (fill-in-the-middle not applied to this run)
 4. ~~Checkpoint broken by ALB-038~~ **FIXED** — entrenar now saves trained weights correctly
-5. Evaluation also blocked by ALB-037 (realizar weight loading bug)
-6. No real-time training metrics (ALB-035)
+5. Evaluation blocked by ALB-037 (realizar weight loading — config.json save fixed, pending e2e)
 
 ## Known Gaps
 
-- **ALB-035**: No `training_state.json` during training (only `final_model.json` at end)
-- **ALB-037**: `apr eval` ignores loaded weights (blocks perplexity/code evaluation)
-- **ALB-038** (**FIXED**): Root cause was broken autograd in `RMSNorm::forward_batched()` and
+- **ALB-035** (**FIXED**): Per-step loss logging via `train_epoch_with_callback()` (`entrenar@5d41a96`)
+- **ALB-037** (DOGFOODING): `apr eval` ignores loaded weights — config.json save fixed, pending e2e verification
+- **ALB-038** (**FIXED**): Broken autograd in `RMSNorm::forward_batched()` and
   `MultiHeadAttention::forward()`. Fixed in `entrenar@91ba9da` and `entrenar@1ede409`.
-  All 20 model parameters now receive gradients. Re-training required.
+  All 20 model parameters now receive gradients.
+- **ALB-040** (DOGFOODING): GPU-resident pretraining via `CudaTransformerTrainer`. 3 PCIe
+  transfers/step vs ~16K. Dogfooded on 50M model (3 steps, GPU forward+backward working).
+- **ALB-041** (**FIXED**): D2D buffer size mismatch in `backward_attention()`. Fixed in
+  `entrenar@a48e3d2`. Was blocking GPU backward pass.
 
 ## Data Provenance
 

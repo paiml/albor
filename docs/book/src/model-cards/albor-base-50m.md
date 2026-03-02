@@ -41,7 +41,7 @@ code completion or any production use.
 | ID | Prediction | Status |
 |----|-----------|--------|
 | FALSIFY-ALBOR-001 | Loss decreases monotonically | CORROBORATED (10.3→4.42) |
-| FALSIFY-ALBOR-002 | Gradient norms bounded | UNTESTED (no per-step reporting) |
+| FALSIFY-ALBOR-002 | Gradient norms bounded | PENDING (per-step logging now available, ALB-035 FIXED) |
 | FALSIFY-ALBOR-003 | Checkpoint determinism | UNTESTED |
 
 ## Limitations
