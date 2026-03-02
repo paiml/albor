@@ -43,7 +43,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install pv (provable-contracts)
-        run: cargo install provable-contracts-cli
+        run: cargo install --git https://github.com/paiml/provable-contracts provable-contracts-cli
 
       - name: Validate contracts with pv
         run: |
@@ -68,7 +68,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install forjar
-        run: cargo install forjar
+        run: cargo install --git https://github.com/paiml/forjar forjar
 
       - name: Validate infra manifest with forjar
         run: |
@@ -87,7 +87,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install batuta
-        run: cargo install batuta
+        run: cargo install --git https://github.com/paiml/batuta batuta
 
       - name: Validate batuta playbook
         run: |
