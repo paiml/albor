@@ -12,7 +12,7 @@
 
 **Current blockers for Phase 3 completion:**
 - ~~ALB-038 (Critical): entrenar saves initialization weights, not trained weights~~ **FIXED** (`entrenar@91ba9da`, `@1ede409`)
-- ALB-035: No per-step loss logging during training
+- ~~ALB-035: No per-step loss logging during training~~ **FIXED** (`entrenar@5d41a96`)
 - ALB-037: realizar ignores loaded weights during inference
 
 ### Good (Phase 5 complete)
