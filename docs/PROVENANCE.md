@@ -18,10 +18,13 @@ Tool: alimentar 0.2.6, mix seed=42
 |-------|------|------|------|---------|---------|
 | train | data/tokenized/train/mixed.parquet | 17,070 | 201MB | depyler:0.4 hf:0.3 jax:0.15 vllm:0.15 | `bdfe8742...` |
 | val | data/tokenized/val/val.parquet | 500 | 7MB | equal 0.25 each | `6be03768...` |
+| test | data/tokenized/test/test.parquet | 200 | 2.4MB | equal 0.25 each | `14388092...` |
+| train-fim | data/tokenized/train/mixed-fim.parquet | 17,070 | 192MB | FIM@50% PSM of train | `da258ae4...` |
 
 ## Mix Parameters
 
-- Seed: 42 (train), 123 (val)
+- Seed: 42 (train), 123 (val), 456 (test)
 - Depyler upsampled from 1,843 to 6,829 (3.7x) — Tier 1 priority
 - HF downsampled from 11,493 to 5,121
+- FIM: PSM format, 50% rate, seed 42
 - Schema: `{text: Utf8, source: Utf8, file: Utf8}`

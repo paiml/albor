@@ -2315,23 +2315,23 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 - [x] `batuta falsify . --critical-only` — 70% (3/5 pass, AI-01 partial, AI-04 fail)
 
 ### Phase 1: Data Pipeline + Tokenizer Contract (Week 1-2)
-- [ ] Ingest local ground truth corpora via `alimentar import local` (~~fix ALB-019~~ FIXED)
-  - [ ] depyler: examples/ + tdd-book/tests/ (~1,845 files, ~219K lines)
-  - [ ] hf-ground-truth-corpus (~11,928 files)
-  - [ ] jax-ground-truth-corpus (~2,697 files)
-  - [ ] vllm-ground-truth-corpus (~1,118 files)
+- [x] Ingest local ground truth corpora via `alimentar import local` (~~fix ALB-019~~ FIXED)
+  - [x] depyler: examples/ + tdd-book/tests/ (1,843 files → 6MB Parquet)
+  - [x] hf-ground-truth-corpus (11,493 files → 197MB Parquet)
+  - [x] jax-ground-truth-corpus (2,637 files → 50MB Parquet)
+  - [x] vllm-ground-truth-corpus (1,100 files → 18MB Parquet)
 - [ ] Ingest local ML framework code (Tier 2, ~53K files)
 - [ ] Download external datasets via `alimentar import hf` (StarCoder Python, FineWeb-Edu)
 - [ ] Quality validation via `alimentar quality check` on all sources
-- [ ] Build weighted training mix with 10x upsampling on Tier 1 (~~fix ALB-020~~ FIXED)
+- [x] Build weighted training mix with 3.7x upsampling on Tier 1 (17,070 rows, depyler:0.4 hf:0.3 jax:0.15 vllm:0.15)
 - [x] Write `bpe-tokenizer-kernel-v1.yaml` contract (ALB-014 — DOGFOODING, passes `pv validate`)
 - [x] `pv probar` + `pv kani` on tokenizer contract (roundtrip, FIM sentinel tests generated)
-- [ ] Train BPE tokenizer on mixed corpus (~~fix ALB-001~~ FIXED)
+- [x] Train BPE tokenizer on mixed corpus — `apr tokenize apply --vocab-size 32768 --algorithm bpe` (17,070 docs, 197MB)
 - [ ] Verify FALSIFY roundtrip: `decode(encode(text)) = text` for all test data
-- [ ] Tokenize all data into sharded Parquet (~~fix ALB-007~~ FIXED — Parquet→LMBatch bridge working)
-- [ ] Apply FIM transforms to code sequences (~~fix ALB-018~~ FIXED)
-- [ ] Create train/val/test splits via `alimentar`
-- [ ] Record SHA-256 hashes + provenance manifest for all data artifacts
+- [x] Tokenize all data into sharded Parquet (~~fix ALB-007~~ FIXED — Parquet→LMBatch bridge working, `entrenar@a5a2fb7`)
+- [x] Apply FIM transforms to code sequences — `alimentar fim` PSM 50% rate (17,070 rows → mixed-fim.parquet)
+- [x] Create train/val/test splits via `alimentar` — train: 17,070 / val: 500 / test: 200
+- [x] Record SHA-256 hashes + provenance manifest for all data artifacts (docs/PROVENANCE.md)
 - [ ] `pmat comply check --strict` on alimentar changes
 
 ### Phase 2: Pipeline Validation — 50M Model (Week 2)

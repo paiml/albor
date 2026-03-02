@@ -39,3 +39,4 @@
 - [W5700X Vulkan Validation](./appendix/d-vulkan.md)
 - [Leaderboard Strategy](./appendix/e-leaderboard.md)
 - [Dogfooding Log](./appendix/f-dogfooding.md)
+- [Data Pipeline](./appendix/g-data-pipeline.md)
