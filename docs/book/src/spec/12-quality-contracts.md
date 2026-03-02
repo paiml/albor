@@ -225,6 +225,8 @@ This same pattern resolved four bugs during ALB-040 dogfooding:
 | ALB-041: D2D copy size mismatch in `backward_attention` | Error logged at exact block index; `gate_out` used as `grad_hidden` temp | D2D invariant: `src.len() == dst.len()` for `copy_from_buffer_async` |
 | `backward_attention`: transpose `attn_scores [H,S,S]` into `attn_kv_temp2 [H,S,hd]` | Algebraic trace: `16×512×512 = 4.2M` into 524K buffer = 8x overflow | Transpose output buffer invariant: `output.len() >= batch × rows × cols` |
 | `gpu_forward`: D2D copy fails when `seq_len < max_seq_len` | All forwards return None; traced to `PAR-023` size mismatch | Forward buffer invariant: input/output buffers at `max_seq_len` size |
+| ALB-044: Unclipped activation gradient (~1e35) overflows CPU AdamW | Per-boundary sampling: embed weights have 1298 NaN after optimizer step | C-EMBED-GRAD-001: clip activation gradient at GPU→CPU boundary |
+| ALB-044: CPU AdamW beta2=0.999 vs YAML beta2=0.95 (50x amplification) | Traced bias correction: v_hat = v/0.001 with beta2=0.999 vs v/0.05 with 0.95 | C-HYPERPARAMS-001: all optimizer fields must match YAML config |
 
 ### 12.5.4 How Bricks and Contracts Interlock
 
@@ -279,5 +281,138 @@ pruning ────────── post-training ─── albor-pruned
 Each node in this DAG is a contract. `pv graph contracts/ --format mermaid`
 renders the full dependency graph. A change to any sub-contract triggers
 re-verification of all dependents.
+
+## 12.7 Training Stability Contracts
+
+The kernel-level contracts in §12.2 verify *local* correctness — each kernel
+produces the right output for its input. They do NOT verify *global* training
+stability — that the training loop converges without NaN, that hyperparameters
+propagate correctly, or that gradients flow to all parameters.
+
+ALB-038, ALB-041, ALB-043, and ALB-044 all passed kernel-level contracts
+while producing training failures. These contracts bridge the gap between
+kernel correctness and training correctness.
+
+### C-TRAINSTABLE-001: Training Stability
+
+All weights and loss must remain finite for the entire training run.
+
+```yaml
+obligations:
+  - "loss.is_finite() for all steps"
+  - "weight[i].is_finite() for all i, all steps"
+  - "grad[i].is_finite() for all i after clipping, all steps"
+falsification: |
+  FALSIFY-STABLE-001: Train 100 steps on random init.
+  Assert loss.is_finite() at every step.
+  Assert no NaN in any model weight after every optimizer step.
+```
+
+### C-EMBED-GRAD-001: Activation Gradient Clipping at GPU-CPU Boundary
+
+When GPU backward produces activation gradients that flow to a CPU optimizer,
+those gradients must be clipped to `max_grad_norm` before the CPU processes
+them.
+
+```yaml
+motivation: |
+  Per-block gradient clipping in CudaGradWorkspace only clips WEIGHT gradients.
+  The ACTIVATION gradient in grad_buf_a/b flows unclipped to the CPU embedding
+  optimizer. For 24-layer random init, this gradient reaches ~1e35 — overflowing
+  the CPU AdamW second moment buffer.
+obligation: |
+  Before scatter-adding activation gradients into CPU embedding weight gradient:
+    grad_norm = L2_norm(activation_grad)
+    if grad_norm > max_grad_norm:
+        activation_grad *= max_grad_norm / grad_norm
+falsification: |
+  FALSIFY-EMBEDGRAD-001: Train 350M model (24 layers) for 5 steps.
+  Assert embedding weights contain zero NaN values after each optimizer step.
+```
+
+### C-HYPERPARAMS-001: Optimizer Hyperparameter Propagation
+
+Every optimizer hyperparameter in the YAML config must reach the actual
+optimizer constructor. No implicit defaults.
+
+```yaml
+obligation: |
+  For every optimizer in the training loop (GPU AdamW, CPU AdamW, LM head AdamW):
+    assert optimizer.lr == config.lr (adjusted for warmup)
+    assert optimizer.beta1 == config.beta1
+    assert optimizer.beta2 == config.beta2
+    assert optimizer.weight_decay == config.weight_decay
+    assert optimizer.epsilon == 1e-8 (or config.epsilon if specified)
+falsification: |
+  FALSIFY-HYPERPARAMS-001: Construct CudaTransformerTrainer with non-default
+  YAML config (beta2=0.95, wd=0.1). Verify CPU embed_optimizer.beta2 == 0.95
+  and embed_optimizer.weight_decay == 0.1 (not 0.999 and 0.01).
+anti_pattern: |
+  NEVER: AdamW::default_params(lr)  — hides beta2, wd, epsilon
+  ALWAYS: AdamW::new(lr, beta1, beta2, epsilon, wd)  — explicit from config
+```
+
+### C-BUFSIZE-001: CUDA Kernel Buffer Size Invariants
+
+Every GPU buffer passed to a CUDA kernel must have algebraically verifiable
+size matching the kernel's expected dimensions.
+
+```yaml
+obligation: |
+  For gemm_forward(A, B, C, M, K, N):
+    assert A.len() >= M * K
+    assert B.len() >= K * N
+    assert C.len() >= M * N
+  For silu_backward(input, grad_output, output):
+    assert output.len() >= input.len()
+  For rms_norm_backward(input, weight, grad_output, grad_input, grad_weight, S, H):
+    assert grad_input.len() >= S * H
+    assert grad_weight.len() >= H
+falsification: |
+  FALSIFY-BUFSIZE-001: Run compute-sanitizer on 10-step 50M training.
+  Assert zero illegal address errors.
+anti_pattern: |
+  NEVER: Reuse a buffer sized for hidden_size as temp for intermediate_size
+  ALWAYS: Use dedicated buffers or verify size >= required before kernel call
+```
+
+### C-GRADFLOW-001: Gradient Flow Verification
+
+Every trainable parameter must receive a non-zero gradient after one
+forward+backward step on a non-trivial batch.
+
+```yaml
+obligation: |
+  After one forward+backward step on a batch with non-constant inputs:
+    for param in model.trainable_parameters():
+      assert param.grad().abs().max() > 0
+falsification: |
+  FALSIFY-GRADFLOW-001: Train 1 step on 50M model with random init.
+  Verify all 110 parameter tensors have max(|grad|) > 0.
+anti_pattern: |
+  NEVER: Create tensors with requires_grad=false in the forward path
+  NEVER: Use ops that don't register backward (e.g., manual array copies)
+  ALWAYS: Verify gradient flow when adding new layers or ops
+```
+
+### 12.7.1 Observability Discipline
+
+**All training observability MUST use the renacer tracing infrastructure.**
+
+entrenar integrates renacer in `src/run.rs` (span lifecycle: `create_span`,
+`emit_metric_event`, `end_span`). The `src/monitor/drift.rs` module provides
+anomaly detection (`DriftStatus`, `AnomalySeverity`) that can automatically
+flag NaN, gradient explosion, and loss divergence.
+
+```yaml
+obligation: |
+  NEVER: eprintln!(), println!(), dbg!() for training diagnostics
+  ALWAYS: tracing::debug!(), tracing::warn!() with structured fields
+  ALWAYS: emit_metric_event() for training metrics (loss, grad_norm, lr)
+motivation: |
+  Ad-hoc eprintln! creates cleanup debt, is invisible to tracing infra,
+  loses brick profiling boundary isolation, and cannot be filtered at runtime.
+  renacer BrickTracer provides structured, filterable, permanent observability.
+```
 
 ---

@@ -4,13 +4,17 @@
 # Validates numerical equivalence, transfer efficiency, and GPU utilization.
 
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
   created: "2026-03-02"
+  updated: "2026-03-02"
   author: "PAIML Engineering"
   description: "GPU-resident pretraining kernel — CudaTransformerBlock wired into TransformerTrainer"
+  changelog:
+    - "v2.0.0: Add training stability obligations (C-TRAINSTABLE-001, C-EMBED-GRAD-001, C-HYPERPARAMS-001) from ALB-044 dogfooding"
   references:
     - "classify_pipeline.rs GPU training pattern (ENT-151, ENT-152)"
     - "training-memory-kernel-v1.yaml (VRAM estimation)"
+    - "ALB-044: Unclipped activation gradients + CPU optimizer mismatch"
   depends_on:
     - "training-memory-kernel-v1"
 
@@ -54,6 +58,36 @@ equations:
       - "util > 0.70 for models >= 350M params with batch_size >= 4"
       - "Previous CPU autograd achieved ~0.07 (7%) due to 16K transfers/step"
 
+  activation_gradient_clipping:
+    formula: |
+      grad_norm = sqrt(sum(activation_grad[i]^2))
+      if grad_norm > max_grad_norm:
+          activation_grad *= max_grad_norm / grad_norm
+    domain: |
+      activation_grad: GPU backward output (grad_buf_a or grad_buf_b)
+      max_grad_norm: from config.base.max_grad_norm (YAML grad_clip)
+    codomain: "Clipped activation gradient with L2 norm <= max_grad_norm"
+    invariants:
+      - "Per-block weight gradient clipping does NOT clip activation gradients"
+      - "Activation gradient flows from block[0] backward to CPU embedding optimizer"
+      - "For L-layer random init, activation gradient magnitude grows as ~O(L) or worse"
+      - "Without clipping, 24-layer 350M produces ~1e35 activation gradients"
+
+  hyperparameter_propagation:
+    formula: |
+      For every optimizer O in the training loop:
+        O.lr == config.lr (or warmup-adjusted)
+        O.beta1 == config.beta1
+        O.beta2 == config.beta2
+        O.weight_decay == config.weight_decay
+    domain: "YAML config → bridge → TransformerTrainConfig → optimizer constructor"
+    codomain: "All optimizers use identical hyperparameters from config"
+    invariants:
+      - "GPU block optimizer: beta1, beta2, wd passed to adamw_step_cuda()"
+      - "GPU LM head optimizer: beta1, beta2, wd passed to adamw_step_cuda()"
+      - "CPU embedding optimizer: AdamW::new(lr, beta1, beta2, eps, wd)"
+      - "NEVER use AdamW::default_params() — hides beta2=0.999 and wd=0.01"
+
 proof_obligations:
   - type: equivalence
     property: "GPU training loss matches CPU training loss"
@@ -83,6 +117,30 @@ proof_obligations:
     formal: "CudaTransformerTrainer::new() Err => TransformerTrainer used instead"
     tolerance: 0
     applies_to: fallback
+
+  - type: invariant
+    property: "Training stability — all weights and loss finite"
+    formal: "loss.is_finite() AND weight[i].is_finite() for all i, all steps"
+    tolerance: 0
+    applies_to: training_stability
+
+  - type: invariant
+    property: "Activation gradient clipped at GPU-CPU boundary"
+    formal: "L2_norm(activation_grad) <= max_grad_norm before CPU scatter-add"
+    tolerance: 0
+    applies_to: activation_gradient_clipping
+
+  - type: invariant
+    property: "Optimizer hyperparameters match YAML config"
+    formal: "optimizer.beta2 == config.beta2 AND optimizer.weight_decay == config.weight_decay for all optimizers"
+    tolerance: 0
+    applies_to: hyperparameter_propagation
+
+  - type: invariant
+    property: "Gradient flow to all trainable parameters"
+    formal: "max(|grad(param)|) > 0 for all trainable params after 1 step"
+    tolerance: 0
+    applies_to: gradient_flow
 
 falsification_tests:
   - id: FALSIFY-GPU-001
@@ -117,15 +175,43 @@ falsification_tests:
       Compute average GPU utilization.
     if_fails: "Unexpected PCIe bottleneck, kernel launch overhead, or memory contention"
 
+  - id: FALSIFY-GPU-005
+    rule: "350M training stable for 50+ steps (no NaN)"
+    prediction: "Loss is finite at every step for 50 steps on random init"
+    test: |
+      Train 350M model (24 layers) with pretrain-350m-cuda-test.yaml for 50 steps.
+      Assert loss.is_finite() at every callback. Assert no NaN in saved checkpoint.
+    if_fails: "Gradient explosion, unclipped activation gradients, or optimizer misconfiguration"
+
+  - id: FALSIFY-GPU-006
+    rule: "CPU embedding optimizer uses YAML hyperparameters"
+    prediction: "embed_optimizer.beta2 == config.beta2 (not AdamW default 0.999)"
+    test: |
+      Construct CudaTransformerTrainer with beta2=0.95, weight_decay=0.1.
+      Verify embed_optimizer internal state matches (not 0.999 / 0.01).
+    if_fails: "AdamW::default_params() used instead of AdamW::new() with config values"
+
+  - id: FALSIFY-GPU-007
+    rule: "All 110 parameters of 50M model receive gradients"
+    prediction: "max(|grad|) > 0 for every trainable parameter after 1 step"
+    test: |
+      Train 50M model (12 layers) for 1 step. Check gradient of every parameter tensor.
+      Count params with zero gradient — must be 0.
+    if_fails: "Missing backward op, requires_grad=false, or broken gradient chain"
+
 qa_gate:
   id: F-GPU-001
   name: "GPU-Resident Pretraining Contract"
-  description: "CudaTransformerTrainer correctness and efficiency"
+  description: "CudaTransformerTrainer correctness, stability, and efficiency"
   checks:
     - "numerical_equivalence"
     - "transfer_count_invariant"
     - "gpu_utilization_bound"
     - "weight_sync_exact"
     - "graceful_fallback"
-  pass_criteria: "All 4 falsification tests pass"
+    - "training_stability"
+    - "activation_gradient_clipping"
+    - "hyperparameter_propagation"
+    - "gradient_flow"
+  pass_criteria: "All 7 falsification tests pass"
   falsification: "Use mismatched hidden_size to detect weight shape errors"
