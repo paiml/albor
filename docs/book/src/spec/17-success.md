@@ -14,8 +14,9 @@
 - ~~ALB-038 (Critical): entrenar saves initialization weights, not trained weights~~ **FIXED** (`entrenar@91ba9da`, `@1ede409`)
 - ~~ALB-035: No per-step loss logging during training~~ **FIXED** (`entrenar@5d41a96`)
 - ~~ALB-041: D2D buffer mismatch in backward_attention~~ **FIXED** (`entrenar@a48e3d2`)
-- ALB-037: realizar ignores loaded weights — **DOGFOODING** (config.json save fixed; pending e2e verification)
-- ALB-040: GPU-resident pretraining — **DOGFOODING** (CudaTransformerTrainer working on 50M; pending 350M run)
+- ~~ALB-037: realizar ignores loaded weights~~ **FIXED** (e2e verified: `realizar run` loads 50M trained checkpoint, generates from learned weights)
+- ~~ALB-043 (Critical): backward_ffn buffer overflow + missing SwiGLU gradients~~ **FIXED** (`entrenar@f7805f1`)
+- ALB-040: GPU-resident pretraining — **DOGFOODING** (CudaTransformerTrainer + ALB-043 fix; pending training verification)
 - ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
 
 ### Good (Phase 5 complete)
