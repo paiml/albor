@@ -1,0 +1,83 @@
+name: Security & Sovereignty Gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly advisory check (Mondays at 06:00 UTC)
+    - cron: '0 6 * * 1'
+
+jobs:
+  cargo-deny:
+    name: cargo-deny (license + advisory audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny
+
+      - name: License compliance check
+        run: cargo deny check licenses
+
+      - name: Advisory audit
+        run: cargo deny check advisories
+
+      - name: Run cargo-deny check (all)
+        run: cargo deny check
+
+  clippy:
+    name: clippy (sovereignty linting)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  rust-tests:
+    name: Rust integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install sovereign tools
+        run: |
+          cargo install --git https://github.com/paiml/provable-contracts provable-contracts-cli || true
+          cargo install bashrs || true
+
+      - name: Run tests
+        run: cargo test --verbose
+
+  pmat-quality-gate:
+    name: pmat quality gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pmat
+        run: cargo install pmat
+
+      - name: Run pmat quality-gate
+        run: pmat quality-gate
+
+      - name: Run pmat TDG check
+        run: pmat tdg check-quality .
+
+      - name: Run pmat TDG check-regression
+        run: pmat tdg check-regression

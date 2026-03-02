@@ -170,3 +170,27 @@ jobs:
           echo ""
           echo "--- humaneval-subset (20 problems) ---"
           python3 scripts/eval-code.py configs/eval/humaneval-subset.jsonl --validate-only
+
+  quality-gates:
+    name: Quality gates (pmat + TDG)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pmat
+        run: cargo install pmat || true
+
+      - name: Run pmat quality analysis
+        run: |
+          echo "--- pmat TDG analysis ---"
+          pmat index . 2>/dev/null || true
+          pmat summary 2>/dev/null || echo "pmat: spec repo (minimal Rust sources)"
+          echo ""
+          echo "--- Quality targets ---"
+          echo "Contracts: $(ls contracts/*.yaml | wc -l) YAML contracts"
+          echo "Rust tests: $(grep -c '#\[test\]' tests/sovereign_stack.rs) integration tests"
+          echo "CI workflows: $(ls .github/workflows/*.yml | wc -l) workflows"

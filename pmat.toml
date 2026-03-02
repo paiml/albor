@@ -1,0 +1,24 @@
+# pmat configuration for albor
+# TDG tracking and quality analysis
+
+[system]
+project_name = "albor"
+default_toolchain = "rust"
+
+[quality]
+max_complexity = 25
+max_cognitive_complexity = 25
+min_coverage = 80.0
+allow_satd = false
+require_docs = true
+lint_compliance = true
+fail_on_violation = true
+
+[analysis]
+include_patterns = ["**/*.rs"]
+exclude_patterns = ["**/target/**", ".venv/**"]
+
+[tdg]
+enabled = true
+history_tracking = true
+baseline_file = ".pmat-baseline.json"

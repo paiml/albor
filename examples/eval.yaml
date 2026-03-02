@@ -1,0 +1,19 @@
+# Example: Evaluate a trained model
+# Usage: python scripts/eval-perplexity.py checkpoints/example-50m/ \
+#          --data data/pretokenized-2048/val/val.parquet \
+#          --max-sequences 50 --seq-len 128
+
+eval:
+  type: perplexity
+  model_path: checkpoints/example-50m/
+  data_path: data/pretokenized-2048/val/val.parquet
+  max_sequences: 50
+  seq_len: 128
+  threshold: 200
+
+code_eval:
+  type: pass_at_k
+  benchmark: configs/eval/python-basic.jsonl
+  k: [1, 5, 10]
+  temperature: 0.8
+  max_tokens: 256

@@ -1,0 +1,9 @@
+# Clippy configuration for albor
+# Sovereignty linting: enforce Rust-idiomatic patterns across the stack.
+# See CLAUDE.md §2 for engineering discipline rules.
+
+# Cognitive complexity threshold (keep functions simple)
+cognitive-complexity-threshold = 25
+
+# Maximum lines of a function body
+too-many-lines-threshold = 100

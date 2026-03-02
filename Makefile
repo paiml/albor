@@ -18,6 +18,7 @@
         eval-suite-50m eval-suite-350m \
         validate-checkpoint-50m validate-checkpoint-350m validate-convergence \
         training-status \
+        test test-rust clippy bench security-audit reproduce \
         book book-serve dogfood dogfood-batuta dogfood-playbook \
         lint clean help
 
@@ -65,12 +66,46 @@ validate-makefile: ## Lint Makefile with bashrs (sovereign Makefile linter)
 # LINT (bashrs is KING of linting)
 # ═══════════════════════════════════════════════════════════
 
-lint: ## Lint all shell artifacts with bashrs
+lint: ## Lint all shell artifacts with bashrs + clippy
 	@echo "--- bashrs make lint ---"
 	@bashrs make lint Makefile
 	@echo ""
 	@echo "--- bashrs classify Makefile ---"
 	@bashrs classify Makefile --multi-label
+	@echo ""
+	@echo "--- cargo clippy (sovereignty linting) ---"
+	@cargo clippy --all-targets -- -D warnings
+
+# ═══════════════════════════════════════════════════════════
+# TEST (Rust integration tests)
+# ═══════════════════════════════════════════════════════════
+
+test: test-rust ## Run all tests
+
+test-rust: ## Run Rust integration tests (sovereign stack validation)
+	@echo "--- cargo test (sovereign stack integration) ---"
+	@cargo test --verbose
+
+# ═══════════════════════════════════════════════════════════
+# SECURITY (supply chain + advisory audit)
+# ═══════════════════════════════════════════════════════════
+
+clippy: ## Run clippy sovereignty linting
+	cargo clippy --all-targets -- -D warnings
+
+bench: ## Run benchmarks (performance regression gate)
+	@echo "--- cargo bench (sovereign tools) ---"
+	cargo bench
+
+security-audit: ## Run cargo-deny supply chain audit
+	@echo "--- cargo deny check (license + advisories) ---"
+	@cargo deny check
+
+reproduce: ## Reproduce training (gold standard reproducibility)
+	@echo "--- Reproduce 50M validation model ---"
+	@echo "Config: configs/train/pretrain-50m-quick.yaml"
+	@echo "Expected: loss 10.3 → 4.4 in 31 steps"
+	apr train apply --task pretrain --config configs/train/pretrain-50m-quick.yaml
 
 # ═══════════════════════════════════════════════════════════
 # PLAN (dry-run, estimate resources)

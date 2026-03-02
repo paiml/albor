@@ -1,0 +1,44 @@
+# Example: Pre-train a 50M parameter model
+# Usage: apr train apply --task pretrain --config examples/pretrain.yaml
+#
+# This is the minimal config for a pre-training run. See configs/train/
+# for production configs with full hyperparameter tuning.
+
+model:
+  architecture: llama
+  hidden_size: 512
+  num_layers: 12
+  num_attention_heads: 8
+  num_kv_heads: 2
+  intermediate_size: 2048
+  vocab_size: 32768
+  max_position_embeddings: 2048
+
+training:
+  batch_size: 4
+  gradient_accumulation: 4
+  max_steps: 100
+  learning_rate: 6.0e-4
+  weight_decay: 0.1
+  warmup_steps: 10
+  mixed_precision: fp16
+  save_interval: 50
+
+optimizer:
+  type: adamw
+  beta1: 0.9
+  beta2: 0.95
+  epsilon: 1.0e-8
+  max_grad_norm: 1.0
+
+data:
+  train_path: data/pretokenized-2048/train/
+  val_path: data/pretokenized-2048/val/
+  seq_len: 128
+
+tokenizer:
+  path: models/albor-tokenizer-v2/tokenizer.json
+  type: byte_level_bpe
+
+output:
+  checkpoint_dir: checkpoints/example-50m/

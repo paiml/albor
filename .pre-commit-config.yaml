@@ -1,0 +1,32 @@
+# Pre-commit hooks for albor
+# Jidoka: catch issues early, before CI
+repos:
+  - repo: local
+    hooks:
+      - id: yaml-lint
+        name: Validate YAML configs
+        entry: python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))"
+        language: system
+        files: '\.(yaml|yml)$'
+        types: [file]
+
+      - id: cargo-clippy
+        name: Clippy sovereignty linting
+        entry: cargo clippy --all-targets -- -D warnings
+        language: system
+        files: '\.rs$'
+        pass_filenames: false
+
+      - id: cargo-test
+        name: Rust integration tests
+        entry: cargo test
+        language: system
+        files: '\.rs$'
+        pass_filenames: false
+
+      - id: cargo-deny
+        name: Supply chain audit
+        entry: cargo deny check
+        language: system
+        files: 'Cargo\.(toml|lock)$'
+        pass_filenames: false

@@ -1,0 +1,41 @@
+# Data Catalog — Sovereign Data Governance
+# Classification: Internal/Research
+# Lifecycle: Retained for reproducibility
+
+datasets:
+  pretokenized-2048-train:
+    purpose: "Pre-training data for 350M model"
+    classification: internal
+    format: parquet
+    location: data/pretokenized-2048/train/
+    sequences: 22000
+    lifecycle: retained
+
+  pretokenized-2048-val:
+    purpose: "Validation data for perplexity evaluation"
+    classification: internal
+    format: parquet
+    location: data/pretokenized-2048/val/
+    sequences: 814
+    lifecycle: retained
+
+  pretokenized-128-train:
+    purpose: "50M validation model training data"
+    classification: internal
+    format: parquet
+    location: data/pretokenized-128/train/
+    lifecycle: retained
+
+  albor-tokenizer-v2:
+    purpose: "ByteLevel BPE tokenizer (32K vocab)"
+    classification: internal
+    format: json
+    location: models/albor-tokenizer-v2/tokenizer.json
+    lifecycle: versioned
+
+data_lineage:
+  raw_source: "Python code corpus (100K lines)"
+  tokenization: "alimentar tokenize → ByteLevel BPE v2"
+  pretokenization: "alimentar → Parquet (seq_len=2048)"
+  training: "entrenar CudaTransformerTrainer → SafeTensors"
+  inference: "realizar run → code completion"
