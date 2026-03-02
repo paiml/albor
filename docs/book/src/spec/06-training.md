@@ -229,12 +229,24 @@ monitoring:
 
 ```bash
 # Terminal 1 (lambda): Run training
-apr train apply configs/train/pretrain-350m.yaml --seed 42
+apr train apply --task pretrain --config configs/train/pretrain-350m.yaml
 
 # Terminal 2 (lambda or ssh): Attach live monitor (presentar TUI)
 apr monitor ./checkpoints/albor-base-350m/
 
-# Terminal 3: Browse past experiments from SQLite
+# Terminal 2 (alternative): JSON output for LLM agents / CI
+apr monitor --json ./checkpoints/albor-base-350m/
+
+# Discover all active training runs (reads global SQLite registry)
+apr monitor
+
+# List past experiments from SQLite registry
+apr runs ls --global
+
+# Show detailed metrics for a specific run
+apr runs show <run-id> --global --json
+
+# Browse past experiments from SQLite
 apr experiment view --db .entrenar/experiments.db
 
 # Compare loss curves across runs
@@ -268,22 +280,32 @@ checkpoints/albor-base-350m/
 └── checkpoint-best.json
 ```
 
-**Durable (SQLite experiment store)** — for post-hoc analysis and comparison:
+**Durable (dual SQLite experiment stores)** — for post-hoc analysis and comparison:
 ```
-.entrenar/experiments.db        # WAL mode, concurrent-safe
-├── experiments                 # Experiment metadata (name, description, config)
-├── runs                        # Training runs per experiment (status, timestamps)
-├── params                      # Hyperparameters per run (key/value/type)
-├── metrics                     # All metrics per run (key, step, value, timestamp)
-├── artifacts                   # Model artifacts (path, size, SHA-256, binary data)
-└── span_ids                    # Distributed trace integration
+checkpoints/albor-base-350m/.entrenar/
+└── experiments.db              # Local per-experiment store (WAL mode)
+    ├── experiments             # Experiment metadata (name, description, config)
+    ├── runs                    # Training runs (status, timestamps)
+    ├── params                  # Hyperparameters (key/value/type)
+    ├── metrics                 # Per-step metrics (loss, lr, tok/s, timestamp)
+    ├── artifacts               # Model artifacts (path, size, SHA-256)
+    └── span_ids                # Distributed trace integration
+
+~/.entrenar/
+└── experiments.db              # Global cross-machine registry (WAL mode)
+    └── (same schema)           # All runs across all experiments
 ```
 
-**Two consumers, zero contention**:
+**`PretrainTracker`** (ALB-055/056) writes to both stores on every log interval.
+All operations are best-effort — storage failures never block training.
+
+**Three consumers, zero contention**:
 - `apr monitor` reads `training_state.json` (atomic write-then-rename) for
   live dashboards. Multiple monitors attach simultaneously.
-- `apr experiment` reads `.entrenar/experiments.db` (WAL mode) for
-  cross-run comparison, metric queries, artifact tracking. Read-only during
+- `apr runs ls` reads `~/.entrenar/experiments.db` (global registry) for
+  cross-experiment history. Supports `--json` for LLM agent consumption.
+- `apr experiment` reads local `.entrenar/experiments.db` (WAL mode) for
+  per-run metric queries and artifact tracking. Read-only during
   training — no lock contention with the writer.
 
 #### 6.6.5 Presentar Visualization: Rich Terminal Dashboards
