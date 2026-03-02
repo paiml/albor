@@ -154,7 +154,99 @@ falsification tests for Albor's key properties.
   if_fails: "Quantization calibration data insufficient or block size wrong"
 ```
 
-## 12.5 Verification DAG (Albor End-to-End)
+## 12.5 Brick Profiling Architecture
+
+Training a 350M model on a single 4090 is a systems engineering problem, not
+a scaling problem. Every watt of GPU silicon must be accounted for. The
+architecture achieves this by treating each component as a **brick** — a
+self-contained unit with measurable inputs, outputs, and a provable contract.
+
+### 12.5.1 Three Granularities of Profiling
+
+**Per-kernel.** Every CUDA kernel (`gemm_forward`, `silu_backward`,
+`rms_norm_forward`, `batched_transpose_forward`, etc.) is individually
+measurable via `compute-sanitizer`, `nsys`, or `nvprof`. When a kernel
+misbehaves, the brick boundary isolates the failure to a single function with
+known input/output shapes. The contract for each kernel specifies buffer size
+invariants that can be checked statically.
+
+**Per-block.** `CudaTransformerBlock` encapsulates one transformer layer's
+forward, backward, and optimizer step as a single GPU-resident unit. Diagnostic
+sampling after backward (downloading 1K elements from each gradient buffer)
+immediately distinguishes "math is wrong" (NaN in gradients) from "math is
+right but magnitudes are wrong" (gradient explosion). The brick boundary
+separates kernel correctness from training dynamics.
+
+**Per-transfer.** The 3-transfer-per-step contract (`C-GPUTRAIN-002`) fixes
+the PCIe budget:
+
+```
+Transfer 1 (H2D): embedding hidden states   ~S×H×4 bytes
+Transfer 2 (D2H): logits for cross-entropy  ~S×V×4 bytes
+Transfer 3 (H2D): grad_logits to GPU        ~S×V×4 bytes
+```
+
+Any deviation from 3 transfers is a bug, not a tuning knob. For 350M at
+seq=2048: total ~544 MB/step, overhead ~17 ms on PCIe 4.0 x16 — under 5%
+of compute time.
+
+### 12.5.2 Chain of Thought: How Brick Boundaries Diagnose Bugs
+
+When a training run fails, the brick architecture converts "something is
+broken" into a structured diagnosis:
+
+1. **Which granularity?** Check per-transfer (D2D size mismatch?), per-block
+   (which layer's backward fails?), per-kernel (which GEMM overflows?).
+2. **Local or global?** If one block fails and others succeed, the bug is in
+   that block's kernels. If all blocks succeed but loss diverges, the bug is in
+   training dynamics (LR, grad clipping, optimizer config).
+3. **Static or dynamic?** Buffer overflow is a static invariant violation
+   (detectable by algebraic dimension checking). Gradient explosion is a
+   dynamic stability issue (detectable by runtime sampling).
+
+### 12.5.3 Five Whys: From Symptom to Root Cause
+
+The brick architecture enforces a disciplined root-cause chain. Concrete
+example from dogfooding:
+
+| Why | Finding | Brick boundary |
+|-----|---------|----------------|
+| **Why does 350M training produce NaN at step 2?** | Gradients reach 1e35, AdamW produces NaN weights | Per-block sampling: `grad_gate max=3.28e35` |
+| **Why are gradients 1e35?** | 24-layer backward amplifies without clipping | Per-transfer: config has `grad_clip: 1.0` but CUDA path ignores it |
+| **Why no gradient clipping in CUDA path?** | `CudaTransformerTrainer` copied from finetuning (pre-trained weights, small grads) | Brick mismatch: finetuning brick assumed well-conditioned weights |
+| **Why wasn't this caught by the GPU training contract?** | Contract validates kernel correctness + transfer count, not training stability | Contract gap: no `C-TRAINSTABLE-001` obligation |
+| **Why doesn't the contract cover stability?** | Contracts target kernel-level (local) correctness, not loop-level (global) dynamics | **Action**: add training-stability contract bridging kernel and loop levels |
+
+This same pattern resolved four bugs during ALB-040 dogfooding:
+
+| Bug | Profiling diagnosis | Contract that prevents recurrence |
+|-----|--------------------|------------------------------------|
+| ALB-043: `silu_backward` writes `[S,I]` into `[S,H]` buffer (4x overflow) | `compute-sanitizer` pinpoints illegal address in `silu_backward` | Buffer size invariant: output must be `[S, intermediate_size]` |
+| ALB-041: D2D copy size mismatch in `backward_attention` | Error logged at exact block index; `gate_out` used as `grad_hidden` temp | D2D invariant: `src.len() == dst.len()` for `copy_from_buffer_async` |
+| `backward_attention`: transpose `attn_scores [H,S,S]` into `attn_kv_temp2 [H,S,hd]` | Algebraic trace: `16×512×512 = 4.2M` into 524K buffer = 8x overflow | Transpose output buffer invariant: `output.len() >= batch × rows × cols` |
+| `gpu_forward`: D2D copy fails when `seq_len < max_seq_len` | All forwards return None; traced to `PAR-023` size mismatch | Forward buffer invariant: input/output buffers at `max_seq_len` size |
+
+### 12.5.4 How Bricks and Contracts Interlock
+
+The gap register (§11) is the feedback loop between profiling and contracts:
+
+```
+Brick profiling finds anomaly
+  → File gap (ALB-0XX)
+    → Write or update contract obligation
+      → Fix upstream brick
+        → Verify contract passes (`pv audit`)
+          → Dogfood in albor pipeline
+            → Close gap
+```
+
+Profiling finds bugs that contracts miss (runtime-only issues like gradient
+explosion). Contracts prevent bugs that profiling misses (the 50M model's 2x
+buffer overflow "worked" through undefined behavior — only a static size
+invariant would have caught it). Together they form a ratchet: every bug found
+by profiling becomes a permanent contract obligation that prevents recurrence.
+
+## 12.6 Verification DAG (Albor End-to-End)
 
 Like the Qwen 3.5 verification DAG in provable-contracts, Albor composes
 sub-contracts into a full model verification:
