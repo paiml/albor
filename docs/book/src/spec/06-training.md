@@ -142,14 +142,17 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 
 | Config | Steps | Loss | Time | Status |
 |--------|-------|------|------|--------|
-| 50M test (seq=512, batch=4) | 50 | 10.39→6.07 | 396s | PASS |
-| 350M full (seq=1024, batch=4, accum=128) | 5000 | IN PROGRESS | ~20h | RUNNING |
+| 50M quick (seq=512, batch=4) | 5 | 10.42→9.45 | ~10s | PASS (post ALB-059 fix) |
+| 350M test (seq=512, batch=4) | 50 | 10.39→5.92 (best 5.53) | ~400s | PASS (post ALB-059 fix) |
+| 350M full (seq=1024, batch=4, accum=128) | 5000 | TBD | ~20h | PENDING |
 
-**Training stability contracts verified (ALB-044):**
+**Training stability contracts verified (ALB-044, ALB-059):**
 - C-EMBED-GRAD-001: Activation gradient clipped at GPU→CPU boundary
 - C-HYPERPARAMS-001: All optimizer params flow from YAML config
 - C-BUFSIZE-001: Buffer sizes algebraically verified (ALB-043 fix)
 - C-GRADFLOW-001: All trainable parameters receive gradients (ALB-038 fix)
+- C-GEMMARGS-001: GEMM backward constructor args match documented order (ALB-059 fix)
+- C-GPUINIT-001: All optimizer m/v buffers zero-initialized (ALB-059 fix)
 
 ### 6.5 Checkpointing Strategy
 

@@ -88,7 +88,7 @@
 | `pv validate` (GPU) | `pv validate contracts/training-gpu-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-040 |
 | `apr train apply` (50M CUDA) | `apr train apply --config pretrain-50m-v2-test.yaml` | **PASS** (3 steps, loss 10.4→11.7, GPU forward+backward) | ~~ALB-041~~ FIXED |
 | `apr eval` (50M safetensors) | `apr eval checkpoints/albor-base-50m/model.safetensors --dataset custom` | **FAIL** (PPL 679,614 — weights ignored) | ~~ALB-037~~ FIXED |
-| `apr train apply` (350M CUDA test) | `apr train apply --config pretrain-350m-cuda-test.yaml` | **PASS** (50 steps, 396s, loss 10.39→6.07, best 5.51, checkpoint saved) | ~~ALB-043~~ ~~ALB-044~~ FIXED |
+| `apr train apply` (350M CUDA test) | `apr train apply --config pretrain-350m-cuda-test.yaml` | **PASS** (50 steps, ~400s, loss 10.39→5.92, best 5.53, checkpoint saved) | ~~ALB-043~~ ~~ALB-044~~ ~~ALB-059~~ FIXED |
 | `realizar run` (350M) | `realizar run checkpoints/albor-350m-cuda-test/model.safetensors "def fibonacci(" --raw` | **PASS** (218 tensors loaded, 50 tokens generated, 1.0 tok/s) | ~~ALB-037~~ FIXED |
 | `eval-perplexity.py` (350M validate) | `python scripts/eval-perplexity.py checkpoints/albor-350m-cuda-test/ --validate-checkpoint` | **PASS** (weights trained, layers distinct) | — |
 | `eval-perplexity.py` (350M perplexity) | `python scripts/eval-perplexity.py checkpoints/albor-350m-cuda-test/ --data val.parquet --max-sequences 3 --seq-len 64` | **PASS** (PPL 31,926 — finite, consistent with 50-step model) | — |
@@ -113,6 +113,9 @@
 | `apr monitor` (widget composition) | `TrainingDashboard` composes `Layout`, `Border`, `Meter`, `GpuPanel`, `Sparkline`, `Text` | **PASS** (builds clean, widget tree rebuilt each frame, panel verification wired) | ~~ALB-057~~ FIXED |
 | `apr experiment view --global --json` | `apr experiment view --global --json` | **PASS** (JSON output with experiments, run_ids, loss_values, params from SQLite) | ~~ALB-024~~ FIXED |
 | `apr experiment view --global` | `apr experiment view --global` | **PASS** (ratatui TUI: run table, sparkline, braille loss chart, j/k navigation) | ~~ALB-024~~ FIXED |
+| `apr train apply` (50M post-fix) | `apr train apply --config pretrain-50m-quick.yaml` | **PASS** (5 steps, loss 10.42→9.45, GEMM backward now correct) | ~~ALB-059~~ FIXED |
+| `apr train apply` (350M post-fix) | `apr train apply --config pretrain-350m-cuda-test.yaml` | **PASS** (50 steps, loss 10.39→5.92, best 5.53, zero NaN, correct backward gradients) | ~~ALB-059~~ FIXED |
+| `realizar run` (350M post-fix) | `realizar run checkpoints/albor-350m-cuda-test/model.safetensors "def fibonacci("` | **PASS** (218 tensors, generates tokens from correctly-trained weights) | ~~ALB-059~~ FIXED |
 
 ## Contract Validation Detail
 

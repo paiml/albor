@@ -17,12 +17,13 @@
 - ~~ALB-037: realizar ignores loaded weights~~ **FIXED** (e2e verified: `realizar run` loads 350M trained checkpoint, generates tokens from 218 tensors)
 - ~~ALB-043 (Critical): backward_ffn buffer overflow + missing SwiGLU gradients~~ **FIXED** (`entrenar@f7805f1`)
 - ~~ALB-044 (Critical): activation gradient clipping + CPU optimizer hyperparams~~ **FIXED** (`entrenar@86eec38`)
-- ~~ALB-040: GPU-resident pretraining~~ **VERIFIED** — 350M CUDA test: 50 steps, loss 10.39→6.07, checkpoint valid, realizar inference works
+- ~~ALB-059 (Critical): GEMM backward constructor n/k swapped — buffer overflow into optimizer states~~ **FIXED** (`entrenar@846ae0c`)
+- ~~ALB-040: GPU-resident pretraining~~ **VERIFIED** — 350M CUDA test: 50 steps, loss 10.39→5.92, checkpoint valid, realizar inference works
 - ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
 
-**350M CUDA test results (50 steps):**
-- Loss: 10.39 → 6.07 (best: 5.51) — clear convergence
-- Training time: 396.2s (~7.9s/step)
+**350M CUDA test results (50 steps, post ALB-059 fix):**
+- Loss: 10.39 → 5.92 (best: 5.53) — clear convergence with correct GEMM backward
+- Training time: ~400s (~8s/step)
 - Checkpoint: 1.59 GB SafeTensors, 218 tensors, config.json saved
 - Checkpoint validation: PASS (weights trained, layers distinct)
 - realizar inference: loads model, generates tokens (gibberish at 50 steps — expected)

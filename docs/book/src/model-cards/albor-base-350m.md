@@ -32,7 +32,7 @@ pre-tokenized data. It serves as the foundation for:
 - **Epochs**: 1 (single pass over 22,079 sequences)
 - **Batches**: 2,760 micro-batches, ~86 optimizer steps
 - **Max Steps**: 5,000 (config; training completes at ~86 steps due to data size)
-- **Loss (50-step test)**: 10.39 → 6.07 (best 5.51) — convergence verified
+- **Loss (50-step test)**: 10.39 → 5.92 (best 5.53) — convergence verified (post ALB-059 GEMM backward fix)
 - **Perplexity (50-step test)**: ~31,926 (finite; random baseline ~32,768)
 - **Loss (full run)**: TBD (5000-step training in progress)
 - **Perplexity (full run)**: TBD
@@ -50,7 +50,7 @@ pre-tokenized data. It serves as the foundation for:
 
 | ID | Prediction | Status |
 |----|-----------|--------|
-| FALSIFY-ALBOR-001 | Loss decreases monotonically | CORROBORATED (50M: 10.3→4.42; 350M CUDA 50-step: 10.39→6.07) |
+| FALSIFY-ALBOR-001 | Loss decreases monotonically | CORROBORATED (50M: 10.3→4.42; 350M CUDA 50-step: 10.39→5.92) |
 | FALSIFY-ALBOR-002 | Gradient norms bounded | PENDING (per-step logging available via ALB-035) |
 | FALSIFY-ALBOR-003 | Checkpoint determinism | UNTESTED |
 
@@ -58,7 +58,7 @@ pre-tokenized data. It serves as the foundation for:
 
 | Benchmark | Metric | Result |
 |-----------|--------|--------|
-| Training loss (50-step test) | cross-entropy | 10.39 → 6.07 (best 5.51) |
+| Training loss (50-step test) | cross-entropy | 10.39 → 5.92 (best 5.53) |
 | Training perplexity (50-step test) | exp(loss) | ~31,926 (finite) |
 | Checkpoint validation | weights trained? | PASS (layers distinct, not init) |
 | realizar inference | loads + generates? | PASS (218 tensors, 50 tokens generated) |
@@ -88,6 +88,10 @@ pre-tokenized data. It serves as the foundation for:
   Fixed in `entrenar@f7805f1`.
 - **ALB-044** (**FIXED**): Activation gradient clipping at GPU-CPU boundary + CPU optimizer
   hyperparams (beta2/wd mismatch). Fixed in `entrenar@86eec38`.
+- **ALB-059** (**FIXED**): GEMM backward constructor args n/k swapped — output stride
+  baked wrong into PTX, rows overflow 64× into adjacent optimizer states (m_w_k, v_w_k).
+  Negative v values → sqrt(neg) = NaN in AdamW. Also zero-initialized all optimizer
+  m/v buffers (cuMemAlloc returns uninitialized VRAM). Fixed in `entrenar@846ae0c`.
 
 ## Data Provenance
 

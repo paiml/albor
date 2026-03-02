@@ -227,6 +227,8 @@ This same pattern resolved four bugs during ALB-040 dogfooding:
 | `gpu_forward`: D2D copy fails when `seq_len < max_seq_len` | All forwards return None; traced to `PAR-023` size mismatch | Forward buffer invariant: input/output buffers at `max_seq_len` size |
 | ALB-044: Unclipped activation gradient (~1e35) overflows CPU AdamW | Per-boundary sampling: embed weights have 1298 NaN after optimizer step | C-EMBED-GRAD-001: clip activation gradient at GPU→CPU boundary |
 | ALB-044: CPU AdamW beta2=0.999 vs YAML beta2=0.95 (50x amplification) | Traced bias correction: v_hat = v/0.001 with beta2=0.999 vs v/0.05 with 0.95 | C-HYPERPARAMS-001: all optimizer fields must match YAML config |
+| ALB-059: GEMM backward constructor args n/k swapped — output stride 64× too large | Per-kernel: v_w_k[block0] corrupted during `gemm_backward_a(LM head)`. Pointer analysis: 3 contiguous 256KB allocs. Stride 32768 writes rows into m_w_k/v_w_k. | C-GEMMARGS-001: kernel constructor args must match documented parameter order |
+| ALB-059: Uninitialized optimizer m/v buffers (cuMemAlloc returns garbage) | Per-block: v_w_k nonzero before any backward op (not from overflow). `GpuBuffer::new()` ≠ zero-init. | C-GPUINIT-001: all optimizer state buffers must be zero-initialized |
 
 ### 12.5.4 How Bricks and Contracts Interlock
 
@@ -380,6 +382,59 @@ falsification: |
 anti_pattern: |
   NEVER: Reuse a buffer sized for hidden_size as temp for intermediate_size
   ALWAYS: Use dedicated buffers or verify size >= required before kernel call
+```
+
+### C-GEMMARGS-001: GEMM Kernel Constructor Argument Ordering
+
+Every GEMM kernel constructor call must pass arguments in the exact order
+documented by the kernel's API. Compile-time stride constants baked into PTX
+are determined by constructor args — wrong order produces wrong strides, not
+wrong results at the kernel boundary (bounds check passes but data lands in
+wrong memory).
+
+**Status: VERIFIED** — 350M CUDA test (50 steps) produces correct backward
+gradients. Fix in `entrenar@846ae0c`.
+
+```yaml
+motivation: |
+  GemmBackwardAKernel::tiled_unrolled(m, n, k, tile_size) bakes self.n and
+  self.k as immediate PTX constants for row/col strides. When called as
+  tiled_unrolled(m, k, n, tile) with k and n swapped, the output stride
+  becomes vocab_size (32768) instead of hidden_size (512) — writing output
+  rows 64× too far apart and overflowing into adjacent GPU allocations.
+obligation: |
+  For every kernel constructor call:
+    assert arg_order matches constructor signature exactly
+  Specifically for GEMM backward:
+    GemmBackwardAKernel::tiled_unrolled(m, n, k, tile)  # NOT (m, k, n, tile)
+    GemmBackwardBKernel::tiled_unrolled(m, n, k, tile)  # NOT (m, k, n, tile)
+falsification: |
+  FALSIFY-GEMMARGS-001: Train 350M model for 5 steps. Download v_w_k[block0]
+  after backward. Assert zero corruption (all values ≥ 0 after optimizer init,
+  no values from adjacent buffers).
+anti_pattern: |
+  NEVER: Guess argument order from variable names (m/n/k are ambiguous)
+  ALWAYS: Check constructor signature in trueno-gpu kernel source
+```
+
+### C-GPUINIT-001: GPU Buffer Zero Initialization
+
+All optimizer state buffers (m and v for AdamW) must be zero-initialized.
+`GpuBuffer::new()` uses `cuMemAlloc` which returns uninitialized VRAM —
+the contents are whatever was previously in that memory region.
+
+**Status: VERIFIED** — All 34 optimizer buffers (18 per-block + 12 LoRA + 4 LM head/norm)
+zero-initialized via `GpuBuffer::from_host(&ctx, &vec![0.0f32; n])`. Fix in `entrenar@846ae0c`.
+
+```yaml
+obligation: |
+  For every GpuBuffer used as optimizer state (m, v):
+    assert buffer is zero-initialized after allocation
+    Use GpuBuffer::from_host(&ctx, &vec![0.0f32; n])
+    NOT GpuBuffer::new(&ctx, n)  -- returns uninitialized VRAM
+falsification: |
+  FALSIFY-GPUINIT-001: Allocate optimizer state, download immediately.
+  Assert all values == 0.0.
 ```
 
 ### C-GRADFLOW-001: Gradient Flow Verification
