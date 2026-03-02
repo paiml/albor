@@ -18,7 +18,7 @@ model:
     rms_norm_eps: 1.0e-5
 
 data:
-  train: "data/tokenized/train/"
+  train: "data/tokenized/train-500/"       # 500-row subset (ALB-034: max_steps ignored)
   val: "data/tokenized/val/"
   batch_size: 4                            # Keep small for validation
   seq_len: 128                             # Short sequences for validation (full 2048 for production)

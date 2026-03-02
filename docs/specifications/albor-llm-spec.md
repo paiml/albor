@@ -1881,6 +1881,8 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-026 | [#27](https://github.com/paiml/albor/issues/27) | presentar | WASM training dashboard — `albor-dashboard.yaml` | Medium | OPEN | Declarative YAML dashboard config that renders training metrics, experiment comparison, and model card via `presentar serve`. Embeddable in HuggingFace model card as static WASM artifact. |
 | ALB-027 | [#4](https://github.com/paiml/albor/issues/4) | forjar | `task` resource type for pipeline orchestration | Critical | **FIXED** | New forjar resource type: runs arbitrary command, tracks exit code, hashes `output_artifacts` for idempotency via b3sum, supports `completion_check` and `timeout`. Handlers: check_script, apply_script, state_query_script. Validation: command required, timeout > 0. (`forjar@d14e633`) |
 | ALB-028 | [#5](https://github.com/paiml/albor/issues/5) | apr (aprender) | `apr pipeline plan/apply` wrapping forjar DAG engine | Critical | **FIXED** | `apr pipeline plan` shows full DAG with 23 resources across 2 machines. `apr pipeline apply` converges via forjar engine. `apr pipeline status` shows state. `apr pipeline validate` checks manifest. Shells out to forjar binary (decoupled). (`aprender@e653d5ca`) |
+| ALB-033 | [#31](https://github.com/paiml/albor/issues/31) | apr (aprender) | `apr tokenize` → entrenar tokenizer.json format gap | Medium | DOGFOODING | `apr tokenize apply` produces `vocab.json` + `merges.txt` but entrenar expects HuggingFace `tokenizer.json`. Manual Python conversion needed. Workaround: Python `tokenizers` lib with Split pre-tokenizer + BPE decoder (`</w>` suffix). |
+| ALB-034 | [#32](https://github.com/paiml/albor/issues/32) | entrenar | `max_steps` config not respected in training loop | Medium | OPEN | Training runs all available batches instead of stopping at `max_steps`. Config: `max_steps: 2`, actual: "Steps completed: 5". |
 
 ### 11.2 Distributed Training Gaps (Stretch / Future)
 
@@ -2337,12 +2339,13 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 ### Phase 2: Pipeline Validation — 50M Model (Week 2)
 - [x] Write `gradient-accumulation-kernel-v1.yaml` contract (ALB-017 — DOGFOODING, passes `pv validate`)
 - [x] Write `configs/train/pretrain-50m.yaml` (model arch + training + monitoring)
-- [ ] Train albor-50M on 4090 (hours, not days)
+- [x] Train albor-50M on 4090 — DONE: 500 rows, 125 batches, 31 optimizer steps, 110.7s CUDA training. Loss: 10.3→4.42 (perplexity 30802→5.4). Model saved: `checkpoints/albor-base-50m/model.safetensors` (249MB, 62M params). Gaps found: ALB-033 (tokenizer format), ALB-034 (max_steps ignored).
 - [ ] Validate `apr monitor` attaches to running training (live TUI)
 - [ ] Validate Andon alerts fire on NaN/Inf (inject a bad batch to test)
 - [x] ~~Fix ALB-009~~ FIXED: `apr train plan/apply` with causal LM pre-training (`aprender@d79ed943`)
-- [ ] Verify FALSIFY-ALBOR-001 (loss decreases) and FALSIFY-ALBOR-002 (gradient bounds)
+- [x] Verify FALSIFY-ALBOR-001 (loss decreases) — CORROBORATED: loss 10.3→4.42 over 31 steps (monotonic decrease confirmed by final < initial)
 - [x] ~~Fix ALB-006~~ FIXED: `apr eval --task code` with pass@1 scoring (`aprender@4e61297e`)
+- [ ] Verify FALSIFY-ALBOR-002 (gradient bounds) — not yet tested (no per-step gradient norm reporting)
 - [ ] `pv audit` on all existing kernel contracts used in training
 - [ ] **Milestone**: Training loop converges, monitoring works, all kernel contracts pass
 

@@ -76,6 +76,28 @@ Results:
 - Python pattern coverage: 8/8 (`def`, `return`, `self`, `import`, `class`, `for`, `if`, `in`)
 - Output: `tokenizer/vocab.json` + `tokenizer/merges.txt`
 
+## HuggingFace tokenizer.json Conversion
+
+Entrenar requires HuggingFace `tokenizer.json` format, but `apr tokenize apply`
+produces raw `vocab.json` + `merges.txt`. A Python conversion step bridges the gap
+([ALB-033](https://github.com/paiml/albor/issues/31)):
+
+```python
+from tokenizers import Tokenizer, models, pre_tokenizers, decoders
+bpe = models.BPE(vocab=vocab, merges=merges, end_of_word_suffix='</w>')
+tokenizer = Tokenizer(bpe)
+tokenizer.pre_tokenizer = pre_tokenizers.Split(pattern=' ', behavior='removed')
+tokenizer.decoder = decoders.BPEDecoder(suffix='</w>')
+tokenizer.save('models/albor-tokenizer/tokenizer.json')
+```
+
+Key details:
+- Merges must be string format (`"i n"`) not array format (`["i", "n"]`)
+- Pre-tokenizer matches aprender's `split_whitespace()` behavior
+- `</w>` end-of-word suffix matches aprender's BPE encoding
+- Regular vocab: 32,768 tokens (IDs 0-32767)
+- FIM special tokens: 3 additional (IDs 32768-32770)
+
 ## Parquet Schema
 
 All data files use a consistent schema:

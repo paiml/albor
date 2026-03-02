@@ -3,7 +3,7 @@
 > Living record of tool validation against the Albor repo.
 > Updated as gaps are discovered and resolved.
 
-## Summary (2026-03-01)
+## Summary (2026-03-02)
 
 | Tool | Command | Result | Gap |
 |------|---------|--------|-----|
@@ -73,6 +73,9 @@
 | `alimentar convert` | `alimentar convert` | **PASS** (format conversion) | — |
 | `bashrs score` | `bashrs score Makefile` | **PASS** (D grade, 5.2/10) | — |
 | `bashrs audit` | `bashrs audit Makefile` | **PASS** (comprehensive audit) | — |
+| `entrenar train` (50M) | `entrenar train pretrain-50m-test.yaml` | **PASS** (demo batches, 465ms, loss 10.34→9.67) | ALB-033 (tokenizer format) |
+| `apr train apply` (50M) | `apr train apply --task pretrain --config pretrain-50m-test.yaml` | **PASS** (10-row micro, 5 batches, 2.1s CUDA) | ALB-034 (max_steps ignored) |
+| `apr train apply` (50M full) | `apr train apply --task pretrain --config pretrain-50m.yaml` | **PASS** (500 rows, 125 batches, 31 steps, 110.7s CUDA, loss 10.3→4.42) | ALB-034 (max_steps) |
 | `entrenar validate` | `entrenar validate pretrain-350m-manifest.yaml` | **PASS** (architecture overrides bridge through) | ~~ALB-021~~ FIXED |
 | `entrenar shorthand` | `vocab_size: "32K"` in YAML manifest | **PASS** (parses to 32768) | ~~ALB-022~~ FIXED |
 | `apr merge --plan` | `apr merge a.apr b.apr --plan --strategy slerp -o merged.apr` | **PASS** (validates inputs, shows strategy, sizes) | ~~ALB-023~~ FIXED |
