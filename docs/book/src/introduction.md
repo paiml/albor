@@ -1,8 +1,8 @@
 # Albor LLM Specification
 
-**Version**: 0.3.0-draft
-**Date**: 2026-03-01
-**Status**: Draft — Brainstorm Phase
+**Version**: 0.4.0
+**Date**: 2026-03-02
+**Status**: Phase 3 — 350M Base Model Training (In Progress)
 **Author**: Noah Gift / Pragmatic AI Labs
 
 > *Albor* (Spanish: "dawn") — A sovereign Python code completion model trained
