@@ -14,6 +14,7 @@
 .PHONY: validate validate-contracts validate-forjar validate-yaml validate-makefile \
         plan-finetune plan-finetune-lora plan-pretrain-50m plan-pretrain-350m \
         train-50m train-350m \
+        eval-validate eval-perplexity-50m eval-perplexity-350m training-status \
         book book-serve dogfood dogfood-batuta dogfood-playbook \
         lint clean help
 
@@ -97,6 +98,37 @@ train-50m: ## Train 50M validation model (~2 min)
 train-350m: ## Train 350M base model (~20 hours)
 	@mkdir -p checkpoints/albor-base-350m
 	apr train apply --task pretrain --config configs/train/pretrain-350m.yaml
+
+# ═══════════════════════════════════════════════════════════
+# EVAL (benchmarks and model evaluation)
+# ═══════════════════════════════════════════════════════════
+
+eval-validate: ## Validate all canonical solutions in benchmarks
+	@echo "--- Validating python-intermediate (15 problems) ---"
+	@.venv/bin/python scripts/eval-code.py configs/eval/python-intermediate.jsonl --validate-only
+	@echo ""
+	@echo "--- Validating humaneval-subset (20 problems) ---"
+	@.venv/bin/python scripts/eval-code.py configs/eval/humaneval-subset.jsonl --validate-only
+
+eval-perplexity-50m: ## Evaluate 50M model perplexity (needs checkpoint)
+	.venv/bin/python scripts/eval-perplexity.py checkpoints/albor-base-50m/ \
+		--data data/pretokenized-128/train/train.parquet \
+		--max-sequences 50 --seq-len 128 --threshold 200
+
+eval-perplexity-350m: ## Evaluate 350M model perplexity (needs checkpoint)
+	.venv/bin/python scripts/eval-perplexity.py checkpoints/albor-base-350m/ \
+		--data data/pretokenized-2048/val/val.parquet \
+		--max-sequences 100 --seq-len 2048 --threshold 30
+
+training-status: ## Check 350M training status
+	@echo "--- Training Process ---"
+	@ps aux | grep "apr train" | grep -v grep || echo "  No training process found"
+	@echo ""
+	@echo "--- GPU Status ---"
+	@nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader 2>/dev/null || echo "  nvidia-smi not available"
+	@echo ""
+	@echo "--- Training Log (last 10 lines) ---"
+	@tail -10 checkpoints/albor-base-350m/training.log 2>/dev/null || echo "  No training log found"
 
 # ═══════════════════════════════════════════════════════════
 # BOOK (mdBook build and serve)

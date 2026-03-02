@@ -152,3 +152,21 @@ jobs:
             python3 -c "import ast; ast.parse(open('$f').read())" || exit 1
           done
           echo "All Python scripts parse successfully"
+
+  validate-eval-benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate eval benchmarks (canonical solutions)
+        run: |
+          echo "--- python-intermediate (15 problems) ---"
+          python3 scripts/eval-code.py configs/eval/python-intermediate.jsonl --validate-only
+          echo ""
+          echo "--- humaneval-subset (20 problems) ---"
+          python3 scripts/eval-code.py configs/eval/humaneval-subset.jsonl --validate-only
