@@ -97,6 +97,17 @@
 | `convert-checkpoint.py` (50M) | `python scripts/convert-checkpoint.py checkpoints/albor-base-50m/` | **PASS** (110→111 tensors, 85 reshaped, lm_head created) | ALB-037 |
 | `eval-perplexity.py --validate` | `python scripts/eval-perplexity.py checkpoints/albor-base-50m/ --validate-checkpoint` | **FAIL** → **FIXED** (ALB-038 root cause in autograd) | ~~ALB-038~~ FIXED |
 | checkpoint analysis | byte-compare layers 0-11 q_proj, gate_proj | **FAIL** → **FIXED** (all parameters now receive gradients) | ~~ALB-038~~ FIXED |
+| `apr monitor` (TUI) | `apr monitor checkpoints/albor-base-350m/` | **PASS** (presentar TUI, live GPU telemetry, loss curve, tok/s) | ~~ALB-045~~ ~~ALB-046~~ ~~ALB-047~~ ~~ALB-048~~ FIXED |
+| `apr monitor --json` | `apr monitor --json checkpoints/albor-base-350m/` | **PASS** (headless JSON with full TUI parity) | ~~ALB-053~~ ~~ALB-058~~ FIXED |
+| `apr monitor` (discover) | `apr monitor` (no args) | **PASS** (discovers active runs from global SQLite registry) | ~~ALB-054~~ FIXED |
+| `apr train apply` (SQLite) | `apr train apply --config pretrain-50m-quick.yaml` | **PASS** (creates both local + global experiments.db, logs params + metrics) | ~~ALB-055~~ ~~ALB-056~~ FIXED |
+| `apr runs ls --global` | `apr runs ls --global` | **PASS** (table output: experiment, run ID, status, loss, tok/s, duration) | ~~ALB-050~~ FIXED |
+| `apr runs ls --global --json` | `apr runs ls --global --json` | **PASS** (JSON array with all run metadata) | ~~ALB-050~~ FIXED |
+| `apr runs show` | `apr runs show <id> --global` | **PASS** (params, loss, tok/s, lr, duration) | ~~ALB-050~~ FIXED |
+| `apr runs show --json` | `apr runs show <id> --global --json` | **PASS** (clean JSON with native param values) | ~~ALB-050~~ FIXED |
+| `realizar run` (350M v2) | `realizar run checkpoints/albor-350m-cuda-test/model.safetensors "def fibonacci("` | **PASS** (24 layers, 32768 vocab, 50 tokens, 1.9 tok/s, garbage output expected from 5-step model) | — |
+| `pv audit` (all) | `pv audit contracts/*.yaml` (7 contracts) | **PASS** (0 findings, 22 equations, 43 obligations, 26 falsification tests) | — |
+| `batuta falsify --critical-only` | `batuta falsify . --critical-only` | **PARTIAL** (3/5 pass, 80.0% score, AI-01/AI-05 partial) | — |
 
 ## Contract Validation Detail
 
