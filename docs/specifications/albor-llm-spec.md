@@ -2355,7 +2355,7 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 
 ### Phase 3: Base Model — 350M Pre-Training (Week 2-4)
 - [x] Write `configs/train/pretrain-350m.yaml` — DONE: uses pre-tokenized ByteLevel BPE v2 data, 22K sequences × 2048 tokens, full monitoring + Andon alerts
-- [x] Train albor-base-350m on 4090 — STARTED: 2760 batches loaded, 398.5M params, ~6.4GB VRAM, 25.8s/batch estimated, ~20h total. PID 1647651.
+- [x] Train albor-base-350m on 4090 — v1 ABORTED (ALB-038: broken autograd). v2 STARTED: 2760 batches loaded, fixed entrenar with full gradient flow, PID 2203919.
 - [x] Build evaluation infrastructure — DONE: `scripts/eval-code.py` (pass@k code completion), `scripts/eval-perplexity.py` (pure-Python transformer inference), `scripts/convert-checkpoint.py` (reshape 1D→2D SafeTensors). Benchmarks: 15 intermediate + 20 HumanEval problems, all canonical solutions validated.
 - [ ] Discovered ALB-037: realizar ignores loaded weights during inference (GitHub #35). Blocks `apr eval` and `apr serve`. Workaround: pure-Python inference script.
 - [x] **FIXED ALB-038**: Root cause was broken autograd in `RMSNorm::forward_batched()` (no backward op) and `MultiHeadAttention::forward()` (Q/K/V gradient chain broken). Fixed in `entrenar@91ba9da` and `entrenar@1ede409`. All 20 model parameters now receive gradients. Re-training required.

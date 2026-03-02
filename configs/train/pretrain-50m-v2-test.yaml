@@ -1,0 +1,41 @@
+# Quick test config — 50M model with pretokenized micro data
+# Purpose: verify ALB-038 fix (checkpoint differs from init)
+model:
+  path: "."
+  mode: transformer
+  architecture:
+    hidden_size: 512
+    num_hidden_layers: 12
+    num_attention_heads: 8
+    num_key_value_heads: 2
+    intermediate_size: 2048
+    vocab_size: 32768
+    max_position_embeddings: 2048
+    rms_norm_eps: 1.0e-5
+
+data:
+  train: "data/pretokenized-2048/train-micro/"
+  val: "data/pretokenized-2048/val/"
+  batch_size: 2
+  seq_len: 128
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 0
+  gradient_accumulation: 1
+  mixed_precision: "fp16"
+  output_dir: "./checkpoints/albor-50m-alb038-test"
+  save_interval: 1
+  max_steps: 3
