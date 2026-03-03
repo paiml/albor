@@ -136,6 +136,12 @@
 | `apr distill --stage precompute` (3B) | `apr distill --config distill-qwen3b.yaml --stage precompute` | **PASS** (434 tensors, 5.75 GiB, sharded SafeTensors loaded) | — |
 | `realizar run` (3B sharded) | `realizar run qwen2.5-coder-3b/model-00001-of-00002.safetensors` | **FAIL** (sharded SafeTensors not supported — model.norm.weight in shard 2) | — |
 | C-TRAINCFG-001 pre-flight (v2) | `python3 -c "..."` (algebraic check) | **PASS** (67977 seqs, 132 steps/epoch, 38 epochs, warmup=500=10%) | ALB-060 |
+| `alimentar dedup` | `alimentar dedup data.parquet -o dedup.parquet` | **PASS** (exact dedup by text column, found 2 dups in 1843 rows) | — |
+| `alimentar filter-text` | `alimentar filter-text data.parquet -o filtered.parquet --threshold 0.4` | **PASS** (composite scoring: alnum ratio, line length, dup lines, entropy) | — |
+| `apr eval --task humaneval` | `apr eval model.safetensors --task humaneval --data humaneval.jsonl` | **PASS** (20/20 problems validated, pass@1/10/100 metrics, JSON output) | — |
+| `apr eval --task contamination` | `apr eval model.safetensors --task contamination --data train.jsonl` | **PASS** (10-gram Jaccard overlap, 0/179 contaminated) | — |
+| `apr eval --task compare` | `apr eval model_a.safetensors --task compare --data model_b.safetensors` | **PASS** (side-by-side: size, tensors, format, ratio) | — |
+| `apr train watch` | `apr train watch --config pretrain-350m-v2.yaml` | **PASS** (crash recovery, exponential backoff, GPU diagnostics, crash-reports JSON) | — |
 
 ## ALB-060: Training Config Epoch/Step Mismatch (Critical)
 
@@ -765,33 +771,33 @@ Levanter, GPT-NeoX) against entrenar/albor sovereign stack.
 | Category | Before | After | Max |
 |----------|--------|-------|-----|
 | Checkpointing | 2.5 | 10.0 | 10 |
-| Fault tolerance | 2.0 | 6.5 | 10 |
+| Fault tolerance | 2.0 | 9.5 | 10 |
 | Observability | 4.5 | 10.0 | 10 |
 | Mixed precision | 0.5 | 0.5 | 5 |
-| Gradient management | 4.5 | 6.5 | 10 |
-| Data pipeline | 4.5 | 5.5 | 10 |
-| LR & optimization | 3.0 | 4.0 | 5 |
-| Evaluation | 1.0 | 3.0 | 10 |
+| Gradient management | 4.5 | 7.5 | 10 |
+| Data pipeline | 4.5 | 8.5 | 10 |
+| LR & optimization | 3.0 | 4.5 | 5 |
+| Evaluation | 1.0 | 7.0 | 10 |
 | Distributed | 0.0 | 0.0 | 10 |
 | Reproducibility | 2.5 | 3.5 | 5 |
 | Security | 2.0 | 3.5 | 5 |
-| Configuration | 2.5 | 3.5 | 5 |
+| Configuration | 2.5 | 4.5 | 5 |
 | Provable correctness | 4.5 | 4.5 | 5 |
-| **Total** | **34** | **61** | **100** |
+| **Total** | **34** | **73.5** | **100** |
 
-**Grade: F (34%) → D (61%)**. 27 MLOps features implemented across 6 batches.
+**Grade: F (34%) → C (73%)**. 39 MLOps features implemented across 8 batches.
+All features are **pure Rust** — no Python scripts count toward the score.
 
-**Implemented (27 items, batches 1-6)**:
+**Implemented (39 items, batches 1-8)**:
 - Checkpointing (10/10): optimizer state persistence, async save, step-numbered retention, integrity verification, training state, data loader state, LR scheduler state, RNG state, full resume
-- Fault tolerance: graceful SIGINT shutdown, heartbeat, NaN detection, loss spike rollback, ZClip, multi-checkpoint retention
+- Fault tolerance (9.5/10): auto-restart (`apr train watch`), crash diagnostics, heartbeat monitoring, graceful SIGINT shutdown, NaN detection, loss spike rollback, ZClip, multi-checkpoint retention
 - Observability (10/10): gradient norm, MFU, GPU memory, step timing, JSONL+SQLite experiment tracking, real-time TUI dashboard
-- Gradient: B_noise estimation, ZClip adaptive spike detection, NaN/Inf skip
-- Data: shuffling per epoch, validation perplexity at checkpoints
-- Config/provenance: config snapshot, data provenance, audit trail
+- Gradient: B_noise estimation, ZClip adaptive spike detection, NaN/Inf skip, per-parameter-group grad norms (R-040)
+- Data (8.5/10): shuffling per epoch, validation perplexity at checkpoints, dedup (`alimentar dedup`), quality filtering (`alimentar filter-text`), curriculum learning (R-023)
+- Evaluation (7/10): HumanEval pass@k (`apr eval --task humaneval`), contamination detection (`apr eval --task contamination`), model comparison (`apr eval --task compare`), validation perplexity, intermediate checkpoint eval
+- Config/provenance: config snapshot, data provenance, audit trail, hyperparameter sweep config
 
-**Remaining (10 open issues)**: R-002 BF16, R-019 data dedup, R-020 HumanEval,
-R-021 activation checkpointing, R-022 data quality, R-023 curriculum learning,
-R-027 hyperparameter sweep, R-030 contamination, R-031 model comparison.
+**Remaining (3 open issues)**: R-002 BF16 (#118), R-021 activation checkpointing (#115), clean-room A2 (#97).
 
 Full survey: `entrenar/docs/specifications/world-class-mlops-survey.md`
 
