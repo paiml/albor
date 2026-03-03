@@ -81,3 +81,31 @@ The ground truth corpora should be distilled **first** — they are our highest
 quality data and benefit most from teacher knowledge. Scale to 2B with broader
 StarCoder data if benchmarks justify the compute. Python-only focus means all
 teacher compute goes toward the language we care about.
+
+### 4.6 Interim Teacher: Qwen2.5-Coder-3B (Unblocking Distillation)
+
+ALB-010 (Qwen3-Coder-Next 80B MoE support in realizar) is a 3-4 week blocker
+requiring DeltaNet attention + MoE routing implementation. To unblock
+distillation NOW, we use **Qwen2.5-Coder-3B** as an interim teacher:
+
+| Property | Value |
+|----------|-------|
+| Model | [Qwen2.5-Coder-3B](https://huggingface.co/Qwen/Qwen2.5-Coder-3B) |
+| Parameters | 3B (dense) |
+| Architecture | Qwen2 (standard transformer — already supported by realizar) |
+| Compression ratio | 8.6× (3B → 350M) — within recommended 5-20× range |
+| CPU inference | ~12 GB RAM, ~2 tok/s on 48 cores |
+| License | Apache 2.0 |
+
+**Why this works**:
+- Already supported by realizar's Qwen2 architecture loader (no MoE/DeltaNet)
+- `apr distill --stage precompute` verified working with 3B teacher (2026-03-03)
+- Sharded SafeTensors handled by RosettaStone in apr (not by realizar directly)
+- CPU precompute feasible on lambda box (~12 GB RAM)
+
+**Config**: `configs/train/distill-qwen3b.yaml` — teacher: Qwen2.5-Coder-3B,
+student: albor-base-350m, temperature=4.0, alpha=0.5, LoRA rank 16.
+
+**Limitation**: 3B teacher has weaker code capabilities than 80B. Distillation
+quality ceiling is lower. ALB-010 (80B teacher) remains the stretch goal for
+maximum HumanEval improvement.

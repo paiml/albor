@@ -140,11 +140,40 @@ Training data pre-tokenized and chunked for efficient training:
 
 | Dataset | Sequences | Seq Length | Total Tokens | Format |
 |---------|-----------|-----------|--------------|--------|
-| pretokenized-2048/train | 22,079 | 2048 | 45.2M | Parquet (input_ids: List<u32>) |
-| pretokenized-2048/val | 814 | 2048 | 1.7M | Parquet (input_ids: List<u32>) |
+| pretokenized-2048/train (v1) | 22,079 | 2048 | 45.2M | Parquet (input_ids: List&lt;u32&gt;) |
+| pretokenized-2048/val | 814 | 2048 | 1.7M | Parquet (input_ids: List&lt;u32&gt;) |
+| pretokenized-2048-v2/train | 67,977 | 2048 | 139M | Parquet (input_ids: List&lt;u32&gt;) |
+| pretokenized-2048-v2/val | 814 | 2048 | 1.7M | Parquet (reused from v1) |
 
 Pre-tokenization avoids the entrenar↔aprender BPE compatibility issue (ALB-033)
 and enables direct `input_ids` column loading.
+
+## v2 Data Expansion (2026-03-03)
+
+The v2 dataset expands from Tier 1 only to Tier 1 (10x upsampled) + 8 Tier 2 repos:
+
+| Source | Type | Files | Weight |
+|--------|------|-------|--------|
+| depyler | Tier 1 | 1,843 | 10x |
+| hf-ground-truth | Tier 1 | 11,493 | 10x |
+| jax-ground-truth | Tier 1 | 2,637 | 10x |
+| vllm-ground-truth | Tier 1 | 1,100 | 10x |
+| pytorch | Tier 2 | 3,801 | 1x |
+| hf-repos | Tier 2 | 19,781 | 1x |
+| mlflow | Tier 2 | 1,780 | 1x |
+| vllm-full | Tier 2 | 2,239 | 1x |
+| tgi | Tier 2 | 372 | 1x |
+| algo-corpus | Tier 2 | 186 | 1x |
+| cuda-python | Tier 2 | 157 | 1x |
+| llms-with-hf | Tier 2 | 37 | 1x |
+
+**Pipeline**: source-to-parquet.py → alimentar mix → alimentar fim (50% PSM) → pretokenize.py
+
+**Key finding**: `alimentar import local` expects data files (CSV/JSON/Parquet),
+not source code directories. The workaround script `scripts/source-to-parquet.py`
+converts Python repos to Parquet with the Tier 1 schema (file, source, text columns).
+
+**Result**: 45,420 mixed rows → 67,977 pretokenized sequences × 2048 = 139M tokens (191 MiB).
 
 ## Tools Used
 
@@ -153,4 +182,5 @@ and enables direct `input_ids` column loading.
 - `alimentar fim` — Fill-in-the-Middle augmentation
 - `apr tokenize plan/apply` — BPE vocabulary training (v1, whitespace-split)
 - Python `tokenizers` — ByteLevel BPE training (v2, whitespace-preserving)
+- `scripts/source-to-parquet.py` — Python source code to Parquet (for Tier 2 repos)
 - `entrenar` (parquet feature) — Parquet-to-LMBatch bridge for training

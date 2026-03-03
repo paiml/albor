@@ -10,13 +10,13 @@
 | Beta1, Beta2 | 0.9, 0.95 | LLaMA/GPT-3 standard |
 | Epsilon | 1e-8 | Standard |
 | LR schedule | Cosine annealing with warmup | `CosineAnnealingLR` in aprender |
-| Warmup steps | 2000 | ~0.2% of total steps |
+| Warmup steps | 2000 (v1) / 500 (v2) | **ALB-060**: 2000/5000 = 40%, not 0.2%. v2 config uses 500 (10%) per C-TRAINCFG-001 |
 | Min LR | 3e-5 | 10% of peak (standard) |
 | Gradient clipping | 1.0 (global norm) | Stability |
 | Batch size (global) | 512K tokens | ~512 sequences x 1024 tokens |
 | Micro-batch (4090) | 4 | GPU-resident (batch=8 OOM at seq≥1024) |
 | Gradient accumulation | 128 steps | Reach global batch size |
-| Total training tokens | 10B | ~19,531 steps at 512K tokens/step |
+| Total training tokens | Target 10B; current 139M (v2 dataset) | ~5000 steps at 512K tokens/step (v2: 67K seqs) |
 | Mixed precision | fp16 (CUDA) | Hardware-appropriate |
 
 ### 6.2 Training Config: `configs/train/pretrain-350m.yaml`
@@ -58,7 +58,8 @@ optimizer:
 
 training:
   mode: "causal_lm"
-  epochs: 1                                # Pre-training uses max_steps, not epochs
+  epochs: 117                               # ALB-060: epochs=1 was FATAL (only 43/5000 steps)
+                                             # ceil(5000 / floor(22079/4/128)) = ceil(5000/43) = 117
   grad_clip: 1.0
   lr_scheduler: "cosine"
   warmup_steps: 2000
@@ -144,9 +145,23 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 |--------|-------|------|------|--------|
 | 50M quick (seq=512, batch=4) | 5 | 10.42→9.45 | ~10s | PASS (post ALB-059 fix) |
 | 350M test (seq=512, batch=4) | 50 | 10.39→5.92 (best 5.53) | ~400s | PASS (post ALB-059 fix) |
-| 350M full (seq=1024, batch=4, accum=128) | 5000 | TBD | ~20h | PENDING |
+| 350M full (seq=1024, batch=4, accum=128) | 43/5000 | 10.39 flat | ~12s | **FAIL (ALB-060)**: epochs=1 exhausted data |
+| 350M full v2 (seq=1024, batch=4, accum=128) | 5000 | TBD | ~20h | PENDING (v2 data, epochs=38) |
 
-**Training stability contracts verified (ALB-044, ALB-059):**
+**ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
+
+The first 350M full training run (2026-03-02) ran only 43 of 5000 steps because
+`epochs: 1` caps total steps to `floor(num_sequences / batch_size / grad_accum)`.
+With 22,079 sequences, batch=4, accum=128: `steps_per_epoch = 43`. Warmup (2000
+steps) never completed — LR peaked at 6.45e-6 vs target 3e-4. Loss stayed flat
+at ~10.39 for all 43 steps (never exited warmup). Root cause: no pre-flight
+algebraic validation of epoch/step consistency.
+
+Fix: C-TRAINCFG-001 contract (`contracts/training-config-kernel-v1.yaml`) +
+`epochs: 117` for v1 data, or v2 config (`pretrain-350m-v2.yaml`) with expanded
+dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
+
+**Training stability contracts verified (ALB-044, ALB-059, ALB-060):**
 - C-EMBED-GRAD-001: Activation gradient clipped at GPU→CPU boundary
 - C-HYPERPARAMS-001: All optimizer params flow from YAML config
 - C-BUFSIZE-001: Buffer sizes algebraically verified (ALB-043 fix)
@@ -192,7 +207,7 @@ monitoring:
     tags:
       model: "albor-350m"
       stage: "pretrain"
-      data: "10B-python-80pct"
+      data: "python-code-v2"                 # 139M tokens (v2 dataset)
 
   system:
     enabled: true

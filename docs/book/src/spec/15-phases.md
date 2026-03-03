@@ -35,8 +35,8 @@
 - [x] Write `gradient-accumulation-kernel-v1.yaml` contract (ALB-017)
 - [x] Write `configs/train/pretrain-50m.yaml` (model arch + training + monitoring)
 - [x] Train albor-50M on 4090 — 500 rows, 31 steps, 110.7s, loss 10.3→4.42
-- [ ] Validate `apr monitor` — BLOCKED (ALB-025: presentar widget migration)
-- [ ] Validate Andon alerts — BLOCKED (ALB-025)
+- [x] Validate `apr monitor` — ALB-025 FIXED (presentar widget migration complete)
+- [ ] Validate Andon alerts during full training run
 - [x] ~~Fix ALB-009~~ FIXED
 - [x] Verify FALSIFY-ALBOR-001 (loss decreases) — CORROBORATED
 - [x] Verify FALSIFY-ALBOR-002 (gradient bounds) — per-step logging now available (~~ALB-035~~ FIXED)
@@ -61,8 +61,10 @@
 - [x] realizar inference verified — 218 tensors loaded, generates from trained weights
 - [x] Checkpoint validation: PASS (weights trained, not initialization)
 - [x] Perplexity eval: 31,926 (finite, consistent with 50-step model — random baseline ~32,768)
-- [ ] Full 350M training — IN PROGRESS (5000 steps, ~20h)
-- [ ] Monitor training via `apr monitor` — BLOCKED (ALB-025)
+- [x] ~~Fix ALB-060~~ FIXED — epochs=1 only ran 43/5000 steps. C-TRAINCFG-001 contract written. Config fixed (v1: epochs=117, v2: epochs=38)
+- [x] Expand training data: Tier 1 10x + 8 Tier 2 repos → v2 dataset (67,977 seqs, 139M tokens)
+- [ ] Full 350M training — **FAIL (ALB-060)**: retrain with v2 config pending
+- [ ] Monitor training via `apr monitor` (ALB-025 FIXED)
 - [ ] Validate loss curve, perplexity convergence
 - [ ] Tune hyperparameters (LR, batch size, warmup)
 - [ ] Verify FALSIFY-ALBOR-003 (checkpoint determinism)
@@ -70,12 +72,15 @@
 - [ ] **Milestone**: Perplexity < 30, TDG grade A maintained
 
 ### Phase 4: Teacher Setup & Logit Pre-Computation (Week 3-5)
-- [ ] Fix ALB-010: Add Qwen3-Coder-Next support to realizar
-- [ ] Validate teacher inference on intel (CPU, fp16, 300GB RAM)
+- [ ] Fix ALB-010: Add Qwen3-Coder-Next support to realizar (stretch — 3-4 week blocker)
+- [x] Download Qwen2.5-Coder-3B interim teacher (5.75 GiB, Apache 2.0) — unblocks distillation without ALB-010
+- [x] Validate 3B teacher: `apr distill --stage precompute` works, RosettaStone handles sharded SafeTensors
+- [x] Create distillation config: `configs/train/distill-qwen3b.yaml` (T=4.0, α=0.5, LoRA r=16)
+- [ ] Validate teacher inference on intel (CPU, fp16, 300GB RAM) — for 80B stretch goal
 - [x] Write `knowledge-distillation-kernel-v1.yaml` contract (ALB-013) — DOGFOODING
 - [ ] `pv kani` on KD loss contract (KL non-negativity, temperature scaling)
 - [x] ~~Fix ALB-011~~ FIXED — `apr distill --config --stage precompute|train` works
-- [ ] Pre-compute teacher logits on curated subset (~500M-2B tokens)
+- [ ] Pre-compute 3B teacher logits on v2 dataset (background, 4-8h CPU)
 - [ ] Verify FALSIFY-ALBOR-006 (teacher logit integrity)
 - [ ] Store as sharded Parquet via alimentar
 - [ ] `pmat comply check --strict` on realizar changes

@@ -1,0 +1,55 @@
+roadmap_version: '1.0'
+github_enabled: true
+github_repo: paiml/albor
+roadmap:
+- id: PMAT-001
+  github_issue: null
+  item_type: task
+  title: 'ALB-061: Sync monolithic spec with mdBook chapters'
+  status: planned
+  priority: high
+  assigned_to: null
+  created: 2026-03-03T09:45:24Z
+  updated: 2026-03-03T09:45:24Z
+  spec: null
+  acceptance_criteria:
+  - Generate monolithic spec from mdBook chapters, add make spec target
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-002
+  github_issue: null
+  item_type: task
+  title: 'ALB-062: Fix stale spec chapters'
+  status: inprogress
+  priority: high
+  assigned_to: null
+  created: 2026-03-03T09:45:26Z
+  updated: 2026-03-03T09:45:32.808627566+00:00
+  spec: null
+  acceptance_criteria:
+  - Fix §3 VRAM, §15/§18 blockers, §16 repro, model card, intro, appendix G
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-003
+  github_issue: null
+  item_type: task
+  title: 'ALB-063: Retrain 350M v2'
+  status: planned
+  priority: critical
+  assigned_to: null
+  created: 2026-03-03T09:45:27Z
+  updated: 2026-03-03T09:45:27Z
+  spec: null
+  acceptance_criteria:
+  - Train with pretrain-350m-v2.yaml (68K seqs, epochs=38, warmup=500)
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null

@@ -72,11 +72,11 @@ make training-status  # Check running training
 # EVALUATION
 # ═══════════════════════════════════════════════════════════
 
-# apr eval (perplexity — blocked by ALB-037)
+# apr eval (perplexity — ALB-037 FIXED, realizar loads checkpoints)
 apr eval checkpoints/albor-base-350m/model.safetensors \
     --dataset custom --text "def foo():" --threshold 30
 
-# Python eval scripts (workaround for ALB-037)
+# Python eval scripts (supplement)
 python scripts/eval-code.py configs/eval/humaneval-subset.jsonl --validate-only
 python scripts/eval-code.py configs/eval/humaneval-subset.jsonl --api http://localhost:8080
 python scripts/eval-perplexity.py checkpoints/albor-base-350m/ \
@@ -95,7 +95,7 @@ make eval-perplexity-350m    # Run perplexity eval
 # ═══════════════════════════════════════════════════════════
 
 bash scripts/monitor-training.sh                     # Training process + GPU + log
-apr monitor ./checkpoints/albor-base-350m/           # Live training TUI (blocked: ALB-025)
+apr monitor ./checkpoints/albor-base-350m/           # Live training TUI (ALB-025 FIXED)
 apr experiment view --db .entrenar/experiments.db     # Browse past experiments
 
 # ═══════════════════════════════════════════════════════════

@@ -25,8 +25,10 @@ full training pipeline from raw code corpora to trained model.
 
 ### Step 1: Corpus Preparation
 
+**v1 pipeline** (Tier 1 only, 17K rows):
+
 ```bash
-# Import local Python codebases
+# Import Tier 1 ground truth corpora
 alimentar import local /path/to/depyler -o data/raw/depyler.parquet
 alimentar import local /path/to/hf-ground-truth-corpus -o data/raw/hf.parquet
 alimentar import local /path/to/jax-ground-truth-corpus -o data/raw/jax.parquet
@@ -40,15 +42,35 @@ alimentar mix \
     data/raw/vllm.parquet:0.15 \
     -o data/tokenized/train/mixed.parquet \
     --seed 42
+```
 
-# Mix validation split (equal weights)
+**v2 pipeline** (Tier 1 10x + 8 Tier 2 repos, 45K rows → 68K sequences):
+
+```bash
+# Convert Tier 2 source repos to Parquet (alimentar can't read source dirs)
+for repo in pytorch hf-repos mlflow vllm-full tgi algo-corpus cuda-python llms-with-hf; do
+    python3 scripts/source-to-parquet.py ~/src/$repo $repo data/parquet/tier2/$repo.parquet
+done
+
+# Mix Tier 1 (10x upsampled) + Tier 2 (1x)
 alimentar mix \
-    data/raw/depyler.parquet:0.25 \
-    data/raw/hf.parquet:0.25 \
-    data/raw/jax.parquet:0.25 \
-    data/raw/vllm.parquet:0.25 \
-    -o data/tokenized/val/val.parquet \
-    -n 500 --seed 123
+    data/parquet/depyler/shard_0000.parquet:10.0 \
+    data/parquet/hf-ground-truth/shard_0000.parquet:10.0 \
+    data/parquet/jax/shard_0000.parquet:10.0 \
+    data/parquet/vllm/shard_0000.parquet:10.0 \
+    data/parquet/tier2/pytorch.parquet:1.0 \
+    data/parquet/tier2/hf-repos.parquet:1.0 \
+    data/parquet/tier2/mlflow.parquet:1.0 \
+    data/parquet/tier2/vllm-full.parquet:1.0 \
+    data/parquet/tier2/tgi.parquet:1.0 \
+    data/parquet/tier2/algo-corpus.parquet:1.0 \
+    data/parquet/tier2/cuda-python.parquet:1.0 \
+    data/parquet/tier2/llms-with-hf.parquet:1.0 \
+    -o data/staging/mixed-expanded.parquet --seed 42
+
+# Apply FIM (50% PSM)
+alimentar fim data/staging/mixed-expanded.parquet \
+    -o data/staging/mixed-expanded-fim.parquet --rate 0.5 --format psm --seed 42
 ```
 
 ### Step 2: Tokenizer Training
@@ -95,9 +117,12 @@ make train-50m
 # Equivalent to:
 # apr train apply --task pretrain --config configs/train/pretrain-50m.yaml
 
-# 350M base model (~20 hours on RTX 4090)
-make train-350m
-# Equivalent to:
+# 350M base model, v2 data (~20 hours on RTX 4090)
+apr train apply --task pretrain --config configs/train/pretrain-350m-v2.yaml
+# v2 config: epochs=38, warmup=500, 67977 seqs, 5000 max_steps
+# C-TRAINCFG-001 verified: steps_per_epoch=132, 38×132=5016 >= 5000
+
+# Legacy v1 (22K seqs, fixed epochs=117 post ALB-060)
 # apr train apply --task pretrain --config configs/train/pretrain-350m.yaml
 ```
 

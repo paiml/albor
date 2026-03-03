@@ -1,8 +1,8 @@
 # 17. Success Criteria
 
 ### Minimum Viable (Phase 3 complete)
-- [ ] 350M base model trained on 4090 to convergence (~10B tokens, 80% Python)
-- [ ] FIM (fill-in-the-middle) training implemented and validated (ALB-018)
+- [ ] 350M base model trained on 4090 to convergence (target: ~10B tokens; current: 139M v2 dataset)
+- [x] FIM (fill-in-the-middle) training implemented and validated (~~ALB-018~~ FIXED — `alimentar fim` verified)
 - [ ] **HumanEval pass@1 > 8%** (baseline Python capability, beat random)
 - [ ] **HumanEval-FIM working** (model can infill Python code)
 - [ ] Entire pipeline uses only sovereign stack components
@@ -20,6 +20,7 @@
 - ~~ALB-059 (Critical): GEMM backward constructor n/k swapped — buffer overflow into optimizer states~~ **FIXED** (`entrenar@846ae0c`)
 - ~~ALB-040: GPU-resident pretraining~~ **VERIFIED** — 350M CUDA test: 50 steps, loss 10.39→5.92, checkpoint valid, realizar inference works
 - ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
+- **ALB-060 (Critical)**: Training ran only 43/5000 steps (epochs=1). Fixed: C-TRAINCFG-001 contract + v2 config (epochs=38, warmup=500). Awaiting retrain.
 
 **350M CUDA test results (50 steps, post ALB-059 fix):**
 - Loss: 10.39 → 5.92 (best: 5.53) — clear convergence with correct GEMM backward
@@ -30,7 +31,7 @@
 - Perplexity: 31,926 (finite; random baseline ~32,768 for vocab 32K)
 
 ### Good (Phase 5 complete)
-- [ ] Distillation from Qwen3-Coder-Next demonstrated
+- [ ] Distillation from Qwen2.5-Coder-3B demonstrated (interim); Qwen3-Coder-Next 80B (stretch, ALB-010)
 - [ ] albor-distill-350m outperforms albor-base-350m on all code benchmarks
 - [ ] **HumanEval pass@1 > 15%** (beat CodeGen-350M-mono's 12.8% via distillation)
 - [ ] **MBPP pass@1 > 12%**
@@ -46,7 +47,7 @@
 - [x] Critical path gaps (ALB-001, 006, 009, 011, 018) closed with upstream fixes; ALB-010 (Qwen3-Coder-Next) remains OPEN
 - [ ] Models published on HuggingFace as `paiml/albor-python-*`
 - [ ] Q4 quantized model < 100MB, runs on consumer hardware
-- [ ] **All 7 kernel contracts written and verified** (ALB-013–017, ALB-039–040)
+- [ ] **All 8 kernel contracts written and verified** (ALB-013–017, ALB-039–040, ALB-060)
 - [ ] **batuta falsify: Toyota Standard grade (≥90/108)**
 - [ ] **pmat TDG: Grade A on all touched components**
 - [ ] **Test coverage ≥ 95%, mutation score ≥ 85% on all new code**

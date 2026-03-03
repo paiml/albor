@@ -10,6 +10,11 @@
 
 ### 5.2 Data Mix (Target: ~10B tokens)
 
+**Current status (2026-03-03)**: 139M tokens in v2 dataset (67,977 pretokenized
+sequences × 2048). Composed of Tier 1 upsampled 10x + 8 Tier 2 repos at 1x +
+50% FIM PSM. External data (StarCoder, FineWeb-Edu) not yet downloaded. See
+§5.4.1 for the actual pipeline used.
+
 Following the phi-1 playbook: maximum concentration on Python. phi-1 proved that
 a small model (1.3B) with focused data and distillation can hit 50% HumanEval —
 outperforming models 10x its size trained on diluted multi-language corpora.
@@ -130,8 +135,9 @@ the PSM (Prefix-Suffix-Middle) format:
 | Special tokens | `<fim_prefix>`, `<fim_suffix>`, `<fim_middle>` | Added to BPE vocabulary |
 | Context split | Random split point per sequence | Uniform distribution over valid positions |
 
-**Gap ALB-018**: Verify `entrenar` / `alimentar` support FIM data transforms.
-If not, implement PSM/SPM sequence transformation in the data pipeline.
+~~**Gap ALB-018**~~: **FIXED** — `alimentar fim` supports PSM/SPM transforms.
+Verified: `alimentar fim mixed.parquet -o out.parquet --rate 0.5 --format psm --seed 42`
+produces correct FIM-encoded sequences. Used in v2 data pipeline.
 
 This is critical — without FIM, the model is a text generator, not a code
 completion engine.
@@ -188,11 +194,58 @@ alimentar mix \
 alimentar provenance ./data/mixed/ --output ./data/provenance.json
 ```
 
-**Gap ALB-019**: Verify `alimentar import local` supports recursive Python file
-ingestion from local directories. If not, implement local filesystem source.
+~~**Gap ALB-019**~~: **FIXED** — `alimentar import local` expects data files
+(CSV/JSON/Parquet), not source code directories. Workaround:
+`scripts/source-to-parquet.py` converts Python source repos to Parquet with the
+Tier 1 schema (file, source, text columns). Used for all Tier 2 imports.
 
-**Gap ALB-020**: Verify `alimentar mix` supports weighted multi-source mixing
-with upsampling. If not, implement mix command with upsample parameter.
+~~**Gap ALB-020**~~: **FIXED** — `alimentar mix` supports weighted proportional
+sampling. Syntax: `alimentar mix file1.parquet:10.0 file2.parquet:1.0 -o out.parquet`.
+
+#### 5.4.1 Actual Pipeline (v2 Dataset — 2026-03-03)
+
+The pipeline below produced the v2 dataset (139M tokens, 67,977 sequences):
+
+```bash
+# ── Step 1: Convert Tier 2 repos to Parquet (alimentar can't read source dirs) ──
+for repo in pytorch hf-repos mlflow vllm-full tgi algo-corpus cuda-python llms-with-hf; do
+    python3 scripts/source-to-parquet.py ~/src/$repo $repo data/parquet/tier2/$repo.parquet
+done
+# Result: 28,553 Python files across 8 repos
+
+# ── Step 2: Mix Tier 1 (10x) + Tier 2 (1x) ──
+alimentar mix \
+  data/parquet/depyler/shard_0000.parquet:10.0 \
+  data/parquet/hf-ground-truth/shard_0000.parquet:10.0 \
+  data/parquet/jax/shard_0000.parquet:10.0 \
+  data/parquet/vllm/shard_0000.parquet:10.0 \
+  data/parquet/tier2/pytorch.parquet:1.0 \
+  data/parquet/tier2/hf-repos.parquet:1.0 \
+  data/parquet/tier2/mlflow.parquet:1.0 \
+  data/parquet/tier2/vllm-full.parquet:1.0 \
+  data/parquet/tier2/tgi.parquet:1.0 \
+  data/parquet/tier2/algo-corpus.parquet:1.0 \
+  data/parquet/tier2/cuda-python.parquet:1.0 \
+  data/parquet/tier2/llms-with-hf.parquet:1.0 \
+  -o data/staging/mixed-expanded.parquet --seed 42
+# Result: 45,420 mixed rows
+
+# ── Step 3: Apply FIM (50% PSM) ──
+alimentar fim data/staging/mixed-expanded.parquet \
+  -o data/staging/mixed-expanded-fim.parquet --rate 0.5 --format psm --seed 42
+# Result: 45,420 rows with ~50% FIM-encoded
+
+# ── Step 4: Pretokenize into 2048-length sequences ──
+python3 scripts/pretokenize.py \
+  --input data/staging/mixed-expanded-fim.parquet \
+  --tokenizer models/albor-tokenizer-v2/tokenizer.json \
+  --seq-len 2048 \
+  --output data/pretokenized-2048-v2/train/train.parquet
+# Result: 67,977 sequences × 2048 = 139,218,944 tokens (191 MiB)
+
+# Validation set: reuse v1
+cp data/pretokenized-2048/val/val.parquet data/pretokenized-2048-v2/val/val.parquet
+```
 
 ### 5.5 Tokenizer
 

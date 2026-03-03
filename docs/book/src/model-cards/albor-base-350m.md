@@ -11,7 +11,7 @@
 | Architecture | hidden=1024, layers=24, heads=16, kv_heads=4, ffn=4096 |
 | Vocab Size | 32,768 (ByteLevel BPE v2, whitespace-preserving) |
 | Context Length | 2,048 tokens |
-| Training Data | 22,079 sequences x 2,048 tokens = 45.2M tokens (Python code) |
+| Training Data | v1: 22,079 seqs (45.2M tokens); v2: 67,977 seqs (139M tokens, Tier 1 10x + 8 Tier 2 repos + 50% FIM) |
 | Training Time | ~20 hours on RTX 4090 (full run); 396s for 50-step test |
 | Framework | entrenar + realizar (CUDA, CudaTransformerTrainer) |
 
@@ -26,15 +26,14 @@ pre-tokenized data. It serves as the foundation for:
 ## Training Details
 
 - **Optimizer**: AdamW (lr=3e-4, beta1=0.9, beta2=0.95, wd=0.1)
-- **Scheduler**: Cosine with 2000 warmup steps
-- **Gradient Accumulation**: 32 (effective batch = 8 x 32 x 2048 = 524K tokens)
+- **Scheduler**: Cosine with warmup (v1: 2000 steps; v2: 500 steps per C-TRAINCFG-001)
+- **Gradient Accumulation**: 128 (effective batch = 4 × 128 × 1024 = 512K tokens)
 - **Mixed Precision**: fp16
-- **Epochs**: 1 (single pass over 22,079 sequences)
-- **Batches**: 2,760 micro-batches, ~86 optimizer steps
-- **Max Steps**: 5,000 (config; training completes at ~86 steps due to data size)
+- **Epochs**: v1: 117 (22K seqs); v2: 38 (68K seqs) — ALB-060: original epochs=1 was fatal
+- **Max Steps**: 5,000
 - **Loss (50-step test)**: 10.39 → 5.92 (best 5.53) — convergence verified (post ALB-059 GEMM backward fix)
 - **Perplexity (50-step test)**: ~31,926 (finite; random baseline ~32,768)
-- **Loss (full run)**: TBD (5000-step training in progress)
+- **Loss (full run)**: TBD — first run failed (ALB-060), retraining with v2 config
 - **Perplexity (full run)**: TBD
 - **CUDA Mode**: GPU-resident training via CudaTransformerTrainer (ALB-040), 3 PCIe transfers/step
 
@@ -67,9 +66,9 @@ pre-tokenized data. It serves as the foundation for:
 
 ## Limitations
 
-1. Single epoch on 45.2M tokens (typical base models train on 10B+ tokens)
+1. 139M tokens on v2 (typical base models train on 10B+ tokens)
 2. Python-only training data (no multilingual code)
-3. No FIM training (fill-in-the-middle not applied to this run)
+3. v2 dataset includes 50% FIM (PSM format via `alimentar fim`)
 4. ~~Checkpoint broken by ALB-038~~ **FIXED** — entrenar now saves trained weights correctly
 5. ~~Evaluation blocked by ALB-037~~ **FIXED** — realizar loads trained checkpoint, generates tokens
 
@@ -81,7 +80,9 @@ pre-tokenized data. It serves as the foundation for:
   `MultiHeadAttention::forward()`. Fixed in `entrenar@91ba9da` and `entrenar@1ede409`.
   All 20 model parameters now receive gradients.
 - **ALB-040** (**VERIFIED**): GPU-resident pretraining via `CudaTransformerTrainer`. 3 PCIe
-  transfers/step vs ~16K. 350M CUDA test: 50 steps, loss 10.39→6.07, checkpoint valid.
+  transfers/step vs ~16K. 350M CUDA test: 50 steps, loss 10.39→5.92 (best 5.53), checkpoint valid.
+- **ALB-060** (**FIXED**): Training config epochs=1 only ran 43/5000 steps. C-TRAINCFG-001
+  contract written. v2 config uses epochs=38 with expanded 68K-sequence dataset.
 - **ALB-041** (**FIXED**): D2D buffer size mismatch in `backward_attention()`. Fixed in
   `entrenar@a48e3d2`. Was blocking GPU backward pass.
 - **ALB-043** (**FIXED**): backward_ffn buffer overflow + missing SwiGLU gradients.
