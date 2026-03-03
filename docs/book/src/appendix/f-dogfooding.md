@@ -83,7 +83,7 @@
 | `apr merge --plan` | `apr merge a.apr b.apr --plan --strategy slerp -o merged.apr` | **PASS** (validates inputs, shows strategy, sizes) | ~~ALB-023~~ FIXED |
 | `apr export --plan` | `apr export model.apr --plan --format gguf -o model.gguf` | **PASS** (validates format, shows plan) | ~~ALB-023~~ FIXED |
 | `apr publish --plan` | `apr publish dir repo --plan` | **PASS** (alias for --dry-run) | ~~ALB-023~~ FIXED |
-| `apr train apply` (350M) | `apr train apply --task pretrain --config pretrain-350m.yaml` | **IN PROGRESS** (2760 batches, 398.5M params, 6.4GB VRAM, ~20h est.) | — |
+| `apr train apply` (350M full) | `apr train apply --task pretrain --config pretrain-350m.yaml` | **FAIL** (ALB-060: epochs=1 exhausted data at step 43/5000, loss flat ~10.39, LR still in warmup at 6.45e-6) | ALB-060 |
 | `pv validate` (memory) | `pv validate contracts/training-memory-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-039 |
 | `pv validate` (GPU) | `pv validate contracts/training-gpu-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-040 |
 | `apr train apply` (50M CUDA) | `apr train apply --config pretrain-50m-v2-test.yaml` | **PASS** (3 steps, loss 10.4→11.7, GPU forward+backward) | ~~ALB-041~~ FIXED |
@@ -113,25 +113,92 @@
 | `apr monitor` (widget composition) | `TrainingDashboard` composes `Layout`, `Border`, `Meter`, `GpuPanel`, `Sparkline`, `Text` | **PASS** (builds clean, widget tree rebuilt each frame, panel verification wired) | ~~ALB-057~~ FIXED |
 | `apr experiment view --global --json` | `apr experiment view --global --json` | **PASS** (JSON output with experiments, run_ids, loss_values, params from SQLite) | ~~ALB-024~~ FIXED |
 | `apr experiment view --global` | `apr experiment view --global` | **PASS** (ratatui TUI: run table, sparkline, braille loss chart, j/k navigation) | ~~ALB-024~~ FIXED |
+| `pv validate` (training-config) | `pv validate contracts/training-config-kernel-v1.yaml` | **PASS** (0 errors, 8 obligations, 5 falsification tests, 2 Kani harnesses) | ALB-060 |
+| `pv coverage` (all 8 contracts) | `pv coverage contracts/` | **PASS** (8 contracts, 31 equations, 51 obligations, 34 falsification tests, 100% coverage) | — |
 | `apr train apply` (50M post-fix) | `apr train apply --config pretrain-50m-quick.yaml` | **PASS** (5 steps, loss 10.42→9.45, GEMM backward now correct) | ~~ALB-059~~ FIXED |
 | `apr train apply` (350M post-fix) | `apr train apply --config pretrain-350m-cuda-test.yaml` | **PASS** (50 steps, loss 10.39→5.92, best 5.53, zero NaN, correct backward gradients) | ~~ALB-059~~ FIXED |
 | `realizar run` (350M post-fix) | `realizar run checkpoints/albor-350m-cuda-test/model.safetensors "def fibonacci("` | **PASS** (218 tensors, generates tokens from correctly-trained weights) | ~~ALB-059~~ FIXED |
+| `apr quantize` (50M int4) | `apr quantize model.safetensors -s int4` | **PASS** (238 MiB → 30 MiB, 87.5% reduction, 7.99x) | — |
+| `apr quantize` (50M q4k) | `apr quantize model.safetensors -s q4k` | **PASS** (238 MiB → 238 MiB, 0% reduction — q4k no-op on 1D tensors) | — |
+| `apr quantize` (350M int4) | `apr quantize model.safetensors -s int4` | **PASS** (1.48 GiB → 191 MiB, 87.5% reduction, 7.99x) | — |
+| `apr quantize` (350M q4k) | `apr quantize model.safetensors -s q4k` | **PASS** (1.48 GiB → 1.48 GiB, 0% reduction — q4k no-op on 1D tensors) | — |
+| `apr prune` (50M magnitude) | `apr prune model.safetensors --method magnitude --sparsity 0.5` | **PASS** (50.0% zeros, 31.2M/62.4M params zeroed) | — |
+| `apr prune` (50M depth) | `apr prune model.safetensors --method depth --remove-layers "8-11"` | **PASS** (110→74 tensors, 238→180 MiB, layers 8-11 removed) | — |
+| `apr prune` (350M magnitude) | `apr prune model.safetensors --method magnitude --sparsity 0.3` | **PASS** (50.0% zeros — sparsity param may be ignored) | — |
+| `source-to-parquet.py` (Tier 2) | `python scripts/source-to-parquet.py ~/src/pytorch pytorch data/parquet/tier2/pytorch.parquet` | **PASS** (8 repos → 28,553 Python files imported) | — |
+| `alimentar mix` (expanded) | `alimentar mix ...T1:10.0 ...T2:1.0 -o mixed.parquet --seed 42` | **PASS** (12 datasets → 45,420 rows, proportional weighted sampling) | — |
+| `alimentar fim` (expanded) | `alimentar fim mixed.parquet -o mixed-fim.parquet --rate 0.5 --format psm` | **PASS** (45,420 rows, 50% PSM FIM) | — |
+| `pretokenize.py` (v2) | `python scripts/pretokenize.py --input mixed-fim.parquet --seq-len 2048` | **PASS** (67,977 sequences, 139M tokens, 191 MiB) | — |
+| `realizar run` (0.5B teacher) | `realizar run qwen2.5-coder-0.5b/model.safetensors "def fibonacci("` | **PASS** (24 layers, 151936 vocab, 2.8 tok/s, generates tokens) | — |
+| `apr distill --stage precompute` (0.5B) | `apr distill --config distill-entrenar.yaml --stage precompute` | **PASS** (290 tensors, 942 MiB, manifest written) | — |
+| `apr distill --stage precompute` (3B) | `apr distill --config distill-qwen3b.yaml --stage precompute` | **PASS** (434 tensors, 5.75 GiB, sharded SafeTensors loaded) | — |
+| `realizar run` (3B sharded) | `realizar run qwen2.5-coder-3b/model-00001-of-00002.safetensors` | **FAIL** (sharded SafeTensors not supported — model.norm.weight in shard 2) | — |
+| C-TRAINCFG-001 pre-flight (v2) | `python3 -c "..."` (algebraic check) | **PASS** (67977 seqs, 132 steps/epoch, 38 epochs, warmup=500=10%) | ALB-060 |
+
+## ALB-060: Training Config Epoch/Step Mismatch (Critical)
+
+**Discovery**: The 350M "full training" run completed in 11.8 seconds instead of
+the expected 12+ hours, producing an effectively untrained model.
+
+**Five Whys (per CLAUDE.md Rule 7)**:
+
+1. **Why did loss stay flat at ~10.39?** The learning rate never reached a meaningful
+   value — max LR achieved was 6.45e-6 vs target 3e-4.
+2. **Why was LR so low?** The warmup schedule is linear over 2000 steps, but training
+   only ran 43 steps. At step 43: lr = 3e-4 × (43/2000) = 6.45e-6.
+3. **Why only 43 steps?** `steps_per_epoch = floor(22079 / 4 / 128) = 43`. With
+   `epochs: 1`, total achievable steps = 43. `max_steps: 5000` is unreachable.
+4. **Why only 1 epoch?** The config comment says "Pre-training uses max_steps, not epochs"
+   but entrenar's training loop respects `epochs` as a hard cap — it does NOT loop
+   data to fill `max_steps`.
+5. **Why no validation?** No pre-flight check computes `steps_per_epoch` and compares
+   against `max_steps` + `warmup_steps`. The algebraic inconsistency is invisible.
+
+**Algebraic proof (from C-TRAINCFG-001 contract)**:
+```
+num_sequences       = 22,079
+micro_batch_size    = 4
+grad_accum_steps    = 128
+steps_per_epoch     = floor(22079 / 4 / 128) = 43
+total_achievable    = 1 × 43 = 43
+max_steps           = 5,000       ← UNREACHABLE
+warmup_steps        = 2,000       ← NEVER COMPLETES
+tokens_trained      = 43 × 4 × 128 × 1024 = 22.5M
+chinchilla_min      = 10 × 370M = 3.7B   ← undertrained by 164×
+```
+
+**Fix required (two options)**:
+1. Set `epochs: 117` (ceil(5000/43)) to cycle data 117 times → reaches 5031 steps
+2. Add epoch-looping to entrenar: when `max_steps` is set and epochs exhausted,
+   reshuffle data and continue (treats `max_steps` as authoritative, `epochs` as informational)
+
+**Contract**: `contracts/training-config-kernel-v1.yaml` (C-TRAINCFG-001) with
+7 equations, 8 proof obligations, 5 falsification tests, 2 Kani harnesses.
+FALSIFY-CFG-001 and FALSIFY-CFG-002 algebraically prove this config is invalid.
+
+**Training state.json analysis**: The `loss_history` array (55 entries, all ~10.39-10.40)
+and `learning_rate: 0.0` confirm the model never learned. The `status: "Running"` field
+is stale (training completed but status was not updated to "Completed" — minor bug).
+
+**Secondary bug**: The training log displays `loss=0.0000` for every step despite
+training_state.json recording real loss values ~10.39. This is the known ALB-042
+display bug (loss=0.0 reporting).
 
 ## Contract Validation Detail
 
-All 7 contracts pass `pv validate` with 0 errors. The original 5 were rewritten from
+All 8 contracts pass `pv validate` with 0 errors. The original 5 were rewritten from
 a custom schema to match `pv`'s schema (`metadata:`, `formula:`, `proof_obligations:`,
-`falsification_tests:`). The two new training kernel contracts (ALB-039, ALB-040) were
-written directly in the correct schema.
+`falsification_tests:`). The two training kernel contracts (ALB-039, ALB-040) and the
+training config contract (ALB-060) were written directly in the correct schema.
 
 ```
 pv coverage contracts
 ---------------------
-Contracts:            7
-Equations:            22
-Obligations:          39
-Falsification tests:  26
-Kani harnesses:       8
+Contracts:            8
+Equations:            31
+Obligations:          51
+Falsification tests:  34
+Kani harnesses:       10
 Overall coverage:     100.0%
 ```
 
@@ -520,6 +587,74 @@ apr train apply --task pretrain --config configs/train/pretrain-parquet.yaml
 
 `apr-cli` Cargo.toml: `entrenar = { version = "0.7.3", features = ["cuda", "parquet"] }`
 Commit: `aprender@` (pending push)
+
+## Post-Training Pipeline Validation Detail
+
+### Quantization (2026-03-03)
+
+| Model | Scheme | Original | Quantized | Reduction | Notes |
+|-------|--------|----------|-----------|-----------|-------|
+| 50M | Int4 | 238 MiB | 30 MiB | 87.5% (8.0x) | Working as expected |
+| 50M | Q4K | 238 MiB | 238 MiB | 0% (1.0x) | **No-op** — entrenar saves 1D flat tensors; Q4K requires 2D |
+| 350M | Int4 | 1.48 GiB | 191 MiB | 87.5% (8.0x) | Working as expected |
+| 350M | Q4K | 1.48 GiB | 1.48 GiB | 0% (1.0x) | **No-op** — same 1D tensor issue |
+
+**Finding**: `apr quantize -s q4k` is a no-op on entrenar checkpoints because
+entrenar stores weights as 1D flat tensors, and Q4K quantization requires 2D
+weight matrices to compute per-block statistics. Int4 (simple bit-width reduction)
+works correctly. Fix: either (a) reshape before quantize, or (b) run
+`convert-checkpoint.py` first to produce HF-format 2D tensors.
+
+### Pruning (2026-03-03)
+
+| Model | Method | Params | Zeros | Output Size | Notes |
+|-------|--------|--------|-------|-------------|-------|
+| 50M | Magnitude (0.5) | 62.4M | 31.2M (50.0%) | 238 MiB | Working — 50% sparsity |
+| 50M | Depth (layers 8-11) | 62.4M→47.2M | 1 | 180 MiB | Working — 4 layers removed |
+| 350M | Magnitude (0.3) | 398.5M | 199.2M (50.0%) | 1.48 GiB | **Bug**: sparsity=0.3 produced 50% — param may be ignored |
+
+**Finding**: `apr prune --method magnitude --sparsity 0.3` on 350M checkpoint
+produced 50.0% zeros instead of 30.0%. The `--sparsity` parameter may not be
+correctly wired through to the pruning implementation for magnitude pruning.
+Depth pruning works correctly.
+
+### Distillation Setup (2026-03-03)
+
+| Teacher | Size | Tensors | Precompute | Notes |
+|---------|------|---------|------------|-------|
+| Qwen2.5-Coder-0.5B | 942 MiB | 290 | **PASS** | Single-file SafeTensors, loads in realizar |
+| Qwen2.5-Coder-3B | 5.75 GiB | 434 | **PASS** | Sharded SafeTensors (2 files), loads in apr distill |
+
+**Finding**: realizar doesn't support sharded SafeTensors (multiple `.safetensors`
+files). `apr distill` uses RosettaStone which handles sharding. For inference with
+realizar, the 3B model would need to be merged into a single file.
+
+### Data Expansion (2026-03-03)
+
+| Source | Type | Files | Parquet Size |
+|--------|------|-------|-------------|
+| depyler | Tier 1 | 1,843 | 5.8 MiB |
+| hf-ground-truth | Tier 1 | 11,493 | 188 MiB |
+| jax | Tier 1 | 2,637 | 47 MiB |
+| vllm (original) | Tier 1 | 1,100 | 17 MiB |
+| **pytorch** | **Tier 2** | **3,801** | **15.6 MiB** |
+| **hf-repos** | **Tier 2** | **19,781** | **73.8 MiB** |
+| **mlflow** | **Tier 2** | **1,780** | **4.6 MiB** |
+| **vllm-full** | **Tier 2** | **2,239** | **7.7 MiB** |
+| **tgi** | **Tier 2** | **372** | **1.0 MiB** |
+| **algo-corpus** | **Tier 2** | **186** | **0.2 MiB** |
+| **cuda-python** | **Tier 2** | **157** | **0.4 MiB** |
+| **llms-with-hf** | **Tier 2** | **37** | **35 KiB** |
+
+Pipeline: 45,420 mixed rows → 45,420 FIM (50% PSM) → **67,977 pretokenized sequences** (2048 tokens each)
+
+**Token count**: 139M tokens (up from 45M — 3.1× expansion)
+
+C-TRAINCFG-001 pre-flight for pretrain-350m-v2.yaml:
+- steps_per_epoch: 132
+- min_epochs: 38 (38 × 132 = 5016 ≥ 5000)
+- warmup_steps: 500 (10% of 5000)
+- total_tokens: 2.6B
 
 ## Tool Availability
 

@@ -45,7 +45,10 @@ optimizer:
 
 training:
   mode: "causal_lm"
-  epochs: 1                                 # Pre-training uses max_steps, not epochs
+  epochs: 117                               # ceil(5000 / 43) — see C-TRAINCFG-001 contract
+                                            # steps_per_epoch = floor(22079 / 4 / 128) = 43
+                                            # 117 epochs × 43 steps = 5031 achievable steps
+                                            # ALB-060: epochs=1 was FATAL — only 43/5000 steps ran
   grad_clip: 1.0
   lr_scheduler: "cosine"
   warmup_steps: 2000

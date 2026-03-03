@@ -49,6 +49,7 @@ Many already exist in provable-contracts; new ones must be written.
 | `model-merging-kernel-v1.yaml` | SLERP: interp(θ, w₁, w₂) on unit sphere; TIES: trim + elect + disjoint merge | SLERP interpolation bound (‖result‖ ≈ 1), TIES sparsity guarantee | Medium |
 | `pruning-kernel-v1.yaml` | WANDA: score = |w| · ‖x‖₂; magnitude: score = |w| | Sparsity invariant (exactly k% weights zeroed), score ordering preserved | Medium |
 | `gradient-accumulation-kernel-v1.yaml` | G_accum = (1/N)·Σ g_i ≈ g_full | Numerical equivalence within tolerance, loss scaling correctness | High |
+| `training-config-kernel-v1.yaml` | steps_per_epoch, total_achievable_steps, LR warmup coverage, Chinchilla tokens | Epoch sufficiency for max_steps, warmup completion, peak LR reached, data sufficiency | Critical |
 
 ## 12.3 Contract Workflow for Each Kernel
 
@@ -272,6 +273,8 @@ adamw ─────────── optimizer-step ──────── 
                                                │
 gradient-accumulation ─────────────────────────┘
                                                │
+training-config ─── config-validation ─────────┘
+                                               │
 knowledge-distillation ── distill-loss ── distill-loop
                               ↑
 bpe-tokenizer ─── data-pipeline ─── training-loop
@@ -455,6 +458,46 @@ anti_pattern: |
   NEVER: Use ops that don't register backward (e.g., manual array copies)
   ALWAYS: Verify gradient flow when adding new layers or ops
 ```
+
+### C-TRAINCFG-001: Training Configuration Algebraic Consistency
+
+Every training configuration must be algebraically validated BEFORE GPU time is
+consumed. The epoch/step/data/LR relationship must be provably sufficient.
+
+**Status: OPEN** — ALB-060. The 350M training ran only 43/5000 steps because
+`epochs: 1` exhausted data before `max_steps`. Contract written, config fixed
+(`epochs: 117`), awaiting re-training verification.
+
+```yaml
+motivation: |
+  ALB-060: pretrain-350m.yaml had epochs=1 with 22K sequences and grad_accum=128.
+  steps_per_epoch = floor(22079 / 4 / 128) = 43. max_steps=5000 unreachable.
+  warmup_steps=2000 never completed. LR peaked at 6.45e-6 (target 3e-4).
+  Loss flat at ~10.39 for all 43 steps. Checkpoint contains untrained weights.
+  Total wasted: ~12 seconds GPU + debugging time. Contract prevents recurrence.
+equations:
+  - "steps_per_epoch = floor(num_sequences / batch_size / grad_accum)"
+  - "total_achievable_steps = num_epochs × steps_per_epoch"
+  - "total_achievable_steps >= max_steps  (HARD REQUIREMENT)"
+  - "warmup_steps < total_achievable_steps  (warmup must complete)"
+  - "warmup_fraction = warmup_steps / actual_total_steps <= 0.10"
+  - "min_epochs = ceil(max_steps / steps_per_epoch)"
+  - "total_tokens = actual_steps × batch_size × grad_accum × seq_len"
+obligations:
+  - "Epoch count sufficient: num_epochs >= ceil(max_steps / steps_per_epoch)"
+  - "Warmup completes: warmup_steps < actual_total_steps"
+  - "Peak LR reached: exists step t where lr(t) = lr_peak"
+  - "Training tokens sufficient: total_tokens >= 10 × num_params"
+falsification: |
+  FALSIFY-CFG-001: Compute steps_per_epoch for pretrain-350m.yaml.
+  With 22079 seqs, batch=4, accum=128: steps_per_epoch=43.
+  Assert 1 × 43 < 5000 (proves epochs=1 is insufficient).
+  FALSIFY-CFG-002: Assert warmup_steps (2000) > total_steps (43)
+  (proves warmup never completes with epochs=1).
+```
+
+Full contract: `contracts/training-config-kernel-v1.yaml` — 7 equations,
+8 proof obligations, 5 falsification tests, 2 Kani harnesses.
 
 ### 12.7.1 Observability Discipline
 

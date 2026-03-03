@@ -1,0 +1,56 @@
+# configs/train/distill-qwen3b.yaml — Qwen2.5-Coder-3B teacher distillation
+#
+# Used with: apr distill --config configs/train/distill-qwen3b.yaml --plan
+#            apr distill --config configs/train/distill-qwen3b.yaml --stage precompute
+#            apr distill --config configs/train/distill-qwen3b.yaml --stage train
+#
+# Teacher: Qwen2.5-Coder-3B (8.6x larger than student — good compression ratio)
+# Student: albor-base-350m (pre-trained checkpoint from full 5000-step run)
+#
+# Decision: Use Qwen2.5-Coder-3B instead of Qwen3-Coder-Next 80B MoE because:
+#   - Already supported by realizar (Qwen2 architecture, no MoE/DeltaNet needed)
+#   - CPU inference feasible (~12 GB RAM, ~2 tok/s on 48 cores)
+#   - Unblocks distillation NOW vs 3-4 weeks for ALB-010
+#   - 8.6x compression ratio is within recommended 5-20x range
+#
+# ALB-010 (Qwen3-Coder-Next 80B) remains the stretch goal teacher.
+
+teacher:
+  model_id: "/home/noah/src/models/qwen2.5-coder-3b"
+  load_in_8bit: false
+
+student:
+  model_id: "./checkpoints/albor-base-350m"
+  load_in_4bit: false
+  lora:
+    rank: 16
+    alpha: 32.0
+
+distillation:
+  temperature: 4.0
+  alpha: 0.5
+  # progressive:
+  #   layer_mapping: [[0, 5], [3, 11], [6, 17], [9, 23]]
+  #   hidden_weight: 1.0
+  # attention_transfer:
+  #   weight: 0.1
+
+training:
+  epochs: 3
+  batch_size: 4
+  learning_rate: 0.0001
+  weight_decay: 0.1
+  gradient_checkpointing: false
+  mixed_precision: "fp16"
+  max_grad_norm: 1.0
+  seed: 42
+
+dataset:
+  path: "./data/pretokenized-2048-v2/train/"
+  max_seq_length: 2048
+
+output:
+  dir: "./outputs/distill-qwen3b"
+  log_steps: 10
+  save_steps: 500
+  eval_steps: 100

@@ -190,6 +190,15 @@ improved to 10.39→5.92. All evaluation results should use the post-fix
 checkpoint (`entrenar@846ae0c`). Additionally, all optimizer m/v buffers
 are now zero-initialized (cuMemAlloc returns uninitialized VRAM).
 
+**Gap ALB-060** (OPEN): The "full" 350M training run completed only 43 of 5000
+optimizer steps because `epochs: 1` exhausted the 22K-sequence dataset before
+`max_steps` was reached. Steps per epoch = floor(22079 / 4 / 128) = 43. With
+warmup_steps=2000, the LR never progressed past 6.45e-6 (vs target 3e-4), so
+loss remained flat at ~10.39. The `checkpoints/albor-base-350m/` checkpoint
+contains effectively untrained weights. Fix: `epochs: 117` (proven by
+C-TRAINCFG-001 contract, FALSIFY-CFG-001/002). All evaluation of the 350M base
+model must wait for a corrected training run.
+
 ### 8.6 Local Evaluation Infrastructure
 
 The following scripts provide model evaluation independently of `apr eval`:
