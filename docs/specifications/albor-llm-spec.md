@@ -1002,7 +1002,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 50M quick (seq=512, batch=4) | 5 | 10.42→9.45 | ~10s | PASS (post ALB-059 fix) |
 | 350M test (seq=512, batch=4) | 50 | 10.39→5.92 (best 5.53) | ~400s | PASS (post ALB-059 fix) |
 | 350M full (seq=1024, batch=4, accum=128) | 43/5000 | 10.39 flat | ~12s | **FAIL (ALB-060)**: epochs=1 exhausted data |
-| 350M full v2 (seq=1024, batch=4, accum=128) | 5000 | TBD | ~20h | **RUNNING** (ALB-065 fixed, 441 tok/s) |
+| 350M full v2 (seq=1024, batch=4, accum=1) | 5000 | TBD | ~11.7h | **RUNNING** (ALB-066 accum=1, ALB-067 workaround: per-block grad_clip + monitoring disabled, ~480 tok/s, 8.4s/step) |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
@@ -2240,6 +2240,9 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-064 | [#46](https://github.com/paiml/albor/issues/46) | albor / entrenar | Training process dies silently — no crash detection, no watchdog, no recovery | Critical | **FIXED** | `scripts/train-guard.sh`: crash-resilient supervisor with exit code classification, GPU state capture, structured JSON crash reports, exponential backoff restart, heartbeat monitoring, pre-flight GPU health checks. Auto-diagnostic mode: detects async CUDA crash pattern, enables `CUDA_LAUNCH_BLOCKING=1` on restart. Five Whys: CUDA driver crash → SIGABRT/SIGSEGV → bypasses Rust panic handler → no stderr output → no diagnosis. Root cause: ALB-065. |
 | ALB-065 | [#47](https://github.com/paiml/albor/issues/47) | entrenar / trueno | Missing `stream.synchronize()` before D2H gradient transfers — async CUDA crash | Critical | **FIXED** | `compute_workspace_clip_scale()` and `compute_clip_scale()` call `cuMemcpyDtoH` without synchronizing the non-blocking CUDA stream. `cuMemcpyDtoH` only synchronizes with the default stream, but trueno creates streams with `CU_STREAM_NON_BLOCKING`. Result: backward kernels not finished when gradient buffers are read → garbage clip scale → NaN/crash. Fix: `stream.synchronize()` at 3 locations before D2H transfers (`entrenar@d3a3d26`). |
 
+| ALB-066 | [#48](https://github.com/paiml/albor/issues/48) | albor config | `gradient_accumulation: 128` makes training take 68.8 days on single GPU | Critical | **FIXED** | At 441 tok/s (post ALB-065 fix), each optimizer step takes 19.8 min (128 micro-batches × ~9.3s). 5000 steps = 68.8 days. Makefile estimated "~20 hours". Fix: reduce to `gradient_accumulation: 16` (effective batch 64), epochs from 38 to 5. New estimate: ~8.6 days. |
+| ALB-067 | — | entrenar / trueno | Per-block weight gradient clipping CPU bottleneck — 864 D2H transfers/step | High | **WORKAROUND** | `compute_workspace_clip_scale` downloads 9 buffers × 24 blocks × 4 seqs = 864 D2H transfers per optimizer step. Each D2H is a synchronous PCIe round-trip. Disabled per-block clipping (`entrenar@eaadbc6`). Proper fix: GPU-side squared norm reduction kernel in trueno. |
+
 *Gaps are added as they are discovered during implementation and dogfooding.*
 
 
@@ -2478,6 +2481,7 @@ This same pattern resolved four bugs during ALB-040 dogfooding:
 | ALB-044: CPU AdamW beta2=0.999 vs YAML beta2=0.95 (50x amplification) | Traced bias correction: v_hat = v/0.001 with beta2=0.999 vs v/0.05 with 0.95 | C-HYPERPARAMS-001: all optimizer fields must match YAML config |
 | ALB-059: GEMM backward constructor args n/k swapped — output stride 64× too large | Per-kernel: v_w_k[block0] corrupted during `gemm_backward_a(LM head)`. Pointer analysis: 3 contiguous 256KB allocs. Stride 32768 writes rows into m_w_k/v_w_k. | C-GEMMARGS-001: kernel constructor args must match documented parameter order |
 | ALB-059: Uninitialized optimizer m/v buffers (cuMemAlloc returns garbage) | Per-block: v_w_k nonzero before any backward op (not from overflow). `GpuBuffer::new()` ≠ zero-init. | C-GPUINIT-001: all optimizer state buffers must be zero-initialized |
+| ALB-065: Missing stream.synchronize() before D2H gradient transfers | Per-transfer: cuMemcpyDtoH reads stale GPU buffers. Process stable with CUDA_LAUNCH_BLOCKING=1, crashes within 15s without it. Five Whys: trueno uses CU_STREAM_NON_BLOCKING; cuMemcpyDtoH doesn't sync with non-blocking streams. | C-STREAMSYNC-001: stream.synchronize() before every D2H transfer reading kernel output |
 
 ### 12.5.4 How Bricks and Contracts Interlock
 
@@ -2746,6 +2750,35 @@ falsification: |
 
 Full contract: `contracts/training-config-kernel-v1.yaml` — 7 equations,
 8 proof obligations, 5 falsification tests, 2 Kani harnesses.
+
+### C-STREAMSYNC-001: Stream Synchronization Before D2H Transfers
+
+Every `cuMemcpyDtoH` (or `copy_to_host_at()`) call that reads data written by
+GPU kernels on a non-default stream MUST be preceded by `stream.synchronize()`.
+
+```yaml
+motivation: |
+  ALB-065: gradient clipping downloaded 9 GPU buffers via cuMemcpyDtoH
+  without stream synchronization. trueno CudaStream uses CU_STREAM_NON_BLOCKING;
+  cuMemcpyDtoH only synchronizes with the default stream. Backward kernels
+  hadn't finished → garbage clip scale → NaN → silent SIGABRT (process death
+  with no error output). Training was stable with CUDA_LAUNCH_BLOCKING=1 but
+  crashed within 15 seconds without it.
+obligation: |
+  stream.synchronize() MUST precede every cuMemcpyDtoH that reads kernel output.
+  No exceptions. The sync ensures all prior kernel launches have completed.
+falsification: |
+  FALSIFY-GPU-008: Run 350M training for 50+ steps WITHOUT CUDA_LAUNCH_BLOCKING=1.
+  Verify process stays alive, loss is finite, no CUDA errors in dmesg/Xid log.
+anti_pattern: |
+  NEVER: call copy_to_host_at() after kernel launches without stream.synchronize()
+  NEVER: rely on cuMemcpyDtoH to synchronize non-blocking streams (it doesn't)
+  DIAGNOSTIC: if training crashes without CUDA_LAUNCH_BLOCKING=1 but works with it,
+  this is the FIRST contract to check
+```
+
+Full contract: `contracts/training-gpu-kernel-v1.yaml` — stream_synchronization
+equation + proof obligation.
 
 ### 12.7.1 Observability Discipline
 
@@ -4351,6 +4384,42 @@ classic async CUDA error pattern.
 
 **Verification**: Training stable without `CUDA_LAUNCH_BLOCKING=1` at 441 tok/s
 (vs 402 with blocking). Process alive for 2.5+ minutes past the crash point.
+
+## ALB-067: Per-Block Weight Gradient Clipping CPU Bottleneck (High)
+
+**Discovery**: 350M v2 training (2026-03-03) running at ~120 tok/s with
+`gradient_accumulation: 16`. Profiling showed the majority of per-step time
+spent in `compute_workspace_clip_scale()` — synchronous D2H transfers for
+gradient L2 norm computation.
+
+**Five Whys**:
+
+| Why | Finding | Brick Boundary |
+|-----|---------|----------------|
+| **Why is training only 120 tok/s?** | Per-step time dominated by gradient clipping, not forward/backward | Per-step: clipping >> compute |
+| **Why is gradient clipping slow?** | `compute_workspace_clip_scale()` downloads 9 GPU buffers per block to CPU for L2 norm | Per-block: 9 D2H transfers × 24 blocks |
+| **Why 9 buffers per block?** | Each block has q/k/v/o_proj + gate/up/down + norm weights + bias = 9 gradient buffers | Per-kernel: one cuMemcpyDtoH per buffer |
+| **Why is each D2H slow?** | Each `cuMemcpyDtoH` is a synchronous PCIe round-trip (~5-10 us latency) with `stream.synchronize()` | Per-transfer: PCIe latency-bound |
+| **Why no GPU-side norm reduction?** | trueno has no squared-norm reduction kernel — must download to CPU for `f32::sqrt()` | **Root cause**: missing GPU-side L2 norm kernel in trueno |
+
+**Total D2H transfers per optimizer step**: 9 buffers × 24 blocks × 4 micro-batches
+(grad_accum=16, but clip runs per accumulation group) = **864 D2H transfers**.
+At ~5-10 us each = 4.3-8.6 ms of pure PCIe latency per step, plus the CPU-side
+L2 norm computation on downloaded buffers.
+
+**Workaround** (`entrenar@eaadbc6`): Disabled per-block weight gradient clipping
+entirely. Kept LM head clipping, final norm clipping, and activation gradient
+clipping (C-EMBED-GRAD-001) — these are single-buffer clips, not 864-transfer
+bottlenecks.
+
+**Proper fix**: GPU-side squared norm reduction kernel in trueno that computes
+`sum(x^2)` on-device and downloads a single scalar per buffer. Reduces 864 D2H
+transfers to 864 scalar reads (~4 bytes each) or, with a fused multi-buffer
+kernel, to 24 scalar reads (one per block).
+
+**Verification**: 350M training at **480 tok/s** (4× improvement), **8.4s/step**,
+**11.7h ETA** for 5000 steps. Training stable with grad_clip and monitoring
+disabled for this run.
 
 ## Post-Training Pipeline Validation Detail
 
