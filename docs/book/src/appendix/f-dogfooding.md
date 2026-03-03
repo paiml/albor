@@ -142,6 +142,7 @@
 | `apr eval --task contamination` | `apr eval model.safetensors --task contamination --data train.jsonl` | **PASS** (10-gram Jaccard overlap, 0/179 contaminated) | — |
 | `apr eval --task compare` | `apr eval model_a.safetensors --task compare --data model_b.safetensors` | **PASS** (side-by-side: size, tensors, format, ratio) | — |
 | `apr train watch` | `apr train watch --config pretrain-350m-v2.yaml` | **PASS** (crash recovery, exponential backoff, GPU diagnostics, crash-reports JSON) | — |
+| `apr eval --task verify` | `apr eval checkpoints/albor-350m-cuda-test/ --task verify` | **PASS** (9/9 checks: safetensors header, tensor count, FNV-1a hash, config.json) | — |
 
 ## ALB-060: Training Config Epoch/Step Mismatch (Critical)
 
@@ -771,21 +772,21 @@ Levanter, GPT-NeoX) against entrenar/albor sovereign stack.
 | Category | Before | After | Max |
 |----------|--------|-------|-----|
 | Checkpointing | 2.5 | 10.0 | 10 |
-| Fault tolerance | 2.0 | 9.5 | 10 |
+| Fault tolerance | 2.0 | 10.0 | 10 |
 | Observability | 4.5 | 10.0 | 10 |
 | Mixed precision | 0.5 | 0.5 | 5 |
 | Gradient management | 4.5 | 7.5 | 10 |
 | Data pipeline | 4.5 | 8.5 | 10 |
 | LR & optimization | 3.0 | 4.5 | 5 |
-| Evaluation | 1.0 | 7.0 | 10 |
+| Evaluation | 1.0 | 8.0 | 10 |
 | Distributed | 0.0 | 0.0 | 10 |
 | Reproducibility | 2.5 | 3.5 | 5 |
 | Security | 2.0 | 3.5 | 5 |
 | Configuration | 2.5 | 4.5 | 5 |
 | Provable correctness | 4.5 | 4.5 | 5 |
-| **Total** | **34** | **73.5** | **100** |
+| **Total** | **34** | **75.5** | **100** |
 
-**Grade: F (34%) → C (73%)**. 39 MLOps features implemented across 8 batches.
+**Grade: F (34%) → C (75%)**. 42 MLOps features implemented across 8 batches.
 All features are **pure Rust** — no Python scripts count toward the score.
 
 **Implemented (39 items, batches 1-8)**:
