@@ -146,7 +146,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 50M quick (seq=512, batch=4) | 5 | 10.42→9.45 | ~10s | PASS (post ALB-059 fix) |
 | 350M test (seq=512, batch=4) | 50 | 10.39→5.92 (best 5.53) | ~400s | PASS (post ALB-059 fix) |
 | 350M full (seq=1024, batch=4, accum=128) | 43/5000 | 10.39 flat | ~12s | **FAIL (ALB-060)**: epochs=1 exhausted data |
-| 350M full v2 (seq=1024, batch=4, accum=128) | 5000 | TBD | ~20h | **RUNNING** (ALB-065 fixed, 441 tok/s) |
+| 350M full v2 (seq=1024, batch=4, accum=1) | 5000 | TBD | ~11.7h | **RUNNING** (ALB-066 accum=1, ALB-067 workaround: per-block grad_clip + monitoring disabled, ~480 tok/s, 8.4s/step) |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 

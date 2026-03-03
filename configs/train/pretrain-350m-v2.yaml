@@ -5,16 +5,18 @@
 #
 # C-TRAINCFG-001 pre-flight verification:
 #   num_sequences:    67,977 (v2 dataset)
-#   steps_per_epoch:  floor(67977 / 4 / 16) = 1062
-#   epochs:           5 (ceil(5000 / 1062) = 5, 5 × 1062 = 5310 >= 5000)
+#   steps_per_epoch:  floor(67977 / 4 / 1) = 16994
+#   epochs:           1 (16994 steps per epoch >= 5000 max_steps)
 #   warmup_steps:     500 (10% of max_steps, per C-TRAINCFG-001 <= 10% bound)
-#   effective_batch:  4 × 16 = 64 tokens/step (reasonable for 350M)
 #
-# Time estimate: 5000 steps × ~149s/step ÷ 3600 ≈ 207h ≈ 8.6 days
-# (at 441 tok/s measured throughput with stream.synchronize() fix)
+# Time estimate: 5000 steps × ~8.4s/step ÷ 3600 ≈ 11.7h
+# (measured ~1.8s/seq at seq=1024, 4 seqs/step, ALB-067 per-block clip disabled)
 #
-# NOTE: gradient_accumulation reduced from 128→16 (ALB-066).
-# At 128, training would take 68.8 days — impractical for single GPU.
+# NOTE: gradient_accumulation=1. The CudaTransformerTrainer does per-sequence
+# optimizer updates (per-block interleaved backward+optimize). True gradient
+# accumulation is not implemented — increasing accum just increases total
+# sequences processed per "step" without changing update granularity.
+# ALB-066: reduced from 128→16→1.
 
 model:
   path: "."                                  # From scratch (random init)
@@ -46,14 +48,11 @@ optimizer:
 
 training:
   mode: "causal_lm"
-  epochs: 5                                  # C-TRAINCFG-001: ceil(5000 / 1062) = 5
-                                             # steps_per_epoch = floor(67977 / 4 / 16) = 1062
-                                             # 5 epochs × 1062 = 5310 achievable steps >= 5000
-  grad_clip: 1.0
+  epochs: 1                                  # C-TRAINCFG-001: steps_per_epoch=16994 >= max_steps=5000
+  # grad_clip: 1.0                            # ALB-067: disabled, CPU-side L2 norm bottleneck
   lr_scheduler: "cosine"
   warmup_steps: 500                          # C-TRAINCFG-001: warmup_fraction = 500/5000 = 10%
-  gradient_accumulation: 16                  # ALB-066: reduced from 128 (68.8 days → 8.6 days)
-                                             # effective batch = 4 × 16 = 64 (vs 512 with 128)
+  gradient_accumulation: 1                   # ALB-066: per-sequence optimizer (no true accum in CUDA trainer)
   mixed_precision: "fp16"
   output_dir: "./checkpoints/albor-base-350m-v2"
   save_interval: 25
@@ -61,7 +60,7 @@ training:
 
 monitoring:
   terminal:
-    enabled: true
+    enabled: false                              # ALB-067: blocks under nohup (no tty)
     refresh_rate: 1000
     metrics: ["loss", "learning_rate", "gradient_norm"]
     charts:
@@ -71,7 +70,7 @@ monitoring:
         show_eta: true
 
   tracking:
-    enabled: true
+    enabled: false                              # ALB-067: disabled for nohup compatibility
     backend: "sqlite"
     experiment: "albor-pretrain-350m-v2"
     tags:
@@ -80,7 +79,7 @@ monitoring:
       data: "python-code-expanded-v2"
 
   system:
-    enabled: true
+    enabled: false                              # ALB-067: disabled for nohup compatibility
     interval: 5000
     metrics: ["gpu_utilization", "memory", "temperature"]
 

@@ -650,6 +650,42 @@ classic async CUDA error pattern.
 **Verification**: Training stable without `CUDA_LAUNCH_BLOCKING=1` at 441 tok/s
 (vs 402 with blocking). Process alive for 2.5+ minutes past the crash point.
 
+## ALB-067: Per-Block Weight Gradient Clipping CPU Bottleneck (High)
+
+**Discovery**: 350M v2 training (2026-03-03) running at ~120 tok/s with
+`gradient_accumulation: 16`. Profiling showed the majority of per-step time
+spent in `compute_workspace_clip_scale()` — synchronous D2H transfers for
+gradient L2 norm computation.
+
+**Five Whys**:
+
+| Why | Finding | Brick Boundary |
+|-----|---------|----------------|
+| **Why is training only 120 tok/s?** | Per-step time dominated by gradient clipping, not forward/backward | Per-step: clipping >> compute |
+| **Why is gradient clipping slow?** | `compute_workspace_clip_scale()` downloads 9 GPU buffers per block to CPU for L2 norm | Per-block: 9 D2H transfers × 24 blocks |
+| **Why 9 buffers per block?** | Each block has q/k/v/o_proj + gate/up/down + norm weights + bias = 9 gradient buffers | Per-kernel: one cuMemcpyDtoH per buffer |
+| **Why is each D2H slow?** | Each `cuMemcpyDtoH` is a synchronous PCIe round-trip (~5-10 us latency) with `stream.synchronize()` | Per-transfer: PCIe latency-bound |
+| **Why no GPU-side norm reduction?** | trueno has no squared-norm reduction kernel — must download to CPU for `f32::sqrt()` | **Root cause**: missing GPU-side L2 norm kernel in trueno |
+
+**Total D2H transfers per optimizer step**: 9 buffers × 24 blocks × 4 micro-batches
+(grad_accum=16, but clip runs per accumulation group) = **864 D2H transfers**.
+At ~5-10 us each = 4.3-8.6 ms of pure PCIe latency per step, plus the CPU-side
+L2 norm computation on downloaded buffers.
+
+**Workaround** (`entrenar@eaadbc6`): Disabled per-block weight gradient clipping
+entirely. Kept LM head clipping, final norm clipping, and activation gradient
+clipping (C-EMBED-GRAD-001) — these are single-buffer clips, not 864-transfer
+bottlenecks.
+
+**Proper fix**: GPU-side squared norm reduction kernel in trueno that computes
+`sum(x^2)` on-device and downloads a single scalar per buffer. Reduces 864 D2H
+transfers to 864 scalar reads (~4 bytes each) or, with a fused multi-buffer
+kernel, to 24 scalar reads (one per block).
+
+**Verification**: 350M training at **480 tok/s** (4× improvement), **8.4s/step**,
+**11.7h ETA** for 5000 steps. Training stable with grad_clip and monitoring
+disabled for this run.
+
 ## Post-Training Pipeline Validation Detail
 
 ### Quantization (2026-03-03)

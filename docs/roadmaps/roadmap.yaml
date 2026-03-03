@@ -40,11 +40,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'ALB-063: Retrain 350M v2'
-  status: planned
+  status: inprogress
   priority: critical
   assigned_to: null
   created: 2026-03-03T09:45:27Z
-  updated: 2026-03-03T09:45:27Z
+  updated: 2026-03-03T09:51:40.773584156+00:00
   spec: null
   acceptance_criteria:
   - Train with pretrain-350m-v2.yaml (68K seqs, epochs=38, warmup=500)
