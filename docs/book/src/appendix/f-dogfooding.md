@@ -7,7 +7,7 @@
 
 | Tool | Command | Result | Gap |
 |------|---------|--------|-----|
-| `pv validate` | `pv validate contracts/*.yaml` | **PASS** (all 7 contracts) | — |
+| `pv validate` | `pv validate contracts/*.yaml` | **PASS** (all 12 contracts) | — |
 | `pv coverage` | `pv coverage contracts` | **PASS** (100% obligation coverage) | — |
 | `pv graph` | `pv graph contracts` | **PASS** (8 nodes, correct deps) | — |
 | `pv probar` | `pv probar contracts/*.yaml` | **PASS** (generates property tests) | — |
@@ -151,6 +151,11 @@
 | `apr encrypt` | `apr encrypt model.safetensors -o model.enc --key-file key.bin` | **PASS** (238 MB, 0.89s, BLAKE3 keystream + MAC) | — |
 | `apr decrypt` | `apr decrypt model.enc -o model.safetensors --key-file key.bin` | **PASS** (238 MB roundtrip verified, MAC authenticated, 0.74s) | — |
 | `apr train plan` (R-095) | `apr train plan --task pretrain --config pretrain-350m-cuda-test.yaml` | **PASS** (extended: RAM 5.5GB, disk 4.5GB/ckpt, 2048 tok/step, 60ms/step, 34K tok/s) | — |
+| `apr train apply --distributed` | `apr train apply --task pretrain --config pretrain-350m.yaml --distributed --world-size 2` | **PASS** (CLI flags accepted, YAML patched with distributed section) | — |
+| `apr train apply --deterministic` | `apr train apply --task pretrain --config pretrain-50m-quick.yaml --deterministic --seed 42` | **PASS** (deterministic + seed flags injected into YAML) | — |
+| `entrenar` (activation checkpointing) | `with_checkpointing(4)` in TransformerTrainConfig | **PASS** (checkpoint boundary mask, segment-based recomputation, 4 unit tests) | ~~#115~~ FIXED |
+| `entrenar` (gradient accumulation) | `with_accumulation_steps(4)` in CudaTransformerTrainer | **PASS** (per-block CPU accum, download workspace D2H, average + upload H2D + optimizer, 2 unit tests) | ~~#131~~ FIXED |
+| `pv validate` (distributed) | `pv validate contracts/C-DDP-001.yaml contracts/C-RING-001.yaml contracts/C-SHARD-001.yaml contracts/C-WIRE-002.yaml` | **PASS** (4 new contracts, 0 errors) | — |
 
 ## ALB-060: Training Config Epoch/Step Mismatch (Critical)
 
