@@ -230,6 +230,7 @@ This same pattern resolved four bugs during ALB-040 dogfooding:
 | ALB-044: CPU AdamW beta2=0.999 vs YAML beta2=0.95 (50x amplification) | Traced bias correction: v_hat = v/0.001 with beta2=0.999 vs v/0.05 with 0.95 | C-HYPERPARAMS-001: all optimizer fields must match YAML config |
 | ALB-059: GEMM backward constructor args n/k swapped — output stride 64× too large | Per-kernel: v_w_k[block0] corrupted during `gemm_backward_a(LM head)`. Pointer analysis: 3 contiguous 256KB allocs. Stride 32768 writes rows into m_w_k/v_w_k. | C-GEMMARGS-001: kernel constructor args must match documented parameter order |
 | ALB-059: Uninitialized optimizer m/v buffers (cuMemAlloc returns garbage) | Per-block: v_w_k nonzero before any backward op (not from overflow). `GpuBuffer::new()` ≠ zero-init. | C-GPUINIT-001: all optimizer state buffers must be zero-initialized |
+| ALB-065: Missing stream.synchronize() before D2H gradient transfers | Per-transfer: cuMemcpyDtoH reads stale GPU buffers. Process stable with CUDA_LAUNCH_BLOCKING=1, crashes within 15s without it. Five Whys: trueno uses CU_STREAM_NON_BLOCKING; cuMemcpyDtoH doesn't sync with non-blocking streams. | C-STREAMSYNC-001: stream.synchronize() before every D2H transfer reading kernel output |
 
 ### 12.5.4 How Bricks and Contracts Interlock
 
@@ -498,6 +499,35 @@ falsification: |
 
 Full contract: `contracts/training-config-kernel-v1.yaml` — 7 equations,
 8 proof obligations, 5 falsification tests, 2 Kani harnesses.
+
+### C-STREAMSYNC-001: Stream Synchronization Before D2H Transfers
+
+Every `cuMemcpyDtoH` (or `copy_to_host_at()`) call that reads data written by
+GPU kernels on a non-default stream MUST be preceded by `stream.synchronize()`.
+
+```yaml
+motivation: |
+  ALB-065: gradient clipping downloaded 9 GPU buffers via cuMemcpyDtoH
+  without stream synchronization. trueno CudaStream uses CU_STREAM_NON_BLOCKING;
+  cuMemcpyDtoH only synchronizes with the default stream. Backward kernels
+  hadn't finished → garbage clip scale → NaN → silent SIGABRT (process death
+  with no error output). Training was stable with CUDA_LAUNCH_BLOCKING=1 but
+  crashed within 15 seconds without it.
+obligation: |
+  stream.synchronize() MUST precede every cuMemcpyDtoH that reads kernel output.
+  No exceptions. The sync ensures all prior kernel launches have completed.
+falsification: |
+  FALSIFY-GPU-008: Run 350M training for 50+ steps WITHOUT CUDA_LAUNCH_BLOCKING=1.
+  Verify process stays alive, loss is finite, no CUDA errors in dmesg/Xid log.
+anti_pattern: |
+  NEVER: call copy_to_host_at() after kernel launches without stream.synchronize()
+  NEVER: rely on cuMemcpyDtoH to synchronize non-blocking streams (it doesn't)
+  DIAGNOSTIC: if training crashes without CUDA_LAUNCH_BLOCKING=1 but works with it,
+  this is the FIRST contract to check
+```
+
+Full contract: `contracts/training-gpu-kernel-v1.yaml` — stream_synchronization
+equation + proof obligation.
 
 ### 12.7.1 Observability Discipline
 
