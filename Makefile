@@ -19,7 +19,7 @@
         validate-checkpoint-50m validate-checkpoint-350m validate-convergence \
         training-status \
         test test-rust clippy bench security-audit reproduce \
-        book book-serve dogfood dogfood-batuta dogfood-playbook \
+        book book-serve spec dogfood dogfood-batuta dogfood-playbook \
         lint clean help
 
 # ═══════════════════════════════════════════════════════════
@@ -193,6 +193,10 @@ book: ## Build mdBook
 
 book-serve: ## Serve mdBook locally
 	cd docs/book && mdbook serve --open
+
+spec: ## Regenerate monolithic spec from mdBook chapters
+	bash scripts/generate-spec.sh > docs/specifications/albor-llm-spec.md
+	@echo "Generated docs/specifications/albor-llm-spec.md ($$(wc -l < docs/specifications/albor-llm-spec.md) lines)"
 
 # ═══════════════════════════════════════════════════════════
 # DOGFOOD (exercise tools, report what works and what's blocked)

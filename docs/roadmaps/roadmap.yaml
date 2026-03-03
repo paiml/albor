@@ -6,11 +6,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'ALB-061: Sync monolithic spec with mdBook chapters'
-  status: planned
+  status: inprogress
   priority: high
   assigned_to: null
   created: 2026-03-03T09:45:24Z
-  updated: 2026-03-03T09:45:24Z
+  updated: 2026-03-03T09:48:47.441232808+00:00
   spec: null
   acceptance_criteria:
   - Generate monolithic spec from mdBook chapters, add make spec target

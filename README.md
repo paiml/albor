@@ -22,7 +22,7 @@ A **350M-parameter decoder-only transformer** trained entirely in Rust with zero
 1. Produce a **usable Python code assist model** that runs anywhere Rust compiles
 2. Identify and fix every gap in the [Sovereign AI stack](https://github.com/paiml) that blocks end-to-end LLM development
 
-**Current status (2026-03-02):** Phase 3 — 350M pre-training on RTX 4090 via GPU-resident `CudaTransformerTrainer`. 50-step test verified (loss 10.39→6.07), full training running. 22 upstream gaps fixed, 7 provable contracts pass audit.
+**Current status (2026-03-03):** Phase 3 — 350M retraining with v2 data (139M tokens). First run failed ([ALB-060](https://github.com/paiml/albor/issues/45): epochs=1 only ran 43/5000 steps). Fixed with C-TRAINCFG-001 contract + expanded dataset (68K sequences). 50-step test verified (loss 10.39→5.92). 24+ upstream gaps fixed, 8 provable contracts pass audit. Qwen2.5-Coder-3B interim teacher validated for distillation.
 
 ## Leaderboard Target
 
