@@ -84,8 +84,8 @@
 | `apr export --plan` | `apr export model.apr --plan --format gguf -o model.gguf` | **PASS** (validates format, shows plan) | ~~ALB-023~~ FIXED |
 | `apr publish --plan` | `apr publish dir repo --plan` | **PASS** (alias for --dry-run) | ~~ALB-023~~ FIXED |
 | `apr train apply` (350M full) | `apr train apply --task pretrain --config pretrain-350m.yaml` | **FAIL** (ALB-060: epochs=1 exhausted data at step 43/5000, loss flat ~10.39, LR still in warmup at 6.45e-6) | ALB-060 |
-| `apr train apply` (350M v2) | `apr train apply --task pretrain --config pretrain-350m-v2.yaml` | **FAIL** (ALB-064: silent crash — process died after step 0, no error output, no crash report, no backtrace) | ALB-064 |
-| `train-guard.sh` | `bash scripts/train-guard.sh configs/train/pretrain-350m-v2.yaml` | **IMPLEMENTED** (crash-resilient supervisor with exit code classification, GPU state capture, JSON crash reports, backoff restart, heartbeat monitoring) | ALB-064 |
+| `apr train apply` (350M v2) | `apr train apply --task pretrain --config pretrain-350m-v2.yaml` | **PASS** (ALB-065 fixed: `stream.synchronize()` before D2H gradient transfers. Training stable without `CUDA_LAUNCH_BLOCKING=1`, 441 tok/s) | ~~ALB-064~~ ~~ALB-065~~ FIXED |
+| `train-guard.sh` | `bash scripts/train-guard.sh configs/train/pretrain-350m-v2.yaml` | **PASS** (crash-resilient supervisor with auto-diagnostic CUDA blocking mode, exit code classification, GPU state capture, JSON crash reports, backoff restart, heartbeat monitoring) | ~~ALB-064~~ FIXED |
 | `pv validate` (memory) | `pv validate contracts/training-memory-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-039 |
 | `pv validate` (GPU) | `pv validate contracts/training-gpu-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-040 |
 | `apr train apply` (50M CUDA) | `apr train apply --config pretrain-50m-v2-test.yaml` | **PASS** (3 steps, loss 10.4→11.7, GPU forward+backward) | ~~ALB-041~~ FIXED |
@@ -623,6 +623,32 @@ Amazon (FlashRecovery), and systemd:
 
 **Debugging mode**: `make train-350m-raw` runs with `RUST_BACKTRACE=1 CUDA_LAUNCH_BLOCKING=1`
 to capture CUDA errors synchronously (slower but diagnostic).
+
+**Auto-diagnostic mode**: `train-guard.sh` detects the async CUDA crash pattern
+(early death + signal crash at step 0) and automatically enables
+`CUDA_LAUNCH_BLOCKING=1` on the next restart to surface the exact failing kernel.
+
+## ALB-065: Missing stream.synchronize() Before D2H Gradient Transfers (Critical)
+
+**Discovery**: Diagnosed via ALB-064. Training with `CUDA_LAUNCH_BLOCKING=1` was
+stable for 18+ minutes; without it, process died within 15 seconds. This is the
+classic async CUDA error pattern.
+
+**Five Whys**:
+
+| Why | Finding | Brick Boundary |
+|-----|---------|----------------|
+| **Why does training crash silently?** | CUDA error queued asynchronously, process dies at next sync point | Per-kernel: error deferred |
+| **Why does CUDA_LAUNCH_BLOCKING=1 fix it?** | Forces synchronous execution, masking a race condition | Per-kernel: each finishes before next starts |
+| **Why is there a race condition?** | `cuMemcpyDtoH` doesn't synchronize with non-blocking stream kernels | Per-transfer: D2H reads stale data |
+| **Why are kernels on a non-blocking stream?** | trueno `CudaStream::new()` uses `CU_STREAM_NON_BLOCKING` | Per-kernel: stream creation policy |
+| **Why is there a D2H transfer mid-backward?** | `compute_workspace_clip_scale()` downloads 9 gradient buffers for L2 norm | **Root cause**: no sync before D2H |
+
+**Fix**: `stream.synchronize()` at 3 locations in `cuda_trainer.rs` before
+`cuMemcpyDtoH`-based gradient clipping (`entrenar@d3a3d26`).
+
+**Verification**: Training stable without `CUDA_LAUNCH_BLOCKING=1` at 441 tok/s
+(vs 402 with blocking). Process alive for 2.5+ minutes past the crash point.
 
 ## Post-Training Pipeline Validation Detail
 
