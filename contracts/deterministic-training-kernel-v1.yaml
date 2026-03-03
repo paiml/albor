@@ -1,0 +1,78 @@
+# Contract: Bitwise Deterministic Training (C-DETERM-001)
+# Ticket: entrenar #139 (R-084)
+# Survey practice: #84
+
+contract: C-DETERM-001
+version: 1
+title: Bitwise Deterministic Training Mode
+domain: reproducibility
+
+description: |
+  When deterministic mode is enabled, two training runs with identical
+  configuration and seed produce bitwise-identical outputs at every step.
+  This requires controlling all sources of non-determinism: CUDA kernels,
+  cuDNN algorithms, memory allocation order, and PRNG state.
+
+equations:
+  - id: E-DET-001
+    name: Output determinism
+    latex: "\\forall \\text{step} \\in [0, N]: \\text{loss}(\\text{run}_1, \\text{step}) = \\text{loss}(\\text{run}_2, \\text{step})"
+    description: |
+      Given identical config, seed, and data, loss values are bitwise equal
+      across two independent runs.
+
+  - id: E-DET-002
+    name: Weight determinism
+    latex: "W_{\\text{run}_1}^{(t)} = W_{\\text{run}_2}^{(t)} \\quad \\forall t"
+    description: |
+      After any step t, all model weights are bitwise identical across runs.
+
+  - id: E-DET-003
+    name: PRNG chain
+    latex: "\\text{RNG}_{t+1} = f(\\text{RNG}_t, \\text{seed})"
+    description: |
+      PRNG state evolves deterministically from the seed. No external entropy.
+
+invariants:
+  - id: I-DET-001
+    description: "CUBLAS_WORKSPACE_CONFIG is set to ':4096:8' before any cuBLAS call"
+  - id: I-DET-002
+    description: "CUDNN_DETERMINISTIC=1 when deterministic mode is active"
+  - id: I-DET-003
+    description: "CUDNN_BENCHMARK=0 when deterministic mode is active (prevents algorithm search)"
+  - id: I-DET-004
+    description: "Data shuffle uses deterministic LCG PRNG seeded from config seed + epoch"
+  - id: I-DET-005
+    description: "Weight initialization uses deterministic PRNG seeded from config seed"
+
+proof_obligations:
+  - id: O-DET-001
+    description: "ReproducibilityConfig::apply() sets all required CUDA environment variables"
+    method: unit_test
+    test: test_deterministic_env_vars_set
+
+  - id: O-DET-002
+    description: "TransformerTrainConfig propagates deterministic flag from YAML"
+    method: unit_test
+    test: test_deterministic_config_propagation
+
+  - id: O-DET-003
+    description: "Data shuffling with same seed + epoch produces identical ordering"
+    method: unit_test
+    test: test_shuffle_files_deterministic
+
+falsification:
+  - id: F-DET-001
+    prediction: "Two runs with deterministic=true and same seed produce identical loss at step 10"
+    test: "Train 10 steps twice with same config/data/seed, compare loss vectors"
+    if_fails: "Non-deterministic operation in forward or backward pass"
+
+  - id: F-DET-002
+    prediction: "deterministic=false with different seeds produces different loss sequences"
+    test: "Train 10 steps with seed=42 and seed=123, verify different losses"
+    if_fails: "Seed not actually used in computation"
+
+  - id: F-DET-003
+    prediction: "CUBLAS_WORKSPACE_CONFIG env var is ':4096:8' after apply()"
+    test: "Call apply(), read env var, assert value"
+    if_fails: "apply() broken or not called"
