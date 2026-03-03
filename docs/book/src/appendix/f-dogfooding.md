@@ -3,7 +3,7 @@
 > Living record of tool validation against the Albor repo.
 > Updated as gaps are discovered and resolved.
 
-## Summary (2026-03-03)
+## Summary (2026-03-04)
 
 | Tool | Command | Result | Gap |
 |------|---------|--------|-----|
@@ -156,6 +156,10 @@
 | `entrenar` (activation checkpointing) | `with_checkpointing(4)` in TransformerTrainConfig | **PASS** (checkpoint boundary mask, segment-based recomputation, 4 unit tests) | ~~#115~~ FIXED |
 | `entrenar` (gradient accumulation) | `with_accumulation_steps(4)` in CudaTransformerTrainer | **PASS** (per-block CPU accum, download workspace D2H, average + upload H2D + optimizer, 2 unit tests) | ~~#131~~ FIXED |
 | `pv validate` (distributed) | `pv validate contracts/C-DDP-001.yaml contracts/C-RING-001.yaml contracts/C-SHARD-001.yaml contracts/C-WIRE-002.yaml` | **PASS** (4 new contracts, 0 errors) | — |
+| `entrenar` (distributed DDP) | 4-worker ring AllReduce, per-block reverse-order AllReduce | **PASS** (C-DDP-001 weight consistency via BLAKE3, 11 integration tests) | ~~#145~~ FIXED |
+| `entrenar` (comm-overlap) | AllReduce + computation overlap timing test | **PASS** (overlap ≤ sequential time, concurrent threads) | ~~#145~~ FIXED |
+| `entrenar` (multi-node) | 3-node checkpoint coordination, block gradient exchange | **PASS** (barrier sync lifecycle, concurrent AllReduce + checkpoint) | ~~#145~~ FIXED |
+| `entrenar` (heterogeneous) | detect_all_devices(), mixed-backend AllReduce | **PASS** (CUDA+wgpu+CPU workers produce identical averaged gradients) | ~~#145~~ FIXED |
 
 ## ALB-060: Training Config Epoch/Step Mismatch (Critical)
 
@@ -814,7 +818,7 @@ All features are **pure Rust** — no Python scripts count toward the score.
 - Security (5/5): model weight encryption (`apr encrypt`/`apr decrypt`)
 - Configuration (5/5): comprehensive resource estimation (`apr train plan` R-095)
 
-**Remaining (3 open issues)**: R-002 BF16 (#118), R-021 activation checkpointing (#115), clean-room A2 (#97).
+**Remaining (2 open issues)**: R-002 BF16 (#118), clean-room A2 (#97). MLOps survey: 91% (A grade), 91 PASS / 0 PARTIAL / 9 FAIL.
 
 Full survey: `entrenar/docs/specifications/world-class-mlops-survey.md`
 
