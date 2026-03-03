@@ -791,19 +791,19 @@ Levanter, GPT-NeoX) against entrenar/albor sovereign stack.
 | Checkpointing | 2.5 | 10.0 | 10 |
 | Fault tolerance | 2.0 | 10.0 | 10 |
 | Observability | 4.5 | 10.0 | 10 |
-| Mixed precision | 0.5 | 0.5 | 5 |
-| Gradient management | 4.5 | 8.5 | 10 |
-| Data pipeline | 4.5 | 9.5 | 10 |
+| Mixed precision | 0.5 | 4.0 | 5 |
+| Gradient management | 4.5 | 10.0 | 10 |
+| Data pipeline | 4.5 | 10.0 | 10 |
 | LR & optimization | 3.0 | 5.0 | 5 |
 | Evaluation | 1.0 | 10.0 | 10 |
-| Distributed | 0.0 | 0.0 | 10 |
-| Reproducibility | 2.5 | 4.0 | 5 |
+| Distributed | 0.0 | 5.5 | 10 |
+| Reproducibility | 2.5 | 5.0 | 5 |
 | Security | 2.0 | 5.0 | 5 |
 | Configuration | 2.5 | 5.0 | 5 |
-| Provable correctness | 4.5 | 4.5 | 5 |
-| **Total** | **34** | **82** | **100** |
+| Provable correctness | 4.5 | 5.0 | 5 |
+| **Total** | **34** | **94** | **100** |
 
-**Grade: F (34%) → B (82%)**. 51 dogfooding entries, 45 MLOps features across 9 batches.
+**Grade: F (34%) → A (94%)**. 51 dogfooding entries, 48 MLOps features across 12 batches.
 All features are **pure Rust** — no Python scripts count toward the score.
 
 **Implemented (45 items, batches 1-9)**:
@@ -818,7 +818,14 @@ All features are **pure Rust** — no Python scripts count toward the score.
 - Security (5/5): model weight encryption (`apr encrypt`/`apr decrypt`)
 - Configuration (5/5): comprehensive resource estimation (`apr train plan` R-095)
 
-**Remaining (2 open issues)**: R-002 BF16 (#118), clean-room A2 (#97). MLOps survey: 91% (A grade), 91 PASS / 0 PARTIAL / 9 FAIL.
+- Mixed precision (4/5): GradScaler wired into CudaTransformerTrainer, GPU f32↔bf16 cast kernels, FP32 optimizer moments verified (R-002 batch 12)
+- Distributed (5.5/10): DDP with per-block AllReduce, ring AllReduce, streaming Parquet loader, wire protocol v2, distributed checkpoint, heterogeneous device enumeration (batches 10-11)
+- Gradient (10/10): gradient accumulation across micro-batches + global norm clipping (batch 10)
+- Data (10/10): streaming Parquet loader with file-level sharding (batch 10)
+- Reproducibility (5/5): Kani verification harnesses (batch 10)
+- Provable (5/5): 4 new contracts C-DDP-001, C-RING-001, C-WIRE-002, C-SHARD-001 (batch 10)
+
+**Remaining (5 FAIL items)**: #72-75, #79 (tensor/pipeline/sequence parallelism, ZeRO). MLOps survey: 94% (A grade), 93 PASS / 2 PARTIAL / 5 FAIL.
 
 Full survey: `entrenar/docs/specifications/world-class-mlops-survey.md`
 
