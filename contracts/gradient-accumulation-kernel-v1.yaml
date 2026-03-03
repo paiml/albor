@@ -4,12 +4,16 @@
 # Accumulating over N micro-batches must be numerically equivalent to full-batch gradient.
 
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
   created: "2026-03-01"
+  updated: "2026-03-03"
   author: "PAIML Engineering"
   description: "Gradient accumulation kernel — numerical equivalence of micro-batch accumulation"
+  changelog:
+    - "v2.0.0: Add CUDA trainer conformance gap (ALB-066). CudaTransformerTrainer does per-sequence optimizer updates, so gradient_accumulation config parameter just increases sequences per step without changing optimization granularity."
   references:
     - "Goyal et al. (2017) Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour"
+    - "ALB-066: gradient_accumulation semantics in CudaTransformerTrainer"
   depends_on:
     - "adamw-kernel-v1"
 
@@ -117,6 +121,32 @@ kani_harnesses:
     bound: 8
     strategy: exhaustive
     harness: verify_gradient_zeroing
+
+conformance:
+  cpu_trainer:
+    status: "UNKNOWN"
+    notes: "TransformerTrainer (CPU path) may implement true gradient accumulation. Not verified."
+  cuda_trainer:
+    status: "NON-CONFORMANT"
+    notes: |
+      CudaTransformerTrainer does per-sequence optimizer updates via per-block
+      interleaved backward+optimize (CudaGradWorkspace shared across blocks,
+      overwritten per block). Each sequence triggers N_blocks optimizer steps.
+
+      The `gradient_accumulation` config parameter increases the number of
+      sequences processed per reported "step" but does NOT:
+        - Accumulate gradients across sequences (workspace overwritten per block)
+        - Apply 1/N scaling
+        - Defer optimizer step to end of cycle
+
+      Effect: `gradient_accumulation: K` processes K sequences per step,
+      each with independent per-block optimizer updates. This is NOT
+      gradient accumulation — it's just a larger "step" counter stride.
+
+      Fix: Implement true accumulation by (1) zeroing workspace at cycle start,
+      (2) accumulating scaled gradients across sequences, (3) single optimizer
+      step at cycle end. Blocked by CudaGradWorkspace being shared per block.
+    gap_ref: "ALB-066"
 
 qa_gate:
   id: F-GA-001
