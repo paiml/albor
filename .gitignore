@@ -36,6 +36,11 @@ outputs/
 
 # pmat index cache
 .pmat/
+.pmat-work/
+
+# Python bytecode
+__pycache__/
+*.pyc
 
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
