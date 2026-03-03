@@ -754,6 +754,45 @@ C-TRAINCFG-001 pre-flight for pretrain-350m-v2.yaml:
 - warmup_steps: 500 (10% of 5000)
 - total_tokens: 2.6B
 
+## World-Class MLOps Survey (2026-03-03)
+
+Conducted scientific survey of 12 production training frameworks (Megatron-LM,
+DeepSpeed, TorchTitan, OLMo, Llama 3, PaLM, MegaScale, NeMo, Composer, Nanotron,
+Levanter, GPT-NeoX) against entrenar/albor sovereign stack.
+
+**Methodology**: arXiv literature review + batuta falsify + capability audit.
+
+| Category | Score | Max |
+|----------|-------|-----|
+| Checkpointing | 2.5 | 10 |
+| Fault tolerance | 2.0 | 10 |
+| Observability | 4.5 | 10 |
+| Mixed precision | 0.5 | 5 |
+| Gradient management | 4.5 | 10 |
+| Data pipeline | 4.5 | 10 |
+| LR & optimization | 3.0 | 5 |
+| Evaluation | 1.0 | 10 |
+| Distributed | 0.0 | 10 |
+| Reproducibility | 2.5 | 5 |
+| Security | 2.0 | 5 |
+| Configuration | 2.5 | 5 |
+| Provable correctness | 4.5 | 5 |
+| **Total** | **34** | **100** |
+
+**Grade: F (34%)**. Batuta falsify: 79.2% (code quality solid, infrastructure gaps).
+
+**Key strength**: Provable contracts (90%) -- unique among ALL surveyed frameworks.
+No other system has formal kernel contracts with falsification testing.
+
+**Top 5 remediation items** (Tier 1, +11.5 points):
+1. R-001: Optimizer state persistence (+4.0, 2 days)
+2. R-002: BF16 mixed precision (+4.5, 2 weeks)
+3. R-003: Crash detection & auto-restart (+3.0, 3 days)
+4. R-004: Gradient norm logging (+2.0, 1 day)
+5. R-005: Validation perplexity during training (+2.5, 2 days)
+
+Full survey: `entrenar/docs/specifications/world-class-mlops-survey.md`
+
 ## Tool Availability
 
 All sovereign stack tools are installed and reachable:
