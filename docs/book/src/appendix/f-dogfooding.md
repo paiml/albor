@@ -764,33 +764,34 @@ Levanter, GPT-NeoX) against entrenar/albor sovereign stack.
 
 | Category | Before | After | Max |
 |----------|--------|-------|-----|
-| Checkpointing | 2.5 | 7.5 | 10 |
-| Fault tolerance | 2.0 | 5.0 | 10 |
-| Observability | 4.5 | 9.0 | 10 |
+| Checkpointing | 2.5 | 10.0 | 10 |
+| Fault tolerance | 2.0 | 6.5 | 10 |
+| Observability | 4.5 | 10.0 | 10 |
 | Mixed precision | 0.5 | 0.5 | 5 |
-| Gradient management | 4.5 | 8.0 | 10 |
-| Data pipeline | 4.5 | 6.0 | 10 |
-| LR & optimization | 3.0 | 3.5 | 5 |
+| Gradient management | 4.5 | 6.5 | 10 |
+| Data pipeline | 4.5 | 5.5 | 10 |
+| LR & optimization | 3.0 | 4.0 | 5 |
 | Evaluation | 1.0 | 3.0 | 10 |
 | Distributed | 0.0 | 0.0 | 10 |
-| Reproducibility | 2.5 | 4.0 | 5 |
-| Security | 2.0 | 2.0 | 5 |
-| Configuration | 2.5 | 4.0 | 5 |
+| Reproducibility | 2.5 | 3.5 | 5 |
+| Security | 2.0 | 3.5 | 5 |
+| Configuration | 2.5 | 3.5 | 5 |
 | Provable correctness | 4.5 | 4.5 | 5 |
-| **Total** | **34** | **52** | **100** |
+| **Total** | **34** | **61** | **100** |
 
-**Grade: F (34%) → D (52%)**. 18 quick-win MLOps features implemented.
+**Grade: F (34%) → D (61%)**. 27 MLOps features implemented across 6 batches.
 
-**Implemented (18 issues closed)**:
-- Checkpointing: async save, step-numbered retention, integrity verification, training state
-- Fault tolerance: graceful SIGINT shutdown, heartbeat, NaN detection
-- Observability: gradient norm, MFU, GPU memory, step timing, JSONL experiment log
-- Gradient: ZClip spike detection, NaN/Inf skip
-- Data: shuffling, validation perplexity eval
-- Configuration: config snapshot, data provenance tracking
+**Implemented (27 items, batches 1-6)**:
+- Checkpointing (10/10): optimizer state persistence, async save, step-numbered retention, integrity verification, training state, data loader state, LR scheduler state, RNG state, full resume
+- Fault tolerance: graceful SIGINT shutdown, heartbeat, NaN detection, loss spike rollback, ZClip, multi-checkpoint retention
+- Observability (10/10): gradient norm, MFU, GPU memory, step timing, JSONL+SQLite experiment tracking, real-time TUI dashboard
+- Gradient: B_noise estimation, ZClip adaptive spike detection, NaN/Inf skip
+- Data: shuffling per epoch, validation perplexity at checkpoints
+- Config/provenance: config snapshot, data provenance, audit trail
 
-**Remaining (6 hard items)**: R-001 optimizer state, R-002 BF16, R-020 HumanEval,
-R-021 activation checkpointing, R-022 data quality, R-023 curriculum learning.
+**Remaining (10 open issues)**: R-002 BF16, R-019 data dedup, R-020 HumanEval,
+R-021 activation checkpointing, R-022 data quality, R-023 curriculum learning,
+R-027 hyperparameter sweep, R-030 contamination, R-031 model comparison.
 
 Full survey: `entrenar/docs/specifications/world-class-mlops-survey.md`
 
