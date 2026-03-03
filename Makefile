@@ -13,7 +13,7 @@
 
 .PHONY: validate validate-contracts validate-forjar validate-yaml validate-makefile \
         plan-finetune plan-finetune-lora plan-pretrain-50m plan-pretrain-350m \
-        train-50m train-350m \
+        train-50m train-350m train-350m-raw \
         eval-validate eval-perplexity-50m eval-perplexity-350m \
         eval-suite-50m eval-suite-350m \
         validate-checkpoint-50m validate-checkpoint-350m validate-convergence \
@@ -133,9 +133,13 @@ train-50m: ## Train 50M validation model (~2 min)
 	@mkdir -p checkpoints/albor-base-50m
 	apr train apply --task pretrain --config configs/train/pretrain-50m.yaml
 
-train-350m: ## Train 350M base model (~20 hours)
-	@mkdir -p checkpoints/albor-base-350m
-	apr train apply --task pretrain --config configs/train/pretrain-350m.yaml
+train-350m: ## Train 350M v2 with crash-resilient guard (~20 hours)
+	@mkdir -p checkpoints/albor-base-350m-v2 crash-reports
+	bash scripts/train-guard.sh configs/train/pretrain-350m-v2.yaml
+
+train-350m-raw: ## Train 350M v2 without guard (debugging)
+	@mkdir -p checkpoints/albor-base-350m-v2
+	RUST_BACKTRACE=1 CUDA_LAUNCH_BLOCKING=1 apr train apply --task pretrain --config configs/train/pretrain-350m-v2.yaml
 
 # ═══════════════════════════════════════════════════════════
 # EVAL (benchmarks and model evaluation)

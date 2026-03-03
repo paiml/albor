@@ -3,7 +3,7 @@
 > Living record of tool validation against the Albor repo.
 > Updated as gaps are discovered and resolved.
 
-## Summary (2026-03-02)
+## Summary (2026-03-03)
 
 | Tool | Command | Result | Gap |
 |------|---------|--------|-----|
@@ -84,6 +84,8 @@
 | `apr export --plan` | `apr export model.apr --plan --format gguf -o model.gguf` | **PASS** (validates format, shows plan) | ~~ALB-023~~ FIXED |
 | `apr publish --plan` | `apr publish dir repo --plan` | **PASS** (alias for --dry-run) | ~~ALB-023~~ FIXED |
 | `apr train apply` (350M full) | `apr train apply --task pretrain --config pretrain-350m.yaml` | **FAIL** (ALB-060: epochs=1 exhausted data at step 43/5000, loss flat ~10.39, LR still in warmup at 6.45e-6) | ALB-060 |
+| `apr train apply` (350M v2) | `apr train apply --task pretrain --config pretrain-350m-v2.yaml` | **FAIL** (ALB-064: silent crash — process died after step 0, no error output, no crash report, no backtrace) | ALB-064 |
+| `train-guard.sh` | `bash scripts/train-guard.sh configs/train/pretrain-350m-v2.yaml` | **IMPLEMENTED** (crash-resilient supervisor with exit code classification, GPU state capture, JSON crash reports, backoff restart, heartbeat monitoring) | ALB-064 |
 | `pv validate` (memory) | `pv validate contracts/training-memory-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-039 |
 | `pv validate` (GPU) | `pv validate contracts/training-gpu-kernel-v1.yaml` | **PASS** (0 errors, 0 warnings) | ALB-040 |
 | `apr train apply` (50M CUDA) | `apr train apply --config pretrain-50m-v2-test.yaml` | **PASS** (3 steps, loss 10.4→11.7, GPU forward+backward) | ~~ALB-041~~ FIXED |
@@ -587,6 +589,40 @@ apr train apply --task pretrain --config configs/train/pretrain-parquet.yaml
 
 `apr-cli` Cargo.toml: `entrenar = { version = "0.7.3", features = ["cuda", "parquet"] }`
 Commit: `aprender@` (pending push)
+
+## ALB-064: Training Process Silent Death (Critical)
+
+**Discovery**: 350M v2 training (2026-03-03) started successfully, logged step 0
+(loss=10.3933, 11.85 GB VRAM), then silently died. No error in stdout/stderr, no
+crash log, no backtrace, no dmesg OOM entry. Process gone, `training_state.json`
+still shows `"status": "Running"`. Repeated on second attempt.
+
+**Five Whys**:
+
+| Why | Finding | Brick Boundary |
+|-----|---------|----------------|
+| **Why did training fail?** | Unknown — process exited with no output | Per-process: PID gone, GPU memory freed |
+| **Why no error output?** | CUDA driver errors → SIGABRT/SIGSEGV → bypasses Rust panic handler | Per-transfer: driver crash kills process instantly |
+| **Why no crash handling?** | No signal handler, no watchdog, no crash recovery | System level: no supervision infrastructure |
+| **Why no watchdog?** | Training assumed to work or print errors | Architectural gap: no defensive monitoring |
+| **Why no defensive monitoring?** | Pipeline lacks production process supervision | **Root cause**: zero crash resilience infrastructure |
+
+**Fix**: `scripts/train-guard.sh` — crash-resilient training supervisor implementing
+patterns from Meta (Llama 3: 466 restarts in 54 days), ByteDance (ByteRobust),
+Amazon (FlashRecovery), and systemd:
+
+| Feature | Implementation |
+|---------|---------------|
+| Exit code classification | SIGSEGV=139→restartable, SIGKILL=137→OOM, SIGBUS=135→fatal |
+| GPU state capture | nvidia-smi queries + Xid error detection + dmesg OOM check |
+| Structured crash reports | JSON to `crash-reports/` with exit code, signal, GPU state, last step/loss |
+| Exponential backoff | 30s → 60s → 120s → 240s → 600s cap, reset after 1h stable |
+| Heartbeat monitoring | Polls `training_state.json` every 15s, detects stale >300s (GPU hang) |
+| Pre-flight checks | Kill stale GPU processes, verify GPU health, check Xid errors |
+| Signal forwarding | SIGTERM/SIGINT forwarded to training process on guard shutdown |
+
+**Debugging mode**: `make train-350m-raw` runs with `RUST_BACKTRACE=1 CUDA_LAUNCH_BLOCKING=1`
+to capture CUDA errors synchronously (slower but diagnostic).
 
 ## Post-Training Pipeline Validation Detail
 

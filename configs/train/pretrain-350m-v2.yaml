@@ -7,7 +7,7 @@
 #   num_sequences:    ~45K+ (v2 dataset, up from 22K)
 #   steps_per_epoch:  floor(N / 4 / 128) — compute after pretokenize completes
 #   epochs:           set to ensure total_achievable_steps >= max_steps
-#   warmup_steps:     2000 (must be < total_achievable_steps)
+#   warmup_steps:     500 (10% of max_steps, per C-TRAINCFG-001 <= 10% bound)
 #
 # NOTE: epochs value must be updated after pretokenize produces final sequence count.
 # Use: min_epochs = ceil(5000 / floor(num_sequences / 4 / 128))
