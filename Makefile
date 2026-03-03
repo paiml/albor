@@ -133,7 +133,7 @@ train-50m: ## Train 50M validation model (~2 min)
 	@mkdir -p checkpoints/albor-base-50m
 	apr train apply --task pretrain --config configs/train/pretrain-50m.yaml
 
-train-350m: ## Train 350M v2 with crash-resilient guard (~20 hours)
+train-350m: ## Train 350M v2 with crash-resilient guard (~8.6 days)
 	@mkdir -p checkpoints/albor-base-350m-v2 crash-reports
 	bash scripts/train-guard.sh configs/train/pretrain-350m-v2.yaml
 

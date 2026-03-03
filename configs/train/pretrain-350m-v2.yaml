@@ -4,13 +4,17 @@
 # v2 dataset (Tier 1 upsampled 10x + Tier 2 at 1x, FIM 50% PSM).
 #
 # C-TRAINCFG-001 pre-flight verification:
-#   num_sequences:    ~45K+ (v2 dataset, up from 22K)
-#   steps_per_epoch:  floor(N / 4 / 128) — compute after pretokenize completes
-#   epochs:           set to ensure total_achievable_steps >= max_steps
+#   num_sequences:    67,977 (v2 dataset)
+#   steps_per_epoch:  floor(67977 / 4 / 16) = 1062
+#   epochs:           5 (ceil(5000 / 1062) = 5, 5 × 1062 = 5310 >= 5000)
 #   warmup_steps:     500 (10% of max_steps, per C-TRAINCFG-001 <= 10% bound)
+#   effective_batch:  4 × 16 = 64 tokens/step (reasonable for 350M)
 #
-# NOTE: epochs value must be updated after pretokenize produces final sequence count.
-# Use: min_epochs = ceil(5000 / floor(num_sequences / 4 / 128))
+# Time estimate: 5000 steps × ~149s/step ÷ 3600 ≈ 207h ≈ 8.6 days
+# (at 441 tok/s measured throughput with stream.synchronize() fix)
+#
+# NOTE: gradient_accumulation reduced from 128→16 (ALB-066).
+# At 128, training would take 68.8 days — impractical for single GPU.
 
 model:
   path: "."                                  # From scratch (random init)
@@ -42,14 +46,14 @@ optimizer:
 
 training:
   mode: "causal_lm"
-  epochs: 38                                 # C-TRAINCFG-001: ceil(5000 / 132) = 38
-                                             # steps_per_epoch = floor(67977 / 4 / 128) = 132
-                                             # 38 epochs × 132 = 5016 achievable steps >= 5000
+  epochs: 5                                  # C-TRAINCFG-001: ceil(5000 / 1062) = 5
+                                             # steps_per_epoch = floor(67977 / 4 / 16) = 1062
+                                             # 5 epochs × 1062 = 5310 achievable steps >= 5000
   grad_clip: 1.0
   lr_scheduler: "cosine"
   warmup_steps: 500                          # C-TRAINCFG-001: warmup_fraction = 500/5000 = 10%
-                                             # (2000 was 40% — violates bound, wastes training at low LR)
-  gradient_accumulation: 128
+  gradient_accumulation: 16                  # ALB-066: reduced from 128 (68.8 days → 8.6 days)
+                                             # effective batch = 4 × 16 = 64 (vs 512 with 128)
   mixed_precision: "fp16"
   output_dir: "./checkpoints/albor-base-350m-v2"
   save_interval: 25
