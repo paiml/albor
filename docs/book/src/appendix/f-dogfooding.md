@@ -762,34 +762,35 @@ Levanter, GPT-NeoX) against entrenar/albor sovereign stack.
 
 **Methodology**: arXiv literature review + batuta falsify + capability audit.
 
-| Category | Score | Max |
-|----------|-------|-----|
-| Checkpointing | 2.5 | 10 |
-| Fault tolerance | 2.0 | 10 |
-| Observability | 4.5 | 10 |
-| Mixed precision | 0.5 | 5 |
-| Gradient management | 4.5 | 10 |
-| Data pipeline | 4.5 | 10 |
-| LR & optimization | 3.0 | 5 |
-| Evaluation | 1.0 | 10 |
-| Distributed | 0.0 | 10 |
-| Reproducibility | 2.5 | 5 |
-| Security | 2.0 | 5 |
-| Configuration | 2.5 | 5 |
-| Provable correctness | 4.5 | 5 |
-| **Total** | **34** | **100** |
+| Category | Before | After | Max |
+|----------|--------|-------|-----|
+| Checkpointing | 2.5 | 7.5 | 10 |
+| Fault tolerance | 2.0 | 5.0 | 10 |
+| Observability | 4.5 | 9.0 | 10 |
+| Mixed precision | 0.5 | 0.5 | 5 |
+| Gradient management | 4.5 | 8.0 | 10 |
+| Data pipeline | 4.5 | 6.0 | 10 |
+| LR & optimization | 3.0 | 3.5 | 5 |
+| Evaluation | 1.0 | 3.0 | 10 |
+| Distributed | 0.0 | 0.0 | 10 |
+| Reproducibility | 2.5 | 4.0 | 5 |
+| Security | 2.0 | 2.0 | 5 |
+| Configuration | 2.5 | 4.0 | 5 |
+| Provable correctness | 4.5 | 4.5 | 5 |
+| **Total** | **34** | **52** | **100** |
 
-**Grade: F (34%)**. Batuta falsify: 79.2% (code quality solid, infrastructure gaps).
+**Grade: F (34%) → D (52%)**. 18 quick-win MLOps features implemented.
 
-**Key strength**: Provable contracts (90%) -- unique among ALL surveyed frameworks.
-No other system has formal kernel contracts with falsification testing.
+**Implemented (18 issues closed)**:
+- Checkpointing: async save, step-numbered retention, integrity verification, training state
+- Fault tolerance: graceful SIGINT shutdown, heartbeat, NaN detection
+- Observability: gradient norm, MFU, GPU memory, step timing, JSONL experiment log
+- Gradient: ZClip spike detection, NaN/Inf skip
+- Data: shuffling, validation perplexity eval
+- Configuration: config snapshot, data provenance tracking
 
-**Top 5 remediation items** (Tier 1, +11.5 points):
-1. R-001: Optimizer state persistence (+4.0, 2 days)
-2. R-002: BF16 mixed precision (+4.5, 2 weeks)
-3. R-003: Crash detection & auto-restart (+3.0, 3 days)
-4. R-004: Gradient norm logging (+2.0, 1 day)
-5. R-005: Validation perplexity during training (+2.5, 2 days)
+**Remaining (6 hard items)**: R-001 optimizer state, R-002 BF16, R-020 HumanEval,
+R-021 activation checkpointing, R-022 data quality, R-023 curriculum learning.
 
 Full survey: `entrenar/docs/specifications/world-class-mlops-survey.md`
 
