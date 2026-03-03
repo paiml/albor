@@ -13,6 +13,11 @@
 #   bash scripts/train-guard.sh configs/train/pretrain-350m-v2.yaml
 #   bash scripts/train-guard.sh configs/train/pretrain-350m-v2.yaml --max-restarts 3
 #   bash scripts/train-guard.sh configs/train/pretrain-350m-v2.yaml --no-restart
+#   bash scripts/train-guard.sh configs/train/pretrain-350m-v2.yaml --cuda-blocking
+#
+# Auto-diagnostic: if training crashes early with SIGABRT/SIGSEGV (the async
+# CUDA error pattern), the guard automatically enables CUDA_LAUNCH_BLOCKING=1
+# on the next restart to surface the exact failing kernel.
 #
 # Refs: ALB-064 (https://github.com/paiml/albor/issues/46)
 
@@ -32,13 +37,15 @@ NO_RESTART=false
 BACKOFF_BASE=30              # Initial backoff in seconds
 BACKOFF_CAP=600              # Max backoff in seconds
 STABLE_RESET_SECS=3600      # Reset crash counter after 1 hour of stable training
+CUDA_BLOCKING=false          # Set automatically on async CUDA crash diagnosis
 
 # Parse optional flags
 shift
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --max-restarts) MAX_RESTARTS="$2"; shift 2 ;;
-        --no-restart)   NO_RESTART=true; shift ;;
+        --max-restarts)   MAX_RESTARTS="$2"; shift 2 ;;
+        --no-restart)     NO_RESTART=true; shift ;;
+        --cuda-blocking)  CUDA_BLOCKING=true; shift ;;
         *) echo "Unknown flag: $1"; exit 1 ;;
     esac
 done
@@ -164,6 +171,7 @@ preflight() {
     mkdir -p "$CRASH_DIR"
     echo "  Crashes: $CRASH_DIR/"
     echo "  Restart: $( $NO_RESTART && echo "DISABLED" || echo "max $MAX_RESTARTS" )"
+    echo "  CUDA:    $( $CUDA_BLOCKING && echo "BLOCKING (diagnostic mode)" || echo "async (normal)" )"
     echo ""
 }
 
@@ -262,7 +270,15 @@ main() {
         # Launch training in background
         local start_time
         start_time=$(date +%s)
-        "$APR" train apply --task pretrain --config "$CONFIG" > "$log_file" 2>&1 &
+
+        if $CUDA_BLOCKING; then
+            echo "  Mode: DIAGNOSTIC (CUDA_LAUNCH_BLOCKING=1, RUST_BACKTRACE=1)"
+            echo "  WARNING: ~50x slower than normal — use for crash diagnosis only"
+            CUDA_LAUNCH_BLOCKING=1 RUST_BACKTRACE=1 \
+                "$APR" train apply --task pretrain --config "$CONFIG" > "$log_file" 2>&1 &
+        else
+            "$APR" train apply --task pretrain --config "$CONFIG" > "$log_file" 2>&1 &
+        fi
         local train_pid=$!
         echo "  PID: $train_pid"
 
@@ -330,6 +346,24 @@ main() {
                 local backoff=$((BACKOFF_BASE * (2 ** (crash_count - 1))))
                 if [[ $backoff -gt $BACKOFF_CAP ]]; then
                     backoff=$BACKOFF_CAP
+                fi
+
+                # Detect async CUDA crash pattern: early death + signal crash + no CUDA_LAUNCH_BLOCKING
+                # Five Whys root cause: kernel launches are async, errors are queued,
+                # process dies at next sync point with SIGABRT/SIGSEGV and no stderr output.
+                # Diagnosis: restart with CUDA_LAUNCH_BLOCKING=1 to get synchronous errors.
+                if [[ "$last_step" -le 0 && "$elapsed" -lt 120 && ! $CUDA_BLOCKING ]] \
+                   && [[ "$exit_code" -eq 134 || "$exit_code" -eq 139 || "$exit_code" -eq 136 ]]; then
+                    echo ""
+                    echo "  ╔══════════════════════════════════════════════════════════╗"
+                    echo "  ║  ASYNC CUDA ERROR DETECTED                               ║"
+                    echo "  ║  Pattern: early crash + signal death + no error output    ║"
+                    echo "  ║  Action: enabling CUDA_LAUNCH_BLOCKING=1 for diagnosis    ║"
+                    echo "  ╚══════════════════════════════════════════════════════════╝"
+                    echo ""
+                    echo "  NOTE: Training will be ~50x slower but will surface the exact"
+                    echo "  failing CUDA kernel. Check the log for the error message."
+                    CUDA_BLOCKING=true
                 fi
 
                 # Determine action
