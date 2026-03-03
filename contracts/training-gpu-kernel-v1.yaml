@@ -15,6 +15,7 @@ metadata:
     - "classify_pipeline.rs GPU training pattern (ENT-151, ENT-152)"
     - "training-memory-kernel-v1.yaml (VRAM estimation)"
     - "ALB-044: Unclipped activation gradients + CPU optimizer mismatch"
+    - "ALB-065: Missing stream.synchronize() before D2H gradient transfers"
   depends_on:
     - "training-memory-kernel-v1"
 
@@ -88,6 +89,22 @@ equations:
       - "CPU embedding optimizer: AdamW::new(lr, beta1, beta2, eps, wd)"
       - "NEVER use AdamW::default_params() — hides beta2=0.999 and wd=0.01"
 
+  stream_synchronization:
+    formula: |
+      For every cuMemcpyDtoH(host_dst, device_src, size) call
+      where device_src was written by a kernel on stream S:
+        if S was created with CU_STREAM_NON_BLOCKING:
+          stream.synchronize() MUST precede the cuMemcpyDtoH call
+    domain: |
+      S: CudaStream (trueno CU_STREAM_NON_BLOCKING)
+      device_src: GpuBuffer written by backward kernels (grad_w_q, grad_w_k, etc.)
+    codomain: "cuMemcpyDtoH reads completed kernel output, not stale VRAM"
+    invariants:
+      - "cuMemcpyDtoH only synchronizes with the default (null) stream"
+      - "CU_STREAM_NON_BLOCKING streams are NOT synchronized by cuMemcpyDtoH"
+      - "Without sync, gradient clipping reads garbage → NaN → crash (ALB-065)"
+      - "With CUDA_LAUNCH_BLOCKING=1, all operations are serialized (masks the bug)"
+
 proof_obligations:
   - type: equivalence
     property: "GPU training loss matches CPU training loss"
@@ -129,6 +146,12 @@ proof_obligations:
     formal: "L2_norm(activation_grad) <= max_grad_norm before CPU scatter-add"
     tolerance: 0
     applies_to: activation_gradient_clipping
+
+  - type: invariant
+    property: "Stream synchronized before D2H gradient transfers"
+    formal: "stream.synchronize() called before every cuMemcpyDtoH that reads kernel output"
+    tolerance: 0
+    applies_to: stream_synchronization
 
   - type: invariant
     property: "Optimizer hyperparameters match YAML config"
@@ -198,6 +221,15 @@ falsification_tests:
       Train 50M model (12 layers) for 1 step. Check gradient of every parameter tensor.
       Count params with zero gradient — must be 0.
     if_fails: "Missing backward op, requires_grad=false, or broken gradient chain"
+
+  - id: FALSIFY-GPU-008
+    rule: "Training stable WITHOUT CUDA_LAUNCH_BLOCKING=1"
+    prediction: "350M training survives 50+ steps without crashes or NaN in async mode"
+    test: |
+      Run 350M training (pretrain-350m-cuda-test.yaml) for 50 steps without
+      CUDA_LAUNCH_BLOCKING=1. Verify process stays alive, loss is finite at
+      every step, and no CUDA errors in dmesg/nvidia-smi Xid log.
+    if_fails: "Missing stream.synchronize() or new async race condition (ALB-065 regression)"
 
 qa_gate:
   id: F-GPU-001

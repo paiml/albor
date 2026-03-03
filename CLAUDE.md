@@ -92,7 +92,27 @@ random init, this gradient can reach ~1e35 — far beyond f32 precision.
 **Why**: ALB-044 — 24-layer backward amplified activation gradients to ~1e35.
 CPU AdamW's second moment overflowed f32 → 1298 NaN in 33.5M embedding table.
 
-### 6. Provable Contracts: Write Before Code
+### 6. Stream Synchronization Before D2H Transfers
+
+**Every `cuMemcpyDtoH` (or `copy_to_host_at()`) call that reads data written
+by GPU kernels MUST be preceded by `stream.synchronize()`.**
+
+trueno's `CudaStream::new()` creates streams with `CU_STREAM_NON_BLOCKING`.
+The synchronous `cuMemcpyDtoH` only synchronizes with the **default** stream,
+NOT with non-blocking streams. Without explicit sync, CPU reads stale GPU data.
+
+**Contract (C-STREAMSYNC-001)**: `stream.synchronize()` before every
+`copy_to_host_at()` that reads kernel output. No exceptions.
+
+**Diagnostic**: `CUDA_LAUNCH_BLOCKING=1` makes training stable but hides the
+race. If training crashes without it, this is the first thing to check.
+
+**Why**: ALB-065 — gradient clipping downloaded 9 GPU buffers via `cuMemcpyDtoH`
+without stream sync. Backward kernels hadn't finished → garbage clip scale →
+NaN → silent process death (SIGABRT). Training was stable with
+`CUDA_LAUNCH_BLOCKING=1` but crashed within 15 seconds without it.
+
+### 7. Provable Contracts: Write Before Code
 
 **Every new training contract or kernel must have a YAML contract in
 `contracts/` BEFORE implementation begins.**
@@ -109,7 +129,7 @@ Write contract YAML → pv validate → implement → pv audit → dogfood → c
 **The gap register (§11) is the feedback loop**: every bug found by profiling
 becomes a permanent contract obligation that prevents recurrence.
 
-### 7. Five Whys: Root Cause, Not Symptom
+### 8. Five Whys: Root Cause, Not Symptom
 
 **When a training bug is found, trace through exactly 5 whys using brick
 profiling boundaries before writing any fix.**
