@@ -65,7 +65,7 @@
 - [x] Expand training data: Tier 1 10x + 8 Tier 2 repos → v2 dataset (67,977 seqs, 139M tokens)
 - [x] ~~Fix ALB-071~~ FIXED — embed gradient clipping decoupled from weight grad_clip (`entrenar@d07d67d`)
 - [x] ~~Fix ALB-072~~ FIXED — fp16 loss scaling (65536x) removed from fused CE kernel; all backward uses f32, no underflow risk (`entrenar@44d3e74`)
-- [ ] Full 350M training — **IN PROGRESS (ALB-063)**: Restarting after ALB-072 fix (fp16 loss scaling caused NaN in layers 0-1). save_interval=250, 5000 steps.
+- [ ] Full 350M training — **IN PROGRESS (ALB-063)**: PID 1775202, ALB-072 fix verified. Loss 10.40→6.77 (step 338). Step 250 eval: val_loss=6.92, val_ppl=1008. Step 500 checkpoint OK (1520 MB). gnorm stable 2-9. ETA ~5h for 5000 steps.
 - [x] Monitor training via `apr monitor` (ALB-025 FIXED)
 - [ ] Validate loss curve, perplexity convergence
 - [ ] Tune hyperparameters (LR, batch size, warmup)

@@ -30,13 +30,13 @@ This requires **no gradient sync, no ring all-reduce, no distributed training
 framework** for the distillation stage. The teacher pre-computes logits offline;
 the student trains at full GPU speed against stored logits. Simple and effective.
 
-### 9.3 Entrenar Native DDP (In Progress)
+### 9.3 Entrenar Native DDP (Complete)
 
-entrenar now has its own distributed data parallelism infrastructure
-([entrenar#133](https://github.com/paiml/entrenar/issues/133)), partially
-superseding the repartir approach:
+entrenar has full distributed data parallelism infrastructure
+([entrenar#133](https://github.com/paiml/entrenar/issues/133)), superseding
+the repartir approach:
 
-**Implemented infrastructure:**
+**Implemented (all wired end-to-end):**
 - **Wire protocol v2**: TCP-based message framing with `BlockGradientPayload`,
   `AveragedBlockGradient`, `NonBlockGradientPayload`, `AveragedNonBlockGradient`
 - **GradientServer**: Coordinator that collects gradients from N workers, averages
@@ -45,16 +45,18 @@ superseding the repartir approach:
 - **PerBlockGradientAccumulator**: CPU-side gradient accumulator for AllReduce
   (same one used by ALB-066 single-GPU gradient accumulation)
 - **RingAllReduce**: Ring-based averaging for N workers
-- **DistributedCudaTrainer**: Struct wrapping `CudaTransformerTrainer` with
-  distributed communication
+- **DistributedCudaTrainer**: `train_batch()` → forward+backward → per-block
+  AllReduce → optimizer step. Wraps `CudaTransformerTrainer` with distributed comm
+- **`train_loop_cuda_distributed()`**: Full training loop with data sharding by rank,
+  coordinator thread auto-spawn (rank 0), worker connection, epoch iteration
+- **`spawn_coordinator_thread()`**: Background thread running `GradientServer` for
+  rank 0 process
+- **CLI flags**: `--distributed --world-size N --rank R` inject distributed config
+  into YAML at runtime
+- **11 integration tests**: C-DDP-001 weight consistency via BLAKE3, 4-worker ring
+  AllReduce, per-block reverse-order AllReduce
 
-**Not yet wired:**
-- `DistributedCudaTrainer` has no `train_batch()` method — the AllReduce loop
-  is not connected to the actual training loop
-- No multi-process launcher (equivalent to `torchrun`)
-- Config bridge from YAML `DistributedSpec` to runtime not implemented
-
-**Architecture** (target):
+**Architecture**:
 ```
 Process 0 (rank=0):                     Process 1 (rank=1):
   GradientServer (bg thread)

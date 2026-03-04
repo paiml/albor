@@ -15,7 +15,7 @@
 | Gradient clipping | 1.0 (global norm) | Stability |
 | Batch size (global) | 512K tokens | ~512 sequences x 1024 tokens |
 | Micro-batch (4090) | 4 | GPU-resident (batch=8 OOM at seq≥1024) |
-| Gradient accumulation | 1 (ALB-066) | CudaTransformerTrainer does per-sequence optimizer; true accum not implemented |
+| Gradient accumulation | 1 (ALB-066) | Per-block CPU accumulation now works (PerBlockGradientAccumulator); kept at 1 for v2 config |
 | Total training tokens | Target 10B; current 139M (v2 dataset) | ~5000 steps × 4 seqs × 1024 tokens = 20M tokens/run (v2: 68K seqs) |
 | Mixed precision | fp16 (CUDA) | Hardware-appropriate |
 
@@ -152,7 +152,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 50M quick (seq=512, batch=4) | 5 | 10.42→9.45 | ~10s | PASS (post ALB-059 fix) |
 | 350M test (seq=512, batch=4) | 50 | 10.39→5.92 (best 5.53) | ~400s | PASS (post ALB-059 fix) |
 | 350M full v1 (seq=1024, batch=4, accum=128) | 43/5000 | 10.39 flat | ~12s | **FAIL (ALB-060)**: epochs=1 exhausted data |
-| 350M full v2 (seq=1024, batch=4, accum=1) | ~1183/5000 | 10.4→6.9 | ~3.4h | **PARTIAL** (ALB-063): process stopped, loss clearly decreasing, ~396 tok/s |
+| 350M full v2 (seq=1024, batch=4, accum=1) | 500+/5000 | 10.4→6.77 | ~30min | **IN PROGRESS** (ALB-063): ALB-072 fixed (fp16 scaling). val_loss=6.92, val_ppl=1008 at step 250. gnorm stable 2-9. ~934 tok/s |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
@@ -176,6 +176,7 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 - C-GPUINIT-001: Optimizer states zero-initialized, not cuMemAlloc garbage (ALB-059 fix)
 - C-STREAMSYNC-001: `stream.synchronize()` before any D2H transfer reading kernel output (ALB-065 fix)
 - C-GPUINIT-001: All optimizer m/v buffers zero-initialized (ALB-059 fix)
+- C-LOSSSCALE-001: fp16 loss scaling excluded from GPU backward (all backward uses f32; scaling causes overflow) (ALB-072 fix)
 
 ### 6.5 Checkpointing Strategy
 

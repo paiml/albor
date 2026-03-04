@@ -160,6 +160,12 @@
 | `entrenar` (comm-overlap) | AllReduce + computation overlap timing test | **PASS** (overlap ≤ sequential time, concurrent threads) | ~~#145~~ FIXED |
 | `entrenar` (multi-node) | 3-node checkpoint coordination, block gradient exchange | **PASS** (barrier sync lifecycle, concurrent AllReduce + checkpoint) | ~~#145~~ FIXED |
 | `entrenar` (heterogeneous) | detect_all_devices(), mixed-backend AllReduce | **PASS** (CUDA+wgpu+CPU workers produce identical averaged gradients) | ~~#145~~ FIXED |
+| `apr train apply` (350M ALB-069) | `apr train apply --config pretrain-350m-cuda-test.yaml` (post-selp fix) | **PASS** (5 steps, loss 10.42→10.13, fused CE kernel produces non-zero loss) | ~~ALB-069~~ FIXED |
+| `apr train apply` (350M ALB-070) | `apr train apply --config pretrain-350m-v2.yaml` (save_interval fix) | **PASS** (save_interval=250 works, eval_batch truncates to max_seq_len) | ~~ALB-070~~ FIXED |
+| `apr train apply` (350M ALB-071) | `apr train apply --config pretrain-350m-cuda-test.yaml` (embed clip fix) | **PASS** (5 steps, embed grad clipped with unwrap_or(1.0), no NaN) | ~~ALB-071~~ FIXED |
+| `apr train apply` (350M ALB-072 FP32) | `apr train apply --config pretrain-350m-fp32-test.yaml` | **PASS** (5 steps, all 218 tensors OK, gnorm=2.29, FP32 baseline) | — |
+| `apr train apply` (350M ALB-072 FP16) | `apr train apply --config pretrain-350m-cuda-test.yaml` (loss scale fix) | **PASS** (50 steps, all 218 tensors OK, gnorm matches FP32 baseline, zero NaN) | ~~ALB-072~~ FIXED |
+| `apr train apply` (350M v2 full) | `apr train apply --config pretrain-350m-v2.yaml` (all fixes) | **IN PROGRESS** (step 500+, loss 10.40→6.77, val_ppl=1008, gnorm stable 2-9, checkpoint OK 1520 MB) | ALB-063 |
 
 ## ALB-060: Training Config Epoch/Step Mismatch (Critical)
 
@@ -701,14 +707,99 @@ entirely. Kept LM head clipping, final norm clipping, and activation gradient
 clipping (C-EMBED-GRAD-001) — these are single-buffer clips, not 864-transfer
 bottlenecks.
 
-**Proper fix**: GPU-side squared norm reduction kernel in trueno that computes
-`sum(x^2)` on-device and downloads a single scalar per buffer. Reduces 864 D2H
-transfers to 864 scalar reads (~4 bytes each) or, with a fused multi-buffer
-kernel, to 24 scalar reads (one per block).
+**Update (2026-03-04)**: GPU-side squared norm kernel already exists in trueno
+(`SquaredSumKernel`, KAIZEN-049/054/055). `compute_workspace_clip_scale_gpu` +
+`clip_workspace_gradients` already wired. Per-block clipping just needs
+`grad_clip: 1.0` re-enabled in YAML config to use GPU-side path.
 
 **Verification**: 350M training at **480 tok/s** (4× improvement), **8.4s/step**,
 **11.7h ETA** for 5000 steps. Training stable with grad_clip and monitoring
 disabled for this run.
+
+## ALB-069: PTX selp_f32 Argument Order Bug (Critical)
+
+**Discovery**: 350M v2 training produced `loss=0.0000` at every step. The fused
+cross-entropy kernel returned zero loss because `selp_f32` (PTX conditional select)
+had its arguments in the wrong order.
+
+**Five Whys**:
+
+| Why | Finding | Brick Boundary |
+|-----|---------|----------------|
+| **Why is loss exactly 0.0?** | Fused CE kernel returns zero for every token | Per-kernel: CE output buffer all zeros |
+| **Why does CE return zero?** | PTX `selp_f32` assembler error | Per-kernel: JIT compilation fails silently |
+| **Why does selp fail?** | `selp_f32(pred, true_val, false_val)` called as `(true_val, false_val, pred)` | Per-kernel: arg order mismatch |
+| **Why wrong arg order?** | Same class as ALB-059 (GEMM backward constructor arg swap) | Pattern: API args don't match variable names |
+| **Why no test caught this?** | Unit tests used pre-computed expected values, not end-to-end validation | **Root cause**: missing integration test |
+
+**Fix**: `selp_f32(is_target, grad_target, grad_nontarget)` at both call sites
+(`trueno@10bec89`, trueno#156).
+
+## ALB-070: YAML save_interval Field Mismatch + eval_batch Overflow (Critical)
+
+**Discovery**: After ALB-069 fix, training immediately crashed. Two bugs:
+
+1. **Config field mismatch**: YAML bridge reads `training.checkpoint.save_every`, not
+   `training.save_interval`. With `#[serde(default)]`, missing field silently defaults
+   to `save_interval=1` → validation eval runs every step.
+2. **eval_batch buffer overflow**: `eval_batch()` didn't truncate sequences to
+   `max_seq_len`, unlike `train_step_single()`. Long validation sequences overflowed
+   pre-allocated GPU buffers.
+
+**Fix**: YAML config uses `checkpoint.save_every: 25`. `eval_batch()` now truncates
+to `max_seq_len` (`entrenar@5c4c2d8`). Same class as ALB-060 (config field mismatch).
+
+## ALB-071: Embed Gradient Clipping Disabled When grad_clip=None (Critical)
+
+**Discovery**: 350M v2 training with ALB-069+070 fixes produced `loss=0.0` by step
+~100. All block weights became NaN. Root cause: C-EMBED-GRAD-001 (activation gradient
+clipping at GPU→CPU boundary) was gated behind `if let Some(max_norm) = max_grad_norm`.
+ALB-067 disabled `grad_clip` in YAML → no embed grad clipping → CPU AdamW overflow →
+304K NaN in 33.5M embedding table → NaN propagates to all blocks.
+
+**Five Whys**:
+
+| Why | Finding |
+|-----|---------|
+| **Why loss=0.0?** | All block weights NaN → forward produces NaN → CE loss masked to 0 |
+| **Why NaN weights?** | Block 0 optimizer receives NaN from LM head, which gets NaN from embedding |
+| **Why NaN embedding?** | CPU AdamW second moment overflow from unclipped activation gradient |
+| **Why unclipped gradient?** | `max_grad_norm` is `None` (ALB-067 disabled it) |
+| **Why does None disable safety clipping?** | Safety constraint coupled to optional hyperparameter |
+
+**Fix**: `unwrap_or(1.0)` makes embed grad clipping unconditional (`entrenar@d07d67d`).
+**Lesson**: Safety constraints (numeric stability) must NEVER be coupled to optional
+training hyperparameters.
+
+## ALB-072: fp16 Loss Scaling Causes NaN in Early Transformer Layers (Critical)
+
+**Discovery**: Even after ALB-071 fix, training still produced `loss=0.0` at step 169.
+Diagnostic testing revealed FP32 (no mixed precision) worked perfectly (gnorm=2.29)
+but FP16 produced NaN in layers 0-1.
+
+**Five Whys**:
+
+| Why | Finding | Brick Boundary |
+|-----|---------|----------------|
+| **Why loss=0.0 at step 169?** | Block weights in layers 0-1 are NaN after step 1 | Per-block: blocks 0-1 diverge |
+| **Why NaN in early layers?** | Activation gradient overflows f32 after 24-layer backward amplification | Per-block: gradient magnitude grows per layer |
+| **Why does gradient overflow?** | fused CE kernel outputs gradient × 65536 (GradScaler scale) | Per-kernel: loss_scale includes grad_scaler |
+| **Why include grad_scaler?** | AMP pattern: scale loss to prevent fp16 gradient underflow | Per-transfer: designed for fp16 tensors |
+| **Why is this harmful?** | All backward uses f32 GpuBuffers — no fp16 underflow risk, but 65536× overflow | **Root cause**: unnecessary scaling |
+
+**Diagnostic testing**:
+- FP16 without grad_clip: NaN in layers 0-1 (14 NaN tensors)
+- FP16 with grad_clip=1.0: Same NaN in layers 0-1 (14 NaN tensors)
+- FP32 (no mixed precision): ALL tensors OK, gnorm=2.29
+
+**Fix**: Exclude `grad_scaler.scale()` from `loss_scale` computation. Loss scale is
+now `1.0 / seq_len` only (`entrenar@44d3e74`). gnorm matches FP32 baseline exactly.
+
+**Verification**: 50-step test — all 218 tensors OK, gnorm growing naturally 2.29→9.57.
+Full training: step 500 checkpoint verified OK (1520 MB), val_loss=6.92, val_ppl=1008.
+
+**Lesson**: AMP loss scaling is ONLY needed when backward computation uses fp16 tensors.
+With f32 backward, it amplifies gradients through deep networks causing overflow.
 
 ## Post-Training Pipeline Validation Detail
 

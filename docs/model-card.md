@@ -1,6 +1,6 @@
 # Albor-350M Model Card
 
-> **Status**: Template — to be populated after training completes.
+> **Status**: Pre-training in progress (step 500+/5000, val_ppl=1008). Template fields below updated as training progresses.
 
 ## Model Description
 
@@ -12,12 +12,12 @@ ML toolkit with no Python, PyTorch, or cloud dependencies.
 |----------|-------|
 | Architecture | LLaMA-style (24L, 1024H, 16A, 4KV) |
 | Parameters | ~354M |
-| Context Length | 2048 tokens |
+| Context Length | 1024 tokens (training), 2048 (architecture max) |
 | Vocabulary | 32,768 BPE tokens |
 | Language | Python only |
 | License | Apache 2.0 |
 | Training Stack | entrenar + trueno + alimentar (Rust) |
-| Distillation Teacher | Qwen3-Coder-Next (80B MoE) |
+| Distillation Teacher | Qwen2.5-Coder-3B (interim) / Qwen3-Coder-Next (80B, stretch) |
 
 ## Intended Use
 
@@ -25,16 +25,17 @@ ML toolkit with no Python, PyTorch, or cloud dependencies.
 - On-device inference (laptops, Raspberry Pi, browsers via WASM)
 - Educational artifact demonstrating first-principles LLM training
 
-## Training Data
+## Training Data (v2 Dataset)
 
-| Source | Tokens | Weight |
-|--------|--------|--------|
-| StarCoder Python | ~4B | 40% |
-| FineWeb-Edu | ~2B | 20% |
-| Local ground truth (10x upsampled) | ~1B effective | 10% |
-| Python docs + PEPs | ~1B | 10% |
+| Source | Files | Weight |
+|--------|-------|--------|
+| Tier 1: depyler, hf-ground-truth, jax, vllm (10x upsampled) | 17,073 | 10.0x |
+| Tier 2: pytorch, hf-repos, mlflow, vllm-full, tgi, algo-corpus, cuda-python, llms-with-hf | 28,553 | 1.0x |
 
-Total: ~10B tokens, 80% Python/Python-adjacent.
+Pipeline: 45,420 mixed rows → 50% PSM FIM → 67,977 pre-tokenized sequences (2048 tokens) → **139M tokens**.
+
+**Current run**: 5000 steps × 4 batch × 1024 seq_len = 20.5M tokens/run.
+**Chinchilla target**: 10B tokens (future: StarCoder Python, FineWeb-Edu).
 
 ## Improvement Ladder
 
