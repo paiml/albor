@@ -796,14 +796,14 @@ Levanter, GPT-NeoX) against entrenar/albor sovereign stack.
 | Data pipeline | 4.5 | 10.0 | 10 |
 | LR & optimization | 3.0 | 5.0 | 5 |
 | Evaluation | 1.0 | 10.0 | 10 |
-| Distributed | 0.0 | 5.5 | 10 |
+| Distributed | 0.0 | 10.0 | 10 |
 | Reproducibility | 2.5 | 5.0 | 5 |
 | Security | 2.0 | 5.0 | 5 |
 | Configuration | 2.5 | 5.0 | 5 |
 | Provable correctness | 4.5 | 5.0 | 5 |
-| **Total** | **34** | **94** | **100** |
+| **Total** | **34** | **99** | **100** |
 
-**Grade: F (34%) → A (94%)**. 51 dogfooding entries, 48 MLOps features across 12 batches.
+**Grade: F (34%) → A+ (99%)**. 51 dogfooding entries, 53 MLOps features across 13 batches.
 All features are **pure Rust** — no Python scripts count toward the score.
 
 **Implemented (45 items, batches 1-9)**:
@@ -819,13 +819,13 @@ All features are **pure Rust** — no Python scripts count toward the score.
 - Configuration (5/5): comprehensive resource estimation (`apr train plan` R-095)
 
 - Mixed precision (4/5): GradScaler wired into CudaTransformerTrainer, GPU f32↔bf16 cast kernels, FP32 optimizer moments verified (R-002 batch 12)
-- Distributed (5.5/10): DDP with per-block AllReduce, ring AllReduce, streaming Parquet loader, wire protocol v2, distributed checkpoint, heterogeneous device enumeration (batches 10-11)
+- Distributed (10/10): DDP with per-block AllReduce, ring AllReduce, streaming Parquet loader, wire protocol v2, distributed checkpoint, heterogeneous device enumeration (batches 10-11). Tensor parallelism (Megatron-LM column+row), pipeline parallelism (1F1B), sequence parallelism (ring attention), ZeRO-1 optimizer sharding, elastic worker add/remove (batch 13)
 - Gradient (10/10): gradient accumulation across micro-batches + global norm clipping (batch 10)
 - Data (10/10): streaming Parquet loader with file-level sharding (batch 10)
 - Reproducibility (5/5): Kani verification harnesses (batch 10)
 - Provable (5/5): 4 new contracts C-DDP-001, C-RING-001, C-WIRE-002, C-SHARD-001 (batch 10)
 
-**Remaining (5 FAIL items)**: #72-75, #79 (tensor/pipeline/sequence parallelism, ZeRO). MLOps survey: 94% (A grade), 93 PASS / 2 PARTIAL / 5 FAIL.
+**Remaining (2 PARTIAL items)**: #31 (BF16 forward, needs trueno BF16 GEMM), #32 (FP32 master weights with BF16 compute). MLOps survey: 99% (A+ grade), 98 PASS / 2 PARTIAL / 0 FAIL.
 
 Full survey: `entrenar/docs/specifications/world-class-mlops-survey.md`
 
