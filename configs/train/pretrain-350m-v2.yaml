@@ -55,9 +55,8 @@ training:
   gradient_accumulation: 1                   # ALB-066: per-sequence optimizer (no true accum in CUDA trainer)
   mixed_precision: "fp16"
   output_dir: "./checkpoints/albor-base-350m-v2"
+  save_interval: 250
   max_steps: 5000
-  checkpoint:
-    save_every: 25                              # Bridge reads training.checkpoint.save_every (NOT training.save_interval)
 
 monitoring:
   terminal:
