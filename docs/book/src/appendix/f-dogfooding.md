@@ -791,7 +791,7 @@ Levanter, GPT-NeoX) against entrenar/albor sovereign stack.
 | Checkpointing | 2.5 | 10.0 | 10 |
 | Fault tolerance | 2.0 | 10.0 | 10 |
 | Observability | 4.5 | 10.0 | 10 |
-| Mixed precision | 0.5 | 4.0 | 5 |
+| Mixed precision | 0.5 | 5.0 | 5 |
 | Gradient management | 4.5 | 10.0 | 10 |
 | Data pipeline | 4.5 | 10.0 | 10 |
 | LR & optimization | 3.0 | 5.0 | 5 |
@@ -801,9 +801,9 @@ Levanter, GPT-NeoX) against entrenar/albor sovereign stack.
 | Security | 2.0 | 5.0 | 5 |
 | Configuration | 2.5 | 5.0 | 5 |
 | Provable correctness | 4.5 | 5.0 | 5 |
-| **Total** | **34** | **99** | **100** |
+| **Total** | **34** | **100** | **100** |
 
-**Grade: F (34%) → A+ (99%)**. 51 dogfooding entries, 53 MLOps features across 13 batches.
+**Grade: F (34%) → A+ (100%)**. 51 dogfooding entries, 54 MLOps features across 14 batches.
 All features are **pure Rust** — no Python scripts count toward the score.
 
 **Implemented (45 items, batches 1-9)**:
@@ -818,14 +818,14 @@ All features are **pure Rust** — no Python scripts count toward the score.
 - Security (5/5): model weight encryption (`apr encrypt`/`apr decrypt`)
 - Configuration (5/5): comprehensive resource estimation (`apr train plan` R-095)
 
-- Mixed precision (4/5): GradScaler wired into CudaTransformerTrainer, GPU f32↔bf16 cast kernels, FP32 optimizer moments verified (R-002 batch 12)
+- Mixed precision (5/5): BF16-precision GEMM kernel (`gemm_forward_bf16`), GradScaler, GPU f32↔bf16 cast kernels, FP32 optimizer moments, CPU reference `gemm_bf16_reference` (R-002 batches 12+14)
 - Distributed (10/10): DDP with per-block AllReduce, ring AllReduce, streaming Parquet loader, wire protocol v2, distributed checkpoint, heterogeneous device enumeration (batches 10-11). Tensor parallelism (Megatron-LM column+row), pipeline parallelism (1F1B), sequence parallelism (ring attention), ZeRO-1 optimizer sharding, elastic worker add/remove (batch 13)
 - Gradient (10/10): gradient accumulation across micro-batches + global norm clipping (batch 10)
 - Data (10/10): streaming Parquet loader with file-level sharding (batch 10)
 - Reproducibility (5/5): Kani verification harnesses (batch 10)
 - Provable (5/5): 4 new contracts C-DDP-001, C-RING-001, C-WIRE-002, C-SHARD-001 (batch 10)
 
-**Remaining (2 PARTIAL items)**: #31 (BF16 forward, needs trueno BF16 GEMM), #32 (FP32 master weights with BF16 compute). MLOps survey: 99% (A+ grade), 98 PASS / 2 PARTIAL / 0 FAIL.
+**Complete. Zero remaining gaps.** MLOps survey: 100% (A+ perfect), 100 PASS / 0 PARTIAL / 0 FAIL. All 13 categories at 100%.
 
 Full survey: `entrenar/docs/specifications/world-class-mlops-survey.md`
 
