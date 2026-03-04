@@ -20,7 +20,8 @@
 - ~~ALB-059 (Critical): GEMM backward constructor n/k swapped — buffer overflow into optimizer states~~ **FIXED** (`entrenar@846ae0c`)
 - ~~ALB-040: GPU-resident pretraining~~ **VERIFIED** — 350M CUDA test: 50 steps, loss 10.39→5.92, checkpoint valid, realizar inference works
 - ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
-- ~~ALB-060 (Critical)~~: Training ran only 43/5000 steps (epochs=1). **CONFIG FIXED**: C-TRAINCFG-001 contract + v2 config. V2 training (ALB-063) reached step ~1183/5000, loss 10.4→6.9. Needs restart to complete.
+- ~~ALB-069 (Critical): PTX selp_f32 argument order in fused cross-entropy~~ **FIXED** (`trueno@10bec89`)
+- ~~ALB-060 (Critical)~~: Training ran only 43/5000 steps (epochs=1). **CONFIG FIXED**: C-TRAINCFG-001 contract + v2 config. V2 training (ALB-063) restarted after ALB-069 fix — PID 106929, loss=10.39 at step 1.
 
 **350M CUDA test results (50 steps, post ALB-059 fix):**
 - Loss: 10.39 → 5.92 (best: 5.53) — clear convergence with correct GEMM backward
