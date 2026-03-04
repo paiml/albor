@@ -64,7 +64,8 @@
 - [x] ~~Fix ALB-060~~ CONFIG FIXED — epochs=1 only ran 43/5000 steps. C-TRAINCFG-001 contract written. Config fixed (v1: epochs=117, v2: epochs=1 with 68K seqs)
 - [x] Expand training data: Tier 1 10x + 8 Tier 2 repos → v2 dataset (67,977 seqs, 139M tokens)
 - [x] ~~Fix ALB-071~~ FIXED — embed gradient clipping decoupled from weight grad_clip (`entrenar@d07d67d`)
-- [ ] Full 350M training — **IN PROGRESS (ALB-063)**: Restarting after ALB-071 fix (NaN weights from unclipped embed grads). save_interval=250, 5000 steps.
+- [x] ~~Fix ALB-072~~ FIXED — fp16 loss scaling (65536x) removed from fused CE kernel; all backward uses f32, no underflow risk (`entrenar@44d3e74`)
+- [ ] Full 350M training — **IN PROGRESS (ALB-063)**: Restarting after ALB-072 fix (fp16 loss scaling caused NaN in layers 0-1). save_interval=250, 5000 steps.
 - [x] Monitor training via `apr monitor` (ALB-025 FIXED)
 - [ ] Validate loss curve, perplexity convergence
 - [ ] Tune hyperparameters (LR, batch size, warmup)
