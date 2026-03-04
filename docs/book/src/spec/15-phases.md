@@ -61,10 +61,10 @@
 - [x] realizar inference verified — 218 tensors loaded, generates from trained weights
 - [x] Checkpoint validation: PASS (weights trained, not initialization)
 - [x] Perplexity eval: 31,926 (finite, consistent with 50-step model — random baseline ~32,768)
-- [x] ~~Fix ALB-060~~ FIXED — epochs=1 only ran 43/5000 steps. C-TRAINCFG-001 contract written. Config fixed (v1: epochs=117, v2: epochs=38)
+- [x] ~~Fix ALB-060~~ CONFIG FIXED — epochs=1 only ran 43/5000 steps. C-TRAINCFG-001 contract written. Config fixed (v1: epochs=117, v2: epochs=1 with 68K seqs)
 - [x] Expand training data: Tier 1 10x + 8 Tier 2 repos → v2 dataset (67,977 seqs, 139M tokens)
-- [ ] Full 350M training — **FAIL (ALB-060)**: retrain with v2 config pending
-- [ ] Monitor training via `apr monitor` (ALB-025 FIXED)
+- [ ] Full 350M training — **PARTIAL (ALB-063)**: v2 training reached step ~1183/5000, loss 10.4→6.9, needs restart
+- [x] Monitor training via `apr monitor` (ALB-025 FIXED)
 - [ ] Validate loss curve, perplexity convergence
 - [ ] Tune hyperparameters (LR, batch size, warmup)
 - [ ] Verify FALSIFY-ALBOR-003 (checkpoint determinism)
@@ -133,8 +133,9 @@
 - [ ] **Milestone**: Models on HuggingFace, leaderboard submission live, quality evidence published
 
 ### Phase 9: Distributed Training — Stretch (Week 9+)
-- [ ] Implement ring all-reduce in repartir (ALB-002)
-- [ ] Wire into apr training loop (ALB-003)
-- [ ] wgpu backward pass in trueno (ALB-005)
+- [x] entrenar native DDP infrastructure (TCP wire protocol v2, GradientServer, WorkerClient, PerBlockGradientAccumulator, RingAllReduce) — entrenar#133
+- [ ] Wire DDP train_batch() into DistributedCudaTrainer (entrenar#133 plan exists)
+- [ ] Multi-process launcher (equivalent to torchrun)
+- [ ] wgpu backward pass in trueno (ALB-005) — for cross-vendor GPU support
 - [ ] Full distributed training: 4090 + W5700X x2
 - [ ] **Milestone**: Multi-GPU training demonstrated

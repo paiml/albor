@@ -465,9 +465,11 @@ anti_pattern: |
 Every training configuration must be algebraically validated BEFORE GPU time is
 consumed. The epoch/step/data/LR relationship must be provably sufficient.
 
-**Status: OPEN** — ALB-060. The 350M training ran only 43/5000 steps because
-`epochs: 1` exhausted data before `max_steps`. Contract written, config fixed
-(`epochs: 117`), awaiting re-training verification.
+**Status: VERIFIED** — ALB-060 config fixed. C-TRAINCFG-001 contract written
+(`contracts/training-config-kernel-v1.yaml`), v1 config fixed (`epochs: 117`),
+v2 config proven correct (`steps_per_epoch = 16994 >= 5000` with expanded 68K
+dataset). V2 training (ALB-063) reached step ~1183/5000 with loss 10.4→6.9,
+confirming warmup completes and LR reaches peak 3e-4.
 
 ```yaml
 motivation: |

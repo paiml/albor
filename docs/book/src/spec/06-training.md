@@ -15,22 +15,25 @@
 | Gradient clipping | 1.0 (global norm) | Stability |
 | Batch size (global) | 512K tokens | ~512 sequences x 1024 tokens |
 | Micro-batch (4090) | 4 | GPU-resident (batch=8 OOM at seq≥1024) |
-| Gradient accumulation | 128 steps | Reach global batch size |
-| Total training tokens | Target 10B; current 139M (v2 dataset) | ~5000 steps at 512K tokens/step (v2: 67K seqs) |
+| Gradient accumulation | 1 (ALB-066) | CudaTransformerTrainer does per-sequence optimizer; true accum not implemented |
+| Total training tokens | Target 10B; current 139M (v2 dataset) | ~5000 steps × 4 seqs × 1024 tokens = 20M tokens/run (v2: 68K seqs) |
 | Mixed precision | fp16 (CUDA) | Hardware-appropriate |
 
-### 6.2 Training Config: `configs/train/pretrain-350m.yaml`
+### 6.2 Training Config: `configs/train/pretrain-350m-v2.yaml`
 
 A single YAML file defines **everything** — model architecture and training
 hyperparameters. This is the industry standard (Axolotl, torchtune, HuggingFace
 Trainer). One file, one truth. `apr train validate` lints it before GPU time.
 
+**Current config** (v2 — expanded dataset, ALB-066 gradient_accumulation=1):
+
 ```yaml
-# configs/train/pretrain-350m.yaml — Albor 350M pre-training config
+# configs/train/pretrain-350m-v2.yaml — Albor 350M with expanded dataset
+# C-TRAINCFG-001: steps_per_epoch=16994 >= max_steps=5000
 
 model:
   path: "."                                  # From scratch (random init)
-  mode: transformer                         # LLM transformer mode
+  mode: transformer
   architecture:
     hidden_size: 1024                       # d_model
     num_hidden_layers: 24
@@ -42,7 +45,7 @@ model:
     rms_norm_eps: 1.0e-5
 
 data:
-  train: "data/pretokenized-2048/train/"    # Pre-tokenized ByteLevel BPE v2
+  train: "data/pretokenized-2048-v2/train/" # Expanded v2 dataset (68K sequences)
   val: "data/pretokenized-2048/val/"
   batch_size: 4                             # Micro-batch (batch=8 OOM'd)
   seq_len: 1024
@@ -58,17 +61,20 @@ optimizer:
 
 training:
   mode: "causal_lm"
-  epochs: 117                               # ALB-060: epochs=1 was FATAL (only 43/5000 steps)
-                                             # ceil(5000 / floor(22079/4/128)) = ceil(5000/43) = 117
-  grad_clip: 1.0
+  epochs: 1                                 # C-TRAINCFG-001: steps_per_epoch=16994 >= 5000
+  # grad_clip: 1.0                           # ALB-067: disabled (CPU-side L2 norm bottleneck)
   lr_scheduler: "cosine"
-  warmup_steps: 2000
-  gradient_accumulation: 128               # Global batch = 4 * 128 * 1024 = 512K tokens
+  warmup_steps: 500                         # 10% of max_steps (C-TRAINCFG-001)
+  gradient_accumulation: 1                  # ALB-066: per-sequence optimizer (no true accum in CUDA)
   mixed_precision: "fp16"
-  output_dir: "./checkpoints/albor-base-350m"
+  output_dir: "./checkpoints/albor-base-350m-v2"
   save_interval: 25
   max_steps: 5000
 ```
+
+**Legacy v1 config** (`pretrain-350m.yaml`) used 22K sequences with
+`gradient_accumulation: 128` and `epochs: 117` — see ALB-060 for why
+`epochs: 1` was fatal with the original data size.
 
 **Note on YAML numeric formatting**: YAML supports underscore notation natively
 (`32_768`, `1_000_000`) for human-readable large numbers. All albor configs use
@@ -145,8 +151,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 |--------|-------|------|------|--------|
 | 50M quick (seq=512, batch=4) | 5 | 10.42→9.45 | ~10s | PASS (post ALB-059 fix) |
 | 350M test (seq=512, batch=4) | 50 | 10.39→5.92 (best 5.53) | ~400s | PASS (post ALB-059 fix) |
-| 350M full (seq=1024, batch=4, accum=128) | 43/5000 | 10.39 flat | ~12s | **FAIL (ALB-060)**: epochs=1 exhausted data |
-| 350M full v2 (seq=1024, batch=4, accum=1) | 5000 | TBD | ~11.7h | **RUNNING** (ALB-066 accum=1, ALB-067 workaround: per-block grad_clip + monitoring disabled, ~480 tok/s, 8.4s/step) |
+| 350M full v1 (seq=1024, batch=4, accum=128) | 43/5000 | 10.39 flat | ~12s | **FAIL (ALB-060)**: epochs=1 exhausted data |
+| 350M full v2 (seq=1024, batch=4, accum=1) | ~1183/5000 | 10.4→6.9 | ~3.4h | **PARTIAL** (ALB-063): process stopped, loss clearly decreasing, ~396 tok/s |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 

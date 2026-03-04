@@ -30,20 +30,53 @@ This requires **no gradient sync, no ring all-reduce, no distributed training
 framework** for the distillation stage. The teacher pre-computes logits offline;
 the student trains at full GPU speed against stored logits. Simple and effective.
 
-### 9.3 Gradient-Parallel Training (Future / Stretch)
+### 9.3 Entrenar Native DDP (In Progress)
 
-For pure pre-training (Stage 1), distributed gradient-parallel across both
-machines remains a stretch goal. The gaps are significant:
+entrenar now has its own distributed data parallelism infrastructure
+([entrenar#133](https://github.com/paiml/entrenar/issues/133)), partially
+superseding the repartir approach:
 
-**Gap ALB-002**: Implement ring all-reduce in repartir.
-**Gap ALB-003**: Wire repartir gradient sync into entrenar's training loop.
+**Implemented infrastructure:**
+- **Wire protocol v2**: TCP-based message framing with `BlockGradientPayload`,
+  `AveragedBlockGradient`, `NonBlockGradientPayload`, `AveragedNonBlockGradient`
+- **GradientServer**: Coordinator that collects gradients from N workers, averages
+  them (per-block AllReduce), and broadcasts averaged gradients back
+- **WorkerClient**: Worker-side TCP client that sends/receives gradient payloads
+- **PerBlockGradientAccumulator**: CPU-side gradient accumulator for AllReduce
+  (same one used by ALB-066 single-GPU gradient accumulation)
+- **RingAllReduce**: Ring-based averaging for N workers
+- **DistributedCudaTrainer**: Struct wrapping `CudaTransformerTrainer` with
+  distributed communication
+
+**Not yet wired:**
+- `DistributedCudaTrainer` has no `train_batch()` method — the AllReduce loop
+  is not connected to the actual training loop
+- No multi-process launcher (equivalent to `torchrun`)
+- Config bridge from YAML `DistributedSpec` to runtime not implemented
+
+**Architecture** (target):
+```
+Process 0 (rank=0):                     Process 1 (rank=1):
+  GradientServer (bg thread)
+  DistributedCudaTrainer                  DistributedCudaTrainer
+    └─ CudaTransformerTrainer (GPU 0)       └─ CudaTransformerTrainer (GPU 1)
+    └─ WorkerClient → TCP ─────────────────── WorkerClient → TCP
+```
+
+### 9.4 Original Repartir Gaps (Stretch)
+
+The original plan for distributed training via a standalone `repartir` crate
+is now partially superseded by entrenar's native DDP, but some gaps remain
+relevant for cross-vendor GPU support:
+
+**Gap ALB-002**: Ring all-reduce (now partially implemented in entrenar itself).
 **Gap ALB-004**: Unified CUDA + wgpu backend dispatch in entrenar.
 **Gap ALB-005**: trueno wgpu backward pass (gradient WGSL shaders).
 
-These are deferred to a later phase. The distillation architecture (Section 9.2)
-achieves multi-machine utilization without them.
+The distillation architecture (Section 9.2) achieves multi-machine utilization
+without any of these.
 
-### 9.4 W5700X Role
+### 9.5 W5700X Role
 
 The W5700X GPUs (2x 8GB each) can assist with:
 - **Eval inference**: Run benchmarks on latest checkpoint via wgpu/Vulkan

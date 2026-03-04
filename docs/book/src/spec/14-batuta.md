@@ -53,9 +53,15 @@ batuta falsify . --format github-actions --min-grade kaizen-required
 - AI-04: Eval results are reproducible (fixed seed, deterministic batching)
 - AI-05: No undeclared dependencies (Cargo.lock enforced)
 
-### 14.3 Target Grade
+### 14.3 Current Grade
 
-**Toyota Standard (90-100%)** — the highest tier. This means:
+**Perfect Score: 100.0% (108/108 PASS)** — achieved 2026-03-04.
+
+This exceeds the Toyota Standard (90-100%) target:
 - All 5 Critical items pass (Section 10)
-- All Major items pass or have documented remediation
-- Overall score ≥ 90/108
+- All Major items pass
+- All Minor items pass
+- Zero PARTIAL, zero FAIL
+
+Score progression across 14 MLOps survey batches: 34% → 100%
+(see `entrenar/docs/specifications/world-class-mlops-survey.md`).

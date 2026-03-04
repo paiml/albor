@@ -123,4 +123,5 @@ pmat comply check --strict ../entrenar
 pv validate contracts/*.yaml                      # Contract schema validation
 pv status contracts/                              # Contract completeness
 batuta falsify . --min-grade toyota-standard      # 108-item falsification checklist
+# Current score: 100.0% (108/108 PASS) — achieved 2026-03-04
 ```
