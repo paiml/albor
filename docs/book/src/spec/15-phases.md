@@ -63,7 +63,8 @@
 - [x] Perplexity eval: 31,926 (finite, consistent with 50-step model — random baseline ~32,768)
 - [x] ~~Fix ALB-060~~ CONFIG FIXED — epochs=1 only ran 43/5000 steps. C-TRAINCFG-001 contract written. Config fixed (v1: epochs=117, v2: epochs=1 with 68K seqs)
 - [x] Expand training data: Tier 1 10x + 8 Tier 2 repos → v2 dataset (67,977 seqs, 139M tokens)
-- [ ] Full 350M training — **IN PROGRESS (ALB-063)**: v2 training restarted after ALB-069+070 fixes. PID 1135995, step 50+, ~4s/step, save_interval=25. ETA ~5.5h.
+- [x] ~~Fix ALB-071~~ FIXED — embed gradient clipping decoupled from weight grad_clip (`entrenar@d07d67d`)
+- [ ] Full 350M training — **IN PROGRESS (ALB-063)**: Restarting after ALB-071 fix (NaN weights from unclipped embed grads). save_interval=250, 5000 steps.
 - [x] Monitor training via `apr monitor` (ALB-025 FIXED)
 - [ ] Validate loss curve, perplexity convergence
 - [ ] Tune hyperparameters (LR, batch size, warmup)
@@ -134,8 +135,8 @@
 
 ### Phase 9: Distributed Training — Stretch (Week 9+)
 - [x] entrenar native DDP infrastructure (TCP wire protocol v2, GradientServer, WorkerClient, PerBlockGradientAccumulator, RingAllReduce) — entrenar#133
-- [ ] Wire DDP train_batch() into DistributedCudaTrainer (entrenar#133 plan exists)
-- [ ] Multi-process launcher (equivalent to torchrun)
+- [x] Wire DDP train_batch() into DistributedCudaTrainer — COMPLETE (train_loop_cuda_distributed, allreduce_impl, spawn_coordinator_thread)
+- [x] Multi-process launcher — COMPLETE (rank 0 auto-spawns GradientServer, all ranks connect as WorkerClient via `--distributed` CLI flags)
 - [ ] wgpu backward pass in trueno (ALB-005) — for cross-vendor GPU support
 - [ ] Full distributed training: 4090 + W5700X x2
 - [ ] **Milestone**: Multi-GPU training demonstrated
