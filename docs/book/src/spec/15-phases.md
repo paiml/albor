@@ -63,7 +63,7 @@
 - [x] Perplexity eval: 31,926 (finite, consistent with 50-step model — random baseline ~32,768)
 - [x] ~~Fix ALB-060~~ CONFIG FIXED — epochs=1 only ran 43/5000 steps. C-TRAINCFG-001 contract written. Config fixed (v1: epochs=117, v2: epochs=1 with 68K seqs)
 - [x] Expand training data: Tier 1 10x + 8 Tier 2 repos → v2 dataset (67,977 seqs, 139M tokens)
-- [ ] Full 350M training — **PARTIAL (ALB-063)**: v2 training reached step ~1183/5000, loss 10.4→6.9, needs restart
+- [ ] Full 350M training — **IN PROGRESS (ALB-063)**: v2 training restarted after ALB-069+070 fixes. PID 1135995, step 50+, ~4s/step, save_interval=25. ETA ~5.5h.
 - [x] Monitor training via `apr monitor` (ALB-025 FIXED)
 - [ ] Validate loss curve, perplexity convergence
 - [ ] Tune hyperparameters (LR, batch size, warmup)
