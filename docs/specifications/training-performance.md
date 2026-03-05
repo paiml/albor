@@ -1415,8 +1415,9 @@ CPU optimizer become the dominant bottlenecks** (~400ms + ~300ms = ~700ms of
 | **Phase 4** | **+ cuBLAS attention GEMMs** | **1,347 ms** | **1,520** | **2.0%** | **cublas-attention-v1 (MEASURED)** |
 | ~~Phase 5a~~ | ~~+ TF32 tensor cores~~ | ~~257 ms~~ | ~~7,966~~ | ~~10.7%~~ | ~~**REVERTED** (ALB-076 NaN, §6.12)~~ |
 | **Phase 5b** | **+ Batched RMSNorm** | **444 ms** | **9,216** | **26.7%** | **batched-rmsnorm-v1 (MEASURED)** |
-| Phase 6 | + CUDA Graphs (eliminate remaining dispatch) | ~200 ms | ~20K | ~58% | cuda-graphs-v1 (future) |
-| Phase 7 | + Kernel fusion (norm+GEMM epilogues) | ~150 ms | ~27K | ~79% | fused-kernels-v1 (future) |
+| Phase 6 | + Fused GPU grad clip (ALB-078, §6.14) | ~500 ms | ~8.2K | ~24% | fused-grad-clip-v1 (planned) |
+| Phase 7 | + CUDA Graphs (eliminate remaining dispatch) | ~200 ms | ~20K | ~58% | cuda-graphs-v1 (future) |
+| Phase 8 | + Flash Attention (fuse softmax+scale) | ~130 ms | ~31K | ~79% | flash-attn-v1 (future) |
 
 *Phase 5a: 257ms uses seq=512 profile config vs seq=1024 for Phases 1-4.
 TF32 provides 0% measurable improvement at 350M (compute <15% of step time).
@@ -1879,6 +1880,48 @@ production gradient magnitudes) before enabling tensor cores in training.
 
 **ETA**: 250K steps × 0.516s = **35.8 hours** (~1.5 days).
 Compare: PTX baseline would be 250K × 4.4s = **12.7 days**.
+
+### 6.14 Stream Sync Bottleneck Analysis (ALB-078, Five Whys)
+
+**Observation**: v3 training at step 1500 shows step time increased to 618ms
+(from 516ms at step 1000). The difference correlates with gradient clipping
+becoming active as gnorm grows.
+
+**Five Whys**:
+
+1. **Why 618ms/step?** Per-block gradient clipping introduces stream syncs
+2. **Why per-block syncs?** `compute_workspace_clip_scale_gpu` calls
+   `stream.synchronize()` after launching 9 `squared_sum` kernels per block
+3. **Why sync needed?** CPU must download 9 partial-sum buffers to compute
+   `clip_scale = min(1, max_norm / sqrt(sum_of_squared_norms))`
+4. **Why CPU-side?** No fused GPU kernel exists for norm reduction + clip
+5. **Why 24 syncs?** One per transformer block (interleaved backward+optimizer)
+
+**Sync budget** (per step, with `grad_clip: 1.0`):
+
+| Sync Point | Count/step | Location | Necessary? |
+|------------|-----------|----------|-----------|
+| Per-block clip norm | **24** | `compute_workspace_clip_scale_gpu` | **REDUNDANT** |
+| LM head norm | 1 | `squared_sum_cuda` | REDUNDANT |
+| Final global norm | 1 | `compute_clip_scale_with_norm` | REDUNDANT |
+| CE loss D2H | 1 | `fused_cross_entropy_cuda` | YES (NaN guard) |
+| Pre-embed sync | 1 | `gpu_backward:1134` | YES (C-STREAMSYNC-001) |
+| **Total** | **28** | | 2 necessary, 26 redundant |
+
+**Fix** (entrenar #240, trueno #171):
+
+Implement a `FusedGradClipKernel` that runs entirely on GPU:
+1. Read 9 partial-sum output buffers (each `f32[num_blocks]`)
+2. Reduce all partials into combined L2 norm (shared memory reduction)
+3. Compute `clip_scale = min(1.0, max_norm / norm)`
+4. Apply clip_scale to all 9 gradient buffers (element-wise multiply)
+5. Write `norm` to output for observability
+
+This eliminates 26 of 28 syncs/step. The 2 remaining are irreducible:
+- CE loss download for NaN guard
+- Final sync before embed gradient D2H (C-STREAMSYNC-001)
+
+**Expected impact**: step time 618ms → ~500ms (~20% improvement).
 
 ## 7. Verification Architecture
 
