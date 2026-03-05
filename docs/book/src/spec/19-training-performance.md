@@ -1360,16 +1360,23 @@ these to `cublasGemmStridedBatched` would give an additional 1.3-1.5x.
 
 ### 6.2 cuBLAS Raw Capability
 
-Measured with trueno-gpu cuBLAS hardware tests (isolated, no training overhead):
+Measured with `bench_cublas_vs_ptx` example (isolated, no training overhead, TF32 mode):
 
-| Shape [M,K]×[K,N] | TFLOP/s | Description |
-|-------------------|---------|-------------|
-| [4096,1024]×[1024,4096] | **152.3** | FFN gate/up projection |
-| [1024,1024]×[1024,1024] | 89.4 | Q/O projection |
-| [1024,4096]×[4096,1024] | 141.2 | FFN down projection |
+| Shape [M,K]×[K,N] | cuBLAS TFLOP/s | PTX TFLOP/s | Speedup | % TF32 Peak | Description |
+|-------------------|---------------|-------------|---------|-------------|-------------|
+| [4096,1024]×[1024,1024] | **131.4** | 5.6 | 23.4x | 79.6% | Q/O attn projection |
+| [4096,1024]×[1024,256] | **74.4** | 6.1 | 12.1x | 45.1% | GQA K/V projection |
+| [4096,1024]×[1024,4096] | **130.8** | 5.8 | 22.5x | 79.3% | FFN gate/up |
+| [4096,4096]×[4096,1024] | **132.2** | 5.9 | 22.3x | 80.1% | FFN down |
+| [4096,1024]×[1024,32768] | **131.8** | 4.9 | 26.7x | 79.9% | LM head |
+| [1024,1024]×[1024,1024] | **91.7** | 4.8 | 19.1x | 55.6% | Square 1K ref |
+| [4096,4096]×[4096,4096] | **141.8** | 6.0 | 23.8x | 85.9% | Square 4K ref |
 
-vs PTX naive GEMM: ~2 TFLOP/s → **76x raw kernel speedup**.
-End-to-end training speedup is 2x because GEMMs are only part of the step.
+Key findings:
+- **12-27x kernel-level speedup** (cuBLAS TF32 vs scalar PTX FP32)
+- Large training shapes (>1024) achieve **80-86% of TF32 tensor core peak** (165 TFLOP/s)
+- GQA thin-matrix shape `[4096,256,1024]` achieves only 45% peak (memory-bandwidth bound)
+- End-to-end training speedup is 3.06x because GEMMs are only part of the step
 
 ### 6.3 MFU Analysis (Post-cuBLAS, Measured)
 
