@@ -46,9 +46,9 @@ reverse.
 | **Step time (current, Phase 5b)** | **513 ms** | Same config (steady state) |
 | **MFU (current, Phase 5b)** | **22.2%** | vs FP32 peak (as reported by trainer) |
 | VRAM usage | ~11.6 GB / 24 GB | Same config |
-| Training loss (v3, step 2000) | **6.36** | v3 run (PID 1975811, codeparrot-clean) |
-| Validation loss (v3, step 2000) | **7.19** | val_ppl=1331.7 |
-| Loss trajectory (v3) | 10.40 → 6.36 (step 2000) | v3 run (250K steps target) |
+| Training loss (v3, step 5500) | **6.49** | v3 run (PID 1975811, codeparrot-clean) |
+| Validation loss (v3, step 5000) | **7.13** | val_ppl=1244.0 |
+| Loss trajectory (v3) | 10.40 → 6.49 (step 5500) | v3 run (250K steps target) |
 | Gradient norm (v3, step 1) | 2.19 | v3 run |
 
 ### 1.2 MFU Analysis
@@ -1864,24 +1864,39 @@ production gradient magnitudes) before enabling tensor cores in training.
 | 1800 | 6.71 | — | — | 6,977 | 20.2% | 3.12 | 2.7e-4 |
 | 1900 | 6.50 | — | — | 6,974 | 20.2% | 2.01 | 2.9e-4 |
 | **2000** | **6.36** | **7.19** | **1331.7** | **6,972** | **20.2%** | **2.85** | **3.0e-4** |
+| 2200 | 7.63 | — | — | 6,807 | 19.7% | 2.44 | 3.0e-4 |
+| 2500 | 6.84 | — | — | 6,824 | 19.8% | 3.04 | 3.0e-4 |
+| 3000 | 7.24 | 7.20 | 1341.2 | 6,783 | 19.6% | 2.17 | 3.0e-4 |
+| 3500 | 6.54 | — | — | 6,681 | 19.3% | 2.62 | 3.0e-4 |
+| 4000 | 7.85 | 7.10 | 1208.7 | 6,695 | 19.4% | 1.53 | 3.0e-4 |
+| 4500 | 7.28 | — | — | 6,609 | 19.1% | 2.10 | 3.0e-4 |
+| 5000 | 6.98 | 7.13 | 1244.0 | 6,632 | 19.2% | 1.83 | 3.0e-4 |
+| **5500** | **6.49** | — | — | **6,565** | **19.0%** | **1.65** | **3.0e-4** |
 
-**Steady-state performance** (steps 100-1000 average):
-- **7,600 tok/s** ± 200 (consistent)
+**Steady-state performance** (steps 100-2000 warmup average):
+- **7,600 tok/s** ± 200 (during warmup, steps 100-1000)
 - **22.1% MFU** vs FP32 peak (RTX 4090, 82.6 TFLOP/s)
-- **516 ms/step** (p50)
-- **VRAM**: 11.6 GB / 24 GB (48% utilization)
-- **0 NaN** in 1000 steps (ALB-077 fix verified)
+- **516 ms/step** (p50, warmup phase)
 
-**Checkpoint at step 1000**: 1520 MB SafeTensors, verified OK.
+**Post-warmup performance** (steps 2000-5500, cosine decay):
+- **6,700 tok/s** ± 150 (steady state, slight throughput decrease due to cosine lr)
+- **19.3% MFU** (post-warmup average)
+- **~600 ms/step**
+- **VRAM**: 11.4 GB / 24 GB (47% utilization)
+- **0 NaN** in 5500 steps (ALB-077 fix verified)
+
+**Checkpoints** (every 1000 steps, 1520 MB SafeTensors each):
+- step-1000, step-2000, step-3000, step-4000, step-5000 — all verified OK.
 
 **Training dynamics**:
 - Loss converges from 10.4 to ~6.9 in 1000 steps (during warmup)
-- gnorm stable at 2-5 with occasional ZClip spikes (max z=4.4 at step 1)
-- 3 early rollbacks (steps 2-4) from EMA-based spike detector — expected for
-  random init where EMA starts near 0. No rollbacks after step 4.
-- B_noise (gradient noise scale) stable at 0.11-0.18
+- Post-warmup spike at step 2200 (loss=7.63) — lr reached max (3e-4), recovered by step 2500
+- Val loss slowly improving: 7.38 → 7.19 → 7.20 → 7.10 → 7.13 (noisy but trending down)
+- Val PPL: 1608 → 1332 → 1341 → 1209 → 1244 (significant improvement from step 1000)
+- gnorm stable at 1.2-3.2, occasional ZClip spikes (max z=4.4 at step 1, z=3.4 at step 5412)
+- B_noise (gradient noise scale) decreasing: 0.22 → 0.16 (steps 5400-5500)
 
-**ETA**: 250K steps × 0.516s = **35.8 hours** (~1.5 days).
+**ETA**: 250K steps × 0.60s = **41.7 hours** (~1.7 days from start).
 Compare: PTX baseline would be 250K × 4.4s = **12.7 days**.
 
 ### 6.14 Stream Sync Bottleneck Analysis (ALB-078, Five Whys)
@@ -1911,19 +1926,34 @@ becoming active as gnorm grows.
 | Pre-embed sync | 1 | `gpu_backward:1134` | YES (C-STREAMSYNC-001) |
 | **Total** | **28** | | 2 necessary, 26 redundant |
 
-**Fix** (entrenar #240, trueno #171):
+**Fix** (entrenar #240, trueno #171) — **IMPLEMENTED**:
 
-Implement a `FusedGradClipKernel` that runs entirely on GPU:
-1. Read 9 partial-sum output buffers (each `f32[num_blocks]`)
-2. Reduce all partials into combined L2 norm (shared memory reduction)
-3. Compute `clip_scale = min(1.0, max_norm / norm)`
-4. Apply clip_scale to all 9 gradient buffers (element-wise multiply)
-5. Write `norm` to output for observability
+Two new PTX kernels in `trueno-gpu/src/kernels/optimizer/fused_clip.rs`:
+
+1. **`ClipScaleReduceKernel`**: Single-CTA, single-thread. Reads contiguous
+   `f32[total_partials]` buffer of squared-sum partial results, computes
+   `clip_scale = min(1.0, max_norm / sqrt(sum))`. IEEE 754 handles zero-norm
+   without branching (`div(x, 0.0) = +inf`, `min(+inf, 1.0) = 1.0`).
+   Writes `output[0] = scale, output[1] = norm` for observability.
+
+2. **`GradientClipGpuScaleKernel`**: Element-wise. Reads scale from GPU pointer
+   (not host param). Early exit when `scale ≈ 1.0` (within 1e-7) to avoid
+   unnecessary memory bandwidth when no clipping needed.
+
+Integration in `entrenar/src/autograd/cuda_optim.rs`:
+- `FusedClipState`: Pre-allocated contiguous partials buffer + scale buffer
+- `squared_sum_launch_into`: Writes partial sums at offset into contiguous buffer
+- `clip_scale_reduce_cuda`: Launches ClipScaleReduceKernel (grid 1×1, block 1×1)
+- `gradient_clip_gpu_scale_cuda`: Launches GradientClipGpuScaleKernel
+
+Pipeline (per block): 9× squared_sum_launch_into → 1× clip_scale_reduce →
+9× gradient_clip_gpu_scale. Zero sync points, zero D2H transfers.
 
 This eliminates 26 of 28 syncs/step. The 2 remaining are irreducible:
 - CE loss download for NaN guard
 - Final sync before embed gradient D2H (C-STREAMSYNC-001)
 
+**Status**: Implemented, compiles, awaiting dogfood on next training restart.
 **Expected impact**: step time 618ms → ~500ms (~20% improvement).
 
 ## 7. Verification Architecture

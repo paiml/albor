@@ -32,10 +32,12 @@
 - Perplexity: 31,926 (finite; random baseline ~32,768 for vocab 32K)
 
 **350M v3 training (250K steps, codeparrot-clean, ALB-077 fix):**
-- Step 2000: loss 10.40→6.36, val_loss=7.19, val_ppl=1332, 6,972 tok/s, 20.2% MFU, 587ms/step
-- Checkpoints: step 1000 (1520 MB), step 2000 (1520 MB) — both verified OK
-- ETA: ~1.5 days (was 12.7 days with PTX — 5.9x speedup from cuBLAS SIMD)
-- No NaN in 2000 steps (ALB-077: tensor cores disabled, CUBLAS_DEFAULT_MATH)
+- Step 5500: loss 10.40→6.49, val_loss=7.13, val_ppl=1244, 6,565 tok/s, 19.0% MFU, 600ms/step
+- Checkpoints: step 1K-5K (1520 MB each, all verified OK)
+- Val PPL improving: 1608 → 1332 → 1341 → 1209 → 1244 (noisy but trending down)
+- ETA: ~1.7 days total (was 12.7 days with PTX — 5.9x speedup from cuBLAS SIMD)
+- No NaN in 5500 steps (ALB-077: tensor cores disabled, CUBLAS_DEFAULT_MATH)
+- ALB-078 fused grad clip implemented in trueno/entrenar, awaiting dogfood on restart
 
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen2.5-Coder-3B demonstrated (interim); Qwen3-Coder-Next 80B (stretch, ALB-010)
