@@ -50,7 +50,7 @@ training:
   gradient_accumulation: 1                   # ALB-066: per-sequence optimizer (no true accum in CUDA trainer)
   mixed_precision: "fp16"
   output_dir: "./checkpoints/albor-base-350m-v3"
-  save_interval: 5000                        # Every 5K steps (~4.9h)
+  save_interval: 1000                        # Every 1K steps (~1.2h), old checkpoints pruned
   max_steps: 250000
 
 monitoring:

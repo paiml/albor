@@ -152,7 +152,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 50M quick (seq=512, batch=4) | 5 | 10.42→9.45 | ~10s | PASS (post ALB-059 fix) |
 | 350M test (seq=512, batch=4) | 50 | 10.39→5.92 (best 5.53) | ~400s | PASS (post ALB-059 fix) |
 | 350M full v1 (seq=1024, batch=4, accum=128) | 43/5000 | 10.39 flat | ~12s | **FAIL (ALB-060)**: epochs=1 exhausted data |
-| 350M full v2 (seq=1024, batch=4, accum=1) | 500+/5000 | 10.4→6.77 | ~30min | **IN PROGRESS** (ALB-063): ALB-072 fixed (fp16 scaling). val_loss=6.92, val_ppl=1008 at step 250. gnorm stable 2-9. ~934 tok/s |
+| 350M full v2 (seq=1024, batch=4, accum=1) | 1183/5000 | 10.4→6.85 | ~1.4h | **CRASHED**: ALB-073 (PTX selp) + ALB-074 (stale binary). Step 1000 ckpt saved. |
+| 350M v3 (seq=1024, batch=4, codeparrot) | 0/250K | 10.40 | ~12 days | **RUNNING** (PID 1288901): 5.29B tokens pretokenized, save_interval=1000 (~1.2h). gnorm 3.6→2.7 over first 1100 steps of prior start. |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
@@ -175,6 +176,9 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 - C-GEMMARGS-001: GEMM backward constructor args match documented order (ALB-059 fix)
 - C-GPUINIT-001: Optimizer states zero-initialized, not cuMemAlloc garbage (ALB-059 fix)
 - C-STREAMSYNC-001: `stream.synchronize()` before any D2H transfer reading kernel output (ALB-065 fix)
+- C-LOSSSCALE-001: fp16 loss scaling excluded from f32 backward path (ALB-072 fix)
+- C-SELP-001: PTX `selp_f32` argument order verified in all kernels (ALB-069, ALB-073 fixes)
+- C-EVALBUF-001: `eval_single_sequence` truncates to max_seq_len before GPU forward (ALB-074 fix)
 - C-GPUINIT-001: All optimizer m/v buffers zero-initialized (ALB-059 fix)
 - C-LOSSSCALE-001: fp16 loss scaling excluded from GPU backward (all backward uses f32; scaling causes overflow) (ALB-072 fix)
 
@@ -183,11 +187,19 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 | Aspect | Design |
 |--------|--------|
 | Format | SafeTensors (primary) + JSON metadata |
-| Frequency | Every 1000 steps (~512M tokens) |
-| Content | Model weights, optimizer state, LR scheduler state, RNG state, step count |
-| Storage | Local on lambda, rsync to intel (300GB RAM box) for backup |
-| Resume | `--resume checkpoint-step-5000.json` |
+| Frequency | Every 1,000 steps (~1.2h at 4.2s/step, ~4M tokens) |
+| Content | Model weights (~1.5 GB), optimizer state (~1.3 GB), config.json |
+| Pruning | Automatic — keeps latest + best only, old checkpoints deleted |
+| Disk usage | ~8.4 GB peak (3 checkpoints: current + best + in-flight) |
+| Storage | Local NVMe RAID-0, checkpoints directory in repo |
+| Resume | From latest checkpoint on crash (weights + optimizer state) |
 | Export | `apr publish --format safetensors` for HuggingFace |
+
+**Checkpoint interval rationale (v3)**: `save_interval: 1000` balances crash
+recovery (~1.2h max lost work) against I/O overhead (~3s per checkpoint write
+vs ~4200s between checkpoints = 0.07% overhead). With automatic pruning, disk
+usage stays constant regardless of training length. For the 250K-step v3 run
+(~12 days), this yields 250 checkpoint events with ~8.4 GB steady-state disk.
 
 ### 6.6 Experiment Tracking & Training Monitoring
 
