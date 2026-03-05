@@ -113,6 +113,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
 |----|-------|-----------|-----|----------|--------|---------------------|
 | ALB-075 | [#57](https://github.com/paiml/albor/issues/57) | trueno / entrenar | cuBLAS tensor core GEMM integration — replaced PTX GEMMs with TF32 tensor cores | Critical | **FIXED** | trueno-gpu 0.4.24 (cuBLAS FFI, PR #165 merged), entrenar PR #233 merged. **Measured**: 1,485 tok/s (4.3% MFU), 1,379ms/step, 3.19x end-to-end speedup. Kernel-level: 74-142 TFLOP/s vs 4.8-6.1 PTX (12-27x). Contract: `cublas-gemm-v1.yaml`. |
+| ALB-076 | [#58](https://github.com/paiml/albor/issues/58) | entrenar | Forward RMSNorm per-row kernel launch — 97.1% of GPU time | Critical | **FIXED** | `rms_norm_forward()` launched one 32-thread kernel per row (2048 launches/norm × 49 norms = 100,352 launches/step). nsys profiling: 46.6s/50 steps, avg 9.3μs each. Fix: switched to `BatchedVectorizedRmsNormKernel` (single launch, 256 threads, `blockIdx.y` batch dispatch). entrenar PR #238 merged. **Measured**: forward 347ms→14ms (24.8×), step 1357ms→339ms (4×), MFU 4.4%→17.5% (4×). |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
 
