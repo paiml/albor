@@ -1408,48 +1408,44 @@ CPU optimizer become the dominant bottlenecks** (~400ms + ~300ms = ~700ms of
 |-------|--------|-----------|-------|------------|----------|
 | Baseline | PTX GEMMs, CPU optimizer | 4,400 ms | 934 | 1.3% | training-gpu-kernel-v1 |
 | **Phase 1-3** | **cuBLAS linear GEMMs** | **1,379 ms** | **1,485** | **4.3%** | **cublas-gemm-v1 (MEASURED)** |
-| Phase 4 | + Fused kernels (CE, RMSNorm, SwiGLU) | ~1,100 ms | ~3,727 | ~5.2% | fused-kernels-v1 |
-| Phase 5 | + GPU-resident AdamW | ~800 ms | ~5,120 | ~7.1% | gpu-optimizer-v1 (future) |
-| Phase 6 | + FP16 embedding on GPU | ~600 ms | ~6,827 | ~9.5% | gpu-embedding-v1 (future) |
-| Phase 7 | + Overlap compute/transfer | ~400 ms | ~10,240 | ~14.2% | async-pipeline-v1 (future) |
-| Phase 8 | + Larger batch (batch=8) | ~500 ms | ~16,384 | ~22.7% | grad-checkpoint-v1 (future) |
+| **Phase 4** | **+ cuBLAS attention GEMMs** | **1,347 ms** | **1,520** | **4.4%** | **cublas-attention-v1 (MEASURED)** |
+| Phase 5 | + Fused kernels (CE, RMSNorm, SwiGLU) | ~1,100 ms | ~1,864 | ~5.2% | fused-kernels-v1 |
+| Phase 6 | + GPU-resident AdamW | ~800 ms | ~2,560 | ~7.1% | gpu-optimizer-v1 (future) |
+| Phase 7 | + FP16 embedding on GPU | ~600 ms | ~3,413 | ~9.5% | gpu-embedding-v1 (future) |
+| Phase 8 | + Overlap compute/transfer | ~400 ms | ~5,120 | ~14.2% | async-pipeline-v1 (future) |
+| Phase 9 | + Larger batch (batch=8) | ~500 ms | ~8,192 | ~22.7% | grad-checkpoint-v1 (future) |
 
 **Realistic target: 15-25% MFU** after cuBLAS (measured 3.8%) + fused kernels + GPU optimizer + overlap.
 
 Each future phase gets its own contract **before** implementation begins.
 
-### 6.5 Phase 4 Analysis: Attention GEMMs (Next Bottleneck)
+### 6.5 Phase 4 Results: Attention GEMMs (MEASURED)
 
-After cuBLAS linear GEMMs, the **attention score computation** becomes the
-dominant bottleneck. `batched_4d_gemm_forward` still uses hand-written PTX
-with 16x16 tiles and no tensor cores.
+cuBLAS `cublasSgemmStridedBatched` replaces hand-written PTX for multi-head
+attention score computation (QK^T and attn·V). Implemented in trueno-gpu 0.4.25
++ entrenar PR #234 (merged).
 
-**Attention GEMM shapes per block** (350M, seq=512, batch=4):
+**Measured results** (350M, seq=512, batch=4, RTX 4090):
 
-| Operation | Shape | FLOPs | Current (PTX) | cuBLAS Potential |
-|-----------|-------|-------|---------------|-----------------|
-| QK^T | [4, 16, 512, 512, 64] | 2×4×16×512×512×64 = 2.15G | ~5 TFLOP/s | ~80 TFLOP/s |
-| attn×V | [4, 16, 512, 64, 512] | 2×4×16×512×64×512 = 2.15G | ~5 TFLOP/s | ~80 TFLOP/s |
-| Total per block | | 4.3G | | |
-| Total 24 blocks | | 103G × 2 = 206G FLOPs | ~200ms | ~12ms |
+| Metric | Phase 1-3 | Phase 4 | Improvement |
+|--------|-----------|---------|-------------|
+| Throughput | 1,485 tok/s | **1,520 tok/s** | +2.4% |
+| Step time | 1,379 ms | **1,347 ms** | -32ms (2.3%) |
+| MFU | 4.3% | **4.4%** | +0.1pp |
+| VRAM | 7,961 MB | 7,937 MB | -24 MB |
 
-**Implementation**: `cublasGemmStridedBatched` with:
+**Analysis**: The improvement is modest (2.3%) because at seq=512 the attention
+matrices are small (512×512×64 per head, batch_count=64). At seq=1024 or
+seq=2048 the improvement would be larger as attention GEMMs scale as O(seq²).
+
+**Implementation** (trueno-gpu 0.4.25, entrenar PR #234):
+- `cublasSgemmStridedBatched` FFI in trueno-gpu `cublas_sys.rs`
+- Safe wrapper `gemm_f32_strided_batched_row_major()` in `cublas.rs`
 - `batch_count = batch_size * num_heads` (4 × 16 = 64)
-- `stride_a = m * k`, `stride_b = k * n`, `stride_c = m * n`
-- Same TF32 tensor core mode as linear GEMMs
-- Requires `cublasSgemmStridedBatched` FFI in trueno-gpu
+- Fast path in `batched_4d_gemm_forward` with PTX fallback
 
-**Backward attention GEMMs** (4 per block): dQ, dK, dV, d(attn_weights).
-Same strided batched pattern. Also currently PTX.
-
-**Expected improvement**: ~200ms → ~12ms per step for attention GEMMs.
-Combined with linear GEMM improvement, total GEMM time: ~500ms → ~100ms.
-
-**Prerequisites**:
-1. `cublasGemmStridedBatched` FFI in trueno-gpu (CublasHandle method)
-2. Wrapper function `cublas_batched_gemm` in entrenar matmul.rs
-3. Update `batched_4d_gemm_forward` with cuBLAS fast path
-4. Contract: `cublas-attention-gemm-v1.yaml`
+**Next bottleneck**: CPU optimizer + PCIe transfers (~800ms/step combined).
+Requires GPU-resident AdamW (Phase 6) to eliminate CPU roundtrip.
 
 ### 6.6 v3 Training Time Impact
 
