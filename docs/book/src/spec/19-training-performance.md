@@ -1510,10 +1510,280 @@ pv audit contracts/training-step-budget-v1.yaml \
 | `contracts/training-gpu-kernel-v1.yaml` | EXISTING | Parent contract — PCIe transfers, stability, gradient flow |
 | `contracts/training-memory-kernel-v1.yaml` | EXISTING | VRAM budget (must update for FP16 weight storage) |
 | `contracts/training-config-kernel-v1.yaml` | EXISTING | Epoch/step/LR algebraic consistency |
+| `contracts/fused-kernels-v1.yaml` | **NEW** (write before Phase 4) | Fused CE, RMS norm reuse, SwiGLU in-place, fused attention |
 | `contracts/gpu-optimizer-v1.yaml` | FUTURE (Phase 4) | GPU-resident AdamW correctness |
 | `contracts/gpu-embedding-v1.yaml` | FUTURE (Phase 5) | GPU embedding lookup + scatter-add |
 | `contracts/async-pipeline-v1.yaml` | FUTURE (Phase 6) | Compute/transfer overlap safety |
 | `contracts/grad-checkpoint-v1.yaml` | FUTURE (Phase 7) | Gradient checkpointing memory/correctness |
+
+## 11. Unsloth-Inspired Kernel Optimizations
+
+**Source**: Analysis of [unslothai/unsloth](https://github.com/unslothai/unsloth)
+(cloned 2026-03-05). Unsloth achieves 2x training speedup over HuggingFace via
+fused Triton kernels, selective activation saving, and in-place backward ops.
+These patterns translate to our Rust + CUDA PTX stack.
+
+### 11.1 Fused Cross-Entropy Loss + Backward
+
+**What unsloth does**: Single Triton kernel computes `logsumexp`, loss, and
+`dL/dx` (softmax - one_hot) in one pass. Never materializes the full probability
+distribution.
+
+**Current albor**: Separate kernels for logits→softmax, softmax→loss, loss→grad.
+For vocab=32K, batch=4, seq=1024, the logit tensor is `[4096, 32768]` = 512 MB
+in FP32. Three kernel launches + three full reads/writes of this tensor.
+
+**Proposed change**: Fused CE kernel that:
+1. Computes `logsumexp` per row (FP32 accumulation for stability)
+2. Computes `loss = logsumexp - logit[label]` per row
+3. Computes `grad[i] = exp(logit[i] - logsumexp) - delta(i, label)` in-place
+4. Never allocates full softmax tensor
+
+**Expected gain**: -2 kernel launches, -1 GB memory bandwidth per step.
+Step time: ~20-40ms savings (CE is ~1% of step time, but memory bandwidth
+relief helps other kernels via improved cache pressure).
+
+**Contract**: `contracts/fused-kernels-v1.yaml` — FALSIFY-FUSED-001
+
+```
+Equations:
+  fused_ce_correctness:
+    loss_fused = -logit[label] + log(sum(exp(logit[i]))) for each row
+    grad_fused[i] = exp(logit[i] - logsumexp) - delta(i, label)
+  Invariant: max_abs_diff(loss_fused, loss_separate) < 1e-5
+  Invariant: max_abs_diff(grad_fused, grad_separate) < 1e-5
+  Invariant: FP32 accumulation for logsumexp (no FP16 overflow on 32K vocab)
+```
+
+### 11.2 Activation Memory Reuse (RMS LayerNorm)
+
+**What unsloth does**: RMS LayerNorm forward saves ONLY `inv_var` (1 scalar per
+row = `batch * seq_len` floats). Backward recomputes `normed = X * inv_var` from
+the activation cache. Total saved: `O(B*S)` instead of `O(B*S*H)`.
+
+**Current albor**: Saves `X`, `W`, `inv_var`, and `normed` per layer during
+forward for use in backward. For 24 layers × `[4096, 1024]`:
+- `X`: 24 × 16 MB = 384 MB
+- `normed`: 24 × 16 MB = 384 MB
+- `inv_var`: 24 × 16 KB = 384 KB (negligible)
+- Total saved: **768 MB** of activation memory
+
+**Proposed change**: Save only `inv_var` per layer. During RMS norm backward:
+1. Recompute `normed = X_cached * inv_var` (X is available from the previous
+   layer's output or the activation cache)
+2. Compute `d_weight = sum(grad_output * normed)`
+3. Compute `d_input = (grad_output * W - normed * d_weight_sum) * inv_var`
+
+**Expected gain**: -384 MB activation memory (normed tensor eliminated).
+This is 3.2% of 24 GB VRAM — modest alone, but compounds with other savings
+to potentially enable batch=8 without gradient checkpointing.
+
+**Contract**: `contracts/fused-kernels-v1.yaml` — FALSIFY-FUSED-002
+
+```
+Equations:
+  rmsnorm_recompute_correctness:
+    normed_recomputed = X * inv_var_saved
+    max_abs_diff(normed_recomputed, normed_original) == 0.0  (exact, same FP32)
+  Memory reduction:
+    activation_memory(optimized) = activation_memory(current) - 24 * B * S * H * 4 bytes
+    For B=4, S=1024, H=1024: savings = 24 * 4 * 1024 * 1024 * 4 = 402,653,184 bytes (~384 MB)
+```
+
+### 11.3 SwiGLU In-Place Backward
+
+**What unsloth does**: GEGLU/SwiGLU backward overwrites input buffers with
+gradient results. Forward: `h = silu(e) * g`. Backward stores `dh, de, dg`
+into the same memory as `h, e, g`. No new allocations.
+
+**Current albor**: `CudaGradWorkspace` reuses buffers per-block (already good),
+but within a block, SwiGLU backward allocates separate `grad_gate`, `grad_up`,
+and `grad_down` buffers. For intermediate_size=4096:
+- `grad_gate`: `[4096, 4096]` = 64 MB
+- `grad_up`: `[4096, 4096]` = 64 MB
+- Total per-block overhead: 128 MB (shared workspace, so only peak matters)
+
+**Proposed change**: Fuse SwiGLU backward to overwrite gate/up buffers in-place:
+1. `d_gate = grad_output * up * silu_deriv(gate)` → store in `gate` buffer
+2. `d_up = grad_output * silu(gate)` → store in `up` buffer
+3. No separate allocation for d_gate, d_up
+
+**Expected gain**: -128 MB peak workspace per block (already shared, so reduces
+peak VRAM, not total allocations). Main benefit is reduced memory bandwidth —
+fewer buffer copies between kernels.
+
+**Contract**: `contracts/fused-kernels-v1.yaml` — FALSIFY-FUSED-003
+
+```
+Equations:
+  swiglu_inplace_correctness:
+    d_gate_inplace = grad_out * up * sigmoid(gate) * (1 + gate * (1 - sigmoid(gate)))
+    d_up_inplace = grad_out * silu(gate)
+    max_abs_diff(d_gate_inplace, d_gate_separate) < 1e-5
+    max_abs_diff(d_up_inplace, d_up_separate) < 1e-5
+```
+
+### 11.4 Mixed Precision Discipline (Validated)
+
+**What unsloth does**: Loads activations as FP32 for critical arithmetic
+(variance, softmax, logsumexp), keeps weights in BF16, casts output back after
+critical ops.
+
+**Albor status**: Already implemented correctly (validated by ALB-072 fix).
+Our backward is all FP32, master weights are FP32 on CPU, forward weights are
+FP32 on GPU (will become FP16 with cuBLAS). This matches unsloth's pattern.
+
+**Action**: No code change needed. Document as validation that our approach
+matches production-grade mixed precision practice.
+
+### 11.5 RoPE Head Grouping
+
+**What unsloth does**: Applies RoPE to 4 heads simultaneously, loading sin/cos
+once and reusing across the group. `ROPE_GROUP_SIZE = 4`.
+
+**Current albor**: Per-head RoPE application in the attention forward kernel.
+Sin/cos recomputed or reloaded per head.
+
+**Proposed change**: Batch RoPE across all Q heads (16) and KV heads (4) with
+single sin/cos load. For our GQA architecture (16 Q heads, 4 KV heads):
+- Q: load sin/cos once, apply to 16 heads
+- K: same sin/cos, apply to 4 heads
+- V: no RoPE (not rotated)
+
+**Expected gain**: ~10% attention kernel speedup from better L2 cache utilization.
+Small absolute impact (~5-10ms/step) since RoPE is not compute-dominant.
+
+**Contract**: `contracts/fused-kernels-v1.yaml` — FALSIFY-FUSED-004
+
+```
+Equations:
+  rope_grouped_correctness:
+    For each head h in [0, n_heads):
+      Q_rotated_grouped[h] == Q_rotated_individual[h]  (bit-exact)
+    Performance: T_rope(grouped) < 0.9 * T_rope(individual)
+```
+
+### 11.6 Fused Attention (QK^T → Softmax → V)
+
+**What unsloth does**: Uses Flash Attention or Flex Attention to fuse the
+3-step attention computation into a single kernel. Never materializes the
+full `[seq, seq]` attention score matrix.
+
+**Current albor**: Three separate operations per attention head:
+1. `scores = Q @ K^T` → cuBLAS GEMM → `[4096, 1024]` (with cuBLAS)
+2. `probs = softmax(scores / sqrt(d_k))` → elementwise kernel
+3. `output = probs @ V` → cuBLAS GEMM
+
+This materializes the `[batch, heads, seq, seq]` = `[4, 16, 1024, 1024]` = 256 MB
+attention score tensor. For 24 layers, that's 6.1 GB if all layers' scores
+are live simultaneously (they aren't in our per-block architecture, but the
+per-block peak still includes this).
+
+**Proposed change**: Custom fused attention kernel (not Flash Attention — our
+seq=1024 is short enough that tiled online softmax gives most of the benefit):
+1. Tile Q, K, V into blocks (e.g., 64×64)
+2. Compute `QK^T` tile, apply causal mask, running softmax (online algorithm)
+3. Accumulate `softmax(tile) @ V` without materializing full score matrix
+4. Output: attention result directly, save only logsumexp for backward
+
+**Expected gain**:
+- -256 MB peak VRAM per block (attention scores not materialized)
+- -2 kernel launches per layer (3→1)
+- ~15% attention speedup from reduced memory bandwidth
+- Enables batch=8 by freeing VRAM headroom
+
+**Contract**: `contracts/fused-kernels-v1.yaml` — FALSIFY-FUSED-005
+
+```
+Equations:
+  fused_attention_correctness:
+    output_fused = softmax(Q @ K^T / sqrt(d_k) + causal_mask) @ V
+    max_abs_diff(output_fused, output_separate) < 1e-3  (FP32)
+    max_abs_diff(output_fused, output_separate) < 1e-2  (FP16)
+  Memory:
+    peak_attn_memory(fused) < peak_attn_memory(separate) / 4
+    # Separate: [B, H, S, S] = 256 MB
+    # Fused: [B, H, tile, tile] = 256 MB / (S/tile)^2
+```
+
+### 11.7 Chunked Cross-Entropy for Future Vocab Scaling
+
+**What unsloth does**: For vocab > 65K, splits logsumexp computation into chunks
+of 65536. Mathematical property: `logsumexp(chunked_logsumexp) == logsumexp(full)`.
+
+**Current albor**: Vocab = 32K, fits in single chunk. Not needed now.
+
+**Future applicability**: If we scale to multi-lingual (65K+ vocab) or adopt a
+larger tokenizer, chunked CE prevents register pressure overflow in the fused
+CE kernel. The logsumexp decomposition is:
+
+```
+logsumexp([a, b]) = max(a, b) + log(exp(a - max) + exp(b - max))
+```
+
+Each chunk computes a partial logsumexp. The final logsumexp combines partials.
+This is numerically stable and mathematically exact.
+
+**Contract**: Deferred until vocab > 65K. Will be added to `fused-kernels-v1.yaml`
+if tokenizer v3 exceeds 65K vocabulary.
+
+### 11.8 Gradient Checkpointing (Activation Recomputation)
+
+**What unsloth does**: Trades compute for memory by recomputing layer activations
+during backward instead of saving them during forward. 2x slower backward, but
+~3x smaller activation memory.
+
+**Current albor**: Per-block interleaved backward+optimizer design already
+limits peak activation memory to one block's worth. But with fused attention
+(§11.6) and activation reuse (§11.2), we may not need gradient checkpointing
+for batch=4.
+
+**When needed**: If batch=8 + seq=2048 still OOMs after §11.2 + §11.6.
+
+**Contract**: `contracts/grad-checkpoint-v1.yaml` (FUTURE — already in registry)
+
+```
+Equations:
+  checkpoint_correctness:
+    grad(checkpointed) == grad(full_save)  # Bit-exact: same computation
+  Memory:
+    peak_activation(checkpointed) = peak_activation(full) / num_checkpoint_segments
+  Performance:
+    T_backward(checkpointed) < 2.0 * T_backward(full)  # At most 2x slower
+```
+
+### 11.9 Summary: Optimization Priority Matrix
+
+| # | Optimization | Expected Gain | Memory Savings | Effort | Phase |
+|---|-------------|---------------|----------------|--------|-------|
+| 1 | cuBLAS tensor core GEMMs | **50x GEMM, 2x step** | 0 | High | 1-3 |
+| 2 | Fused CE loss + backward | 20-40ms/step | -512 MB bandwidth | Medium | 4 |
+| 3 | RMS norm activation reuse | 0 (compute) | **-384 MB** | Low | 4 |
+| 4 | SwiGLU in-place backward | 10-20ms/step | -128 MB peak | Low | 4 |
+| 5 | RoPE head grouping | 5-10ms/step | 0 | Low | 4 |
+| 6 | Fused attention (tiled) | 15% attn speedup | **-256 MB/layer** | High | 5 |
+| 7 | Chunked CE (vocab >65K) | 0 (future) | 0 | Low | Deferred |
+| 8 | Gradient checkpointing | -2x backward | **-66% activations** | Medium | 7 |
+
+**Cumulative impact** (Phases 1-5):
+- Step time: 4,400ms → ~1,800ms (2.4x vs 2.0x with cuBLAS alone)
+- MFU: 1.3% → ~7.5% (FP16 sustained)
+- VRAM savings: ~768 MB (enables batch=6-8 without grad checkpointing)
+
+### 11.10 Falsification Tests for Kernel Optimizations
+
+| ID | Rule | Prediction | Contract |
+|----|------|------------|----------|
+| FALSIFY-FUSED-001 | Fused CE matches separate CE | `max_abs_diff(loss) < 1e-5` on 50M model, 50 steps | fused-kernels-v1 |
+| FALSIFY-FUSED-002 | RMS norm recompute is bit-exact | `normed_recomputed == normed_original` (FP32, exact) | fused-kernels-v1 |
+| FALSIFY-FUSED-003 | SwiGLU in-place backward correct | `max_abs_diff(d_gate, d_gate_ref) < 1e-5` | fused-kernels-v1 |
+| FALSIFY-FUSED-004 | RoPE grouped matches individual | Bit-exact Q_rotated for all 16 heads | fused-kernels-v1 |
+| FALSIFY-FUSED-005 | Fused attention matches separate | `max_abs_diff(output) < 1e-3` (FP32) | fused-kernels-v1 |
+| FALSIFY-FUSED-006 | Memory savings measured | Activation peak reduced by >= 300 MB | fused-kernels-v1 |
+| FALSIFY-FUSED-007 | Fused CE never materializes softmax | Peak memory during CE < `B*S*V*4` bytes | fused-kernels-v1 |
+| FALSIFY-FUSED-008 | Gradient checkpointing bit-exact | `grad(checkpointed) == grad(full)` for all params | grad-checkpoint-v1 |
+| FALSIFY-FUSED-009 | Fused attention backward correct | All params get gradients, loss within 1% of separate | fused-kernels-v1 |
+| FALSIFY-FUSED-010 | No training instability from fusions | 100-step run: loss.is_finite() every step, gnorm < 100 | fused-kernels-v1 |
 
 ## Appendix A: Popperian Falsification of This Specification
 

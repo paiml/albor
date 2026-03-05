@@ -34,6 +34,7 @@
 - [Training GPU](./contracts/training-gpu-kernel-v1.md)
 - [Training Step Budget](./contracts/training-step-budget-v1.md)
 - [cuBLAS GEMM](./contracts/cublas-gemm-v1.md)
+- [Fused Kernels](./contracts/fused-kernels-v1.md)
 
 # Training Performance
 
