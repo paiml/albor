@@ -10,6 +10,7 @@
 
 .SUFFIXES:
 .DELETE_ON_ERROR:
+.ONESHELL:
 
 .PHONY: validate validate-contracts validate-forjar validate-yaml validate-makefile \
         plan-finetune plan-finetune-lora plan-pretrain-50m plan-pretrain-350m \
@@ -270,7 +271,7 @@ dogfood-playbook: ## Validate batuta playbook
 # ═══════════════════════════════════════════════════════════
 
 clean: ## Clean build artifacts
-	rm -rf book-output/ generated/ book/ .pmat/ || true
+	rm -rf book-output/ generated/ book/ .pmat/ || exit 1
 
 # ═══════════════════════════════════════════════════════════
 # HELP

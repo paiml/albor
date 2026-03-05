@@ -1,18 +1,10 @@
-# cargo-deny configuration for albor
+# cargo-deny configuration for albor (cargo-deny 0.18+)
 # https://embarkstudios.github.io/cargo-deny/
-#
-# Albor is a spec/config repo with minimal Rust deps (serde/serde_yaml for
-# integration tests). This config enforces license compliance and advisory
-# auditing for the sovereign AI supply chain.
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
-notice = "warn"
+# Use default settings — deny known vulnerabilities
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
