@@ -112,7 +112,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 
 | ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
 |----|-------|-----------|-----|----------|--------|---------------------|
-| ALB-075 | [#57](https://github.com/paiml/albor/issues/57) | trueno / entrenar | cuBLAS tensor core GEMM integration — 555 hand-written PTX GEMMs at ~2 TFLOP/s, no tensor core utilization | Critical | IN PROGRESS | cuBLAS FFI in trueno-gpu (`cublas_sys.rs` + `cublas.rs`), FP16 tensor core GEMMs with FP32 accumulation, GEMM throughput > 100 TFLOP/s, step time < 3.0s (vs 4.4s PTX), MFU > 2.5%. Contracts: `cublas-gemm-v1.yaml` (11 falsification tests), `training-step-budget-v1.yaml` (4 falsification tests). |
+| ALB-075 | [#57](https://github.com/paiml/albor/issues/57) | trueno / entrenar | cuBLAS tensor core GEMM integration — replaced PTX GEMMs with TF32 tensor cores | Critical | **FIXED** | trueno-gpu 0.4.24 (cuBLAS FFI, PR #165 merged), entrenar PR #233 merged. **Measured**: 1,485 tok/s (4.3% MFU), 1,379ms/step, 3.19x end-to-end speedup. Kernel-level: 74-142 TFLOP/s vs 4.8-6.1 PTX (12-27x). Contract: `cublas-gemm-v1.yaml`. |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
 

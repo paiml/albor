@@ -1418,14 +1418,47 @@ CPU optimizer become the dominant bottlenecks** (~400ms + ~300ms = ~700ms of
 
 Each future phase gets its own contract **before** implementation begins.
 
-### 6.5 v3 Training Time Impact
+### 6.5 Phase 4 Analysis: Attention GEMMs (Next Bottleneck)
+
+After cuBLAS linear GEMMs, the **attention score computation** becomes the
+dominant bottleneck. `batched_4d_gemm_forward` still uses hand-written PTX
+with 16x16 tiles and no tensor cores.
+
+**Attention GEMM shapes per block** (350M, seq=512, batch=4):
+
+| Operation | Shape | FLOPs | Current (PTX) | cuBLAS Potential |
+|-----------|-------|-------|---------------|-----------------|
+| QK^T | [4, 16, 512, 512, 64] | 2×4×16×512×512×64 = 2.15G | ~5 TFLOP/s | ~80 TFLOP/s |
+| attn×V | [4, 16, 512, 64, 512] | 2×4×16×512×64×512 = 2.15G | ~5 TFLOP/s | ~80 TFLOP/s |
+| Total per block | | 4.3G | | |
+| Total 24 blocks | | 103G × 2 = 206G FLOPs | ~200ms | ~12ms |
+
+**Implementation**: `cublasGemmStridedBatched` with:
+- `batch_count = batch_size * num_heads` (4 × 16 = 64)
+- `stride_a = m * k`, `stride_b = k * n`, `stride_c = m * n`
+- Same TF32 tensor core mode as linear GEMMs
+- Requires `cublasSgemmStridedBatched` FFI in trueno-gpu
+
+**Backward attention GEMMs** (4 per block): dQ, dK, dV, d(attn_weights).
+Same strided batched pattern. Also currently PTX.
+
+**Expected improvement**: ~200ms → ~12ms per step for attention GEMMs.
+Combined with linear GEMM improvement, total GEMM time: ~500ms → ~100ms.
+
+**Prerequisites**:
+1. `cublasGemmStridedBatched` FFI in trueno-gpu (CublasHandle method)
+2. Wrapper function `cublas_batched_gemm` in entrenar matmul.rs
+3. Update `batched_4d_gemm_forward` with cuBLAS fast path
+4. Contract: `cublas-attention-gemm-v1.yaml`
+
+### 6.6 v3 Training Time Impact
 
 The v3 run targets 250K steps at 1B tokens:
 
 | Scenario | Step Time | Total Time | Wall Clock |
 |----------|-----------|------------|------------|
 | Baseline (PTX) | 4.4s | 1,100,000s | **12.7 days** |
-| **cuBLAS (measured)** | **1.44s** | **360,000s** | **4.2 days** |
+| **cuBLAS linear (measured)** | **1.38s** | **345,000s** | **4.0 days** |
 | + Fused kernels | 1.1s | 275,000s | **3.2 days** |
 | + GPU optimizer | 0.7s | 175,000s | **2.0 days** |
 | Full optimization | 0.35s | 87,500s | **1.0 day** |
