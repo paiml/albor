@@ -1696,17 +1696,78 @@ latency (includes JIT warmup). Steady-state MFU is **10.7% (vs TF32) / 21.4%
 (vs FP32)**. The §6.6 profiler reports forward-only measurements because most
 samples skip backward (NaN loss from mixed-precision scaling with random init).
 
-### 6.10 v3 Training Time Impact
+### 6.10 Post-ALB-076 Kernel Profile (nsys, seq=1024)
 
-The v3 run targets 250K steps at 1B tokens:
+With the RMSNorm bottleneck eliminated, nsys profiling reveals the actual
+performance landscape at production seq_len=1024:
 
-| Scenario | Step Time | Total Time | Wall Clock |
-|----------|-----------|------------|------------|
-| Baseline (PTX) | 4.4s | 1,100,000s | **12.7 days** |
-| **cuBLAS linear (measured)** | **1.38s** | **345,000s** | **4.0 days** |
-| + Fused kernels | 1.1s | 275,000s | **3.2 days** |
-| + GPU optimizer | 0.7s | 175,000s | **2.0 days** |
-| Full optimization | 0.35s | 87,500s | **1.0 day** |
+```
+nsys profile --stats=true --trace=cuda,cublas (50 steps, seq=1024, batch=4)
+
+GPU Kernel Time Breakdown:
+  21.9%  725ms   9,800  cutlass GEMM 256x128 nn  (FFN gate/up/down)
+  13.0%  431ms   4,800  batched_softmax           ← MAJOR BOTTLENECK
+  12.2%  404ms   4,824  scale (attention scores)   ← MAJOR BOTTLENECK
+  10.7%  356ms   4,800  cutlass GEMM 128x128 nn  (QKV projections)
+   9.4%  313ms   4,824  cutlass GEMM 256x64 nn   (output proj)
+   7.1%  236ms   9,600  cutlass GEMM 128x64 nn
+   5.7%  190ms   4,872  cutlass GEMM 64x64 nn
+   4.5%  149ms   4,920  batched_transpose          ← attention overhead
+   3.3%  110ms   9,600  cutlass GEMM 64x64x32 nn
+   2.8%   92ms     200  fused_cross_entropy
+   2.6%   85ms  10,272  residual_add
+   2.2%   72ms   4,800  fused_swiglu
+   1.6%   53ms   9,800  batched_rmsnorm_vectorized ← was 97.1%!
+
+CUDA API Time:
+  59.2%  2.86s    228  cuStreamSynchronize       ← BIGGEST time sink
+  11.0%  530ms    637  cuMemcpyDtoH
+   9.2%  444ms 170,480  cuMemcpyDtoDAsync
+   5.7%  274ms  1,054  cuMemcpyHtoD
+   5.3%  256ms 103,469  cuLaunchKernel           ← still 103K launches
+```
+
+**Key observations**:
+
+1. **GEMMs dominate GPU compute (~70%)**: As expected after eliminating the
+   RMSNorm bottleneck. cuBLAS tensor core GEMMs are the core workload.
+
+2. **Attention non-GEMM overhead = 29.7%**: softmax (13%) + scale (12.2%) +
+   transpose (4.5%). Flash Attention would fuse all three into the GEMM.
+
+3. **Stream sync = 59% of CUDA API time**: 228 syncs × 12.5ms avg = 2.86s.
+   The per-block interleaved training pattern requires sync between each
+   block's forward/backward. CUDA Graphs would eliminate this.
+
+4. **103K kernel launches**: Still high (2,069/step). Each costs ~2.5μs in
+   `cuLaunchKernel` overhead. CUDA Graphs batch these.
+
+5. **170K D2D copies**: Memory layout conversions (interleaved↔batched).
+   102 GB total — optimizing data layout would eliminate most.
+
+**Next optimization targets** (in priority order):
+
+| Target | Current Impact | Expected Gain | Approach |
+|--------|---------------|---------------|----------|
+| Flash Attention | 29.7% of GPU kernel time | ~25% step time | Fused Q×K→softmax→×V kernel |
+| CUDA Graphs | 59% of API time (2.86s) | ~40% step time | Graph capture for fwd/bwd |
+| D2D copy reduction | 9.2% of API time | ~8% step time | Unified memory layout |
+
+### 6.11 v3 Training Time Impact (Updated)
+
+Post-ALB-076 at seq=1024, batch=4, grad_accum=1:
+
+| Scenario | Step Time | Tok/s | Wall Clock (250K steps) |
+|----------|-----------|-------|------------------------|
+| Baseline (PTX GEMMs) | 4,400 ms | 934 | **12.7 days** |
+| Phase 1-4 (cuBLAS) | 1,379 ms | 1,485 | **4.0 days** |
+| **Phase 5b (+ batched RMSNorm)** | **444 ms** | **9,216** | **1.3 days** |
+| Phase 6 (+ CUDA Graphs) | ~200 ms | ~20K | **~14 hours** |
+| Phase 7 (+ Flash Attention) | ~130 ms | ~31K | **~9 hours** |
+
+Note: Phase 5b step time of 444ms includes JIT warmup. Steady-state estimated
+~250-350ms based on profiler forward pass timing. With grad_accum=128 (production),
+effective training time is per micro-batch × accum_steps.
 
 ## 7. Verification Architecture
 
