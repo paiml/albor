@@ -1409,13 +1409,18 @@ CPU optimizer become the dominant bottlenecks** (~400ms + ~300ms = ~700ms of
 | Baseline | PTX GEMMs, CPU optimizer | 4,400 ms | 934 | 1.3% | training-gpu-kernel-v1 |
 | **Phase 1-3** | **cuBLAS linear GEMMs** | **1,379 ms** | **1,485** | **4.3%** | **cublas-gemm-v1 (MEASURED)** |
 | **Phase 4** | **+ cuBLAS attention GEMMs** | **1,347 ms** | **1,520** | **4.4%** | **cublas-attention-v1 (MEASURED)** |
-| Phase 5 | + Fused QKV (3→1 GEMM per block) | ~1,200 ms | ~1,707 | ~4.7% | fused-qkv-v1 |
+| Phase 5 | nsys profiling + sync elimination | TBD | TBD | TBD | profiling-investigation-v1 |
 | Phase 6 | + CUDA Graphs (eliminate dispatch overhead) | ~800 ms | ~2,560 | ~7.1% | cuda-graphs-v1 (future) |
-| Phase 7 | + FP16 embedding on GPU | ~600 ms | ~3,413 | ~9.5% | gpu-embedding-v1 (future) |
-| Phase 8 | + Overlap compute/transfer | ~400 ms | ~5,120 | ~14.2% | async-pipeline-v1 (future) |
-| Phase 9 | + Larger batch (batch=8) | ~500 ms | ~8,192 | ~22.7% | grad-checkpoint-v1 (future) |
+| Phase 7 | + Kernel fusion (norm+GEMM epilogues) | ~600 ms | ~3,413 | ~9.5% | fused-kernels-v1 (future) |
+| Phase 8 | + FP16 embedding on GPU | ~500 ms | ~4,096 | ~11.4% | gpu-embedding-v1 (future) |
+| Phase 9 | + Overlap compute/transfer | ~400 ms | ~5,120 | ~14.2% | async-pipeline-v1 (future) |
+| Phase 10 | + Larger batch (batch=8) | ~500 ms | ~8,192 | ~22.7% | grad-checkpoint-v1 (future) |
 
-**Realistic target: 15-25% MFU** after cuBLAS (measured 3.8%) + fused kernels + GPU optimizer + overlap.
+**Fused QKV (originally Phase 5): CANCELLED** — all GEMMs already use cuBLAS.
+Identical FLOP count, negligible dispatch saving (0.1%), high implementation cost.
+
+**Realistic target: 15-25% MFU** after identifying and eliminating the 240ms
+forward anomaly + CUDA Graphs + kernel fusion + overlap.
 
 Each future phase gets its own contract **before** implementation begins.
 
@@ -1473,18 +1478,110 @@ Per-phase wall-clock breakdown from `StepProfiler` (KAIZEN-047). Profiled on
 | norm_bwd | 0.2% | 0.7 | Final RMSNorm backward |
 
 **Key finding**: Forward pass dominates at **80-94% of step time**. Each block
-dispatches 5 GEMMs (Q, K, V, O_proj, gate, up, down) = 120+ kernel launches
-per step. The bottleneck is not individual GEMM throughput (cuBLAS is fast) but
-the **aggregate dispatch overhead** of 120+ sequential kernel launches.
+dispatches ~20 GPU operations (7 GEMMs + attention pipeline + norms + activations
++ residual adds) = 480+ kernel launches per step.
 
-**Next bottleneck**: Not CPU optimizer (only ~0.4ms) — it's **forward pass
-dispatch overhead**. Optimization targets:
+**Critical observation**: ALL GEMMs already use cuBLAS (Phase 1-4, ALB-075):
+forward `gemm_forward`, backward `gemm_backward_a`/`gemm_backward_b`, AND
+attention batched `cublasSgemmStridedBatched`. There are no remaining PTX GEMMs
+in the training loop.
 
-1. **Fused QKV projection** — merge 3 GEMMs (Q, K, V) into 1 per block = -48 launches
-2. **CUDA Graphs** — capture forward/backward as graph, eliminate per-kernel dispatch
-3. **Kernel fusion** — merge element-wise ops (residual_add + RMSNorm) into GEMM epilogues
+**Anomaly**: The forward phase measures **240ms of CPU wall-clock time** for what
+should be purely async GPU dispatches. At ~5μs per cuBLAS dispatch for ~480
+operations, expected CPU time is ~2.4ms — a **100x discrepancy**. Possible causes:
 
-### 6.7 v3 Training Time Impact
+1. CUDA command queue backpressure (driver blocks CPU when queue is full)
+2. Implicit cuBLAS synchronization between GEMMs on the same stream
+3. cuBLAS workspace allocation/reallocation between differently-sized GEMMs
+4. Kernel cache mutex contention (unlikely — single-threaded)
+
+**Fused QKV analysis (CANCELLED)**: Since all GEMMs use cuBLAS, merging 3 QKV
+GEMMs into 1 fused GEMM yields identical FLOP count and saves only 2 dispatches
+per block (48 total, ~240μs, **0.1% of step time**). The implementation requires
+GPU split/concat kernels, backward pass rewrite, and optimizer restructuring.
+Cost-benefit ratio is unfavorable.
+
+**Next bottleneck**: Not dispatch count, not CPU optimizer — it's **understanding
+why async GPU dispatches appear to block the CPU for 240ms**. Requires `nsys`
+profiling or `CUDA_LAUNCH_BLOCKING=1` timing.
+
+**Optimization targets (revised)**:
+
+1. **nsys profiling** — identify actual GPU kernel vs idle vs sync time
+2. **Reduce implicit synchronization** — eliminate any cuBLAS sync barriers
+3. **CUDA Graphs** — capture forward/backward as graph, eliminate per-kernel dispatch
+4. **Kernel fusion** — merge element-wise ops (residual_add + RMSNorm) to reduce memory traffic
+
+### 6.7 Fused QKV Analysis (CANCELLED)
+
+Phase 5 was originally planned as fused QKV projection (3 GEMMs → 1 per block).
+Analysis during implementation revealed this is **not impactful**:
+
+**Why fused QKV doesn't help:**
+
+1. **All GEMMs already use cuBLAS** (ALB-075, Phases 1-4). Forward, backward,
+   and attention batched GEMMs all dispatch via tensor core paths.
+2. **Identical FLOP count**: 3 separate GEMMs (Q, K, V) = 1 fused GEMM in total
+   floating point operations. No compute savings.
+3. **Negligible dispatch saving**: 48 fewer kernel launches × ~5μs = 240μs.
+   Against a 240ms forward pass, this is **0.1% improvement**.
+4. **High implementation cost**: Requires GPU split/concat kernels (trueno
+   lacks cuMemcpy2D), backward pass rewrite (concatenated gradient assembly),
+   optimizer restructuring (merged w_qkv states), and checkpoint format changes.
+5. **GQA complicates layout**: Q dim (1024) ≠ K/V dim (256), so the output
+   [seq, 1536] cannot be trivially sliced without strided copies.
+
+**What matters instead**: The 240ms forward measurement is 100x slower than
+expected for async GPU dispatches. Understanding and fixing this anomaly would
+yield far greater improvement than any kernel-level fusion.
+
+### 6.8 Forward Pass Anomaly Investigation (Phase 5)
+
+**Observation**: The `StepProfiler` measures 240ms of CPU wall-clock time for
+the 24-block forward loop. All operations in this loop are async GPU dispatches
+(cuBLAS GEMMs, PTX element-wise kernels, D2D copies). Expected CPU dispatch
+time: ~2.4ms. **Actual: 240ms (100x discrepancy)**.
+
+**Theoretical analysis** (RTX 4090, 350M, seq=512, batch=4):
+
+| Resource | Budget per block | Total (24 blocks) | Observed |
+|----------|-----------------|-------------------|----------|
+| GEMM compute (82.6 TFLOPS) | 0.19 ms | 4.5 ms | ~240 ms |
+| Memory traffic (1008 GB/s) | 0.3 ms | 7.2 ms | ~240 ms |
+| Dispatch overhead (5μs × ~20) | 0.1 ms | 2.4 ms | ~240 ms |
+
+The forward pass runs **33x slower** than theoretical peak. Either:
+(a) GPU kernels are much slower than expected, or
+(b) there are hidden synchronization barriers serializing work.
+
+**Investigation protocol:**
+
+```bash
+# Method 1: nsys timeline (identifies GPU idle gaps + sync points)
+nsys profile -o profile-350m \
+  /mnt/nvme-raid0/targets/aprender/release/apr train apply \
+  --task pretrain --config configs/train/pretrain-350m-profile.yaml
+
+# Method 2: CUDA_LAUNCH_BLOCKING (makes CPU timing = GPU timing)
+CUDA_LAUNCH_BLOCKING=1 \
+  /mnt/nvme-raid0/targets/aprender/release/apr train apply \
+  --task pretrain --config configs/train/pretrain-350m-profile.yaml
+
+# Method 3: nvtx ranges (if CUDA events are added to step profiler)
+# Requires trueno support for cuEventCreate/cuEventRecord/cuEventElapsedTime
+```
+
+**Hypotheses to test:**
+
+| # | Hypothesis | Test | Expected if true |
+|---|-----------|------|-----------------|
+| H1 | cuBLAS implicit sync between GEMMs | nsys timeline shows GPU idle gaps between GEMMs | Fix: use separate cuBLAS handles or workspaces |
+| H2 | CUDA driver command queue backpressure | CPU blocks mid-forward when GPU is saturated | Fix: batch dispatches, reduce queue depth |
+| H3 | Kernel cache lock contention | CPU time in mutex > dispatch time | Fix: pre-warm cache, lock-free dispatch |
+| H4 | PTX JIT recompilation | Different seq_len per step → cache miss | Fix: pad to max_seq_len or pre-compile |
+| H5 | GPU memory allocation in hot path | cuMemAlloc inside forward loop | Fix: pre-allocate all buffers |
+
+### 6.9 v3 Training Time Impact
 
 The v3 run targets 250K steps at 1B tokens:
 
