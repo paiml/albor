@@ -9,6 +9,8 @@
 | FP32 TFLOPS | 82.6 |
 | FP16 TFLOPS | 165 (with tensor cores) |
 | Role | **Primary trainer, student model** |
+| Measured MFU | **21.9%** (350M, seq=1024, cuBLAS SIMD, no tensor cores) |
+| Measured tok/s | **7,579** (350M, seq=1024, batch=4) |
 
 ### 2.2 Machine: `intel` (Mac Pro 2019 chassis, Linux)
 | Property | Value |

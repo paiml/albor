@@ -25,11 +25,16 @@
 
 **350M CUDA test results (50 steps, post ALB-059 fix):**
 - Loss: 10.39 → 5.92 (best: 5.53) — clear convergence with correct GEMM backward
-- Training time: ~400s (~8s/step)
+- Training time: ~400s (~8s/step) with PTX; ~26s (~0.5s/step) with cuBLAS (ALB-075/077)
 - Checkpoint: 1.59 GB SafeTensors, 218 tensors, config.json saved
 - Checkpoint validation: PASS (weights trained, layers distinct)
 - realizar inference: loads model, generates tokens (gibberish at 50 steps — expected)
 - Perplexity: 31,926 (finite; random baseline ~32,768 for vocab 32K)
+
+**350M v3 training (250K steps, codeparrot-clean, ALB-077 fix):**
+- Step 650: loss 10.40→6.24, 7,579 tok/s, 21.9% MFU, 525ms/step
+- ETA: ~1.5 days (was 12.7 days with PTX — 5.9x speedup from cuBLAS SIMD)
+- No NaN (ALB-077: tensor cores disabled, CUBLAS_DEFAULT_MATH)
 
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen2.5-Coder-3B demonstrated (interim); Qwen3-Coder-Next 80B (stretch, ALB-010)

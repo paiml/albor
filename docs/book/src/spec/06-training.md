@@ -153,7 +153,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M test (seq=512, batch=4) | 50 | 10.39→5.92 (best 5.53) | ~400s | PASS (post ALB-059 fix) |
 | 350M full v1 (seq=1024, batch=4, accum=128) | 43/5000 | 10.39 flat | ~12s | **FAIL (ALB-060)**: epochs=1 exhausted data |
 | 350M full v2 (seq=1024, batch=4, accum=1) | 1183/5000 | 10.4→6.85 | ~1.4h | **CRASHED**: ALB-073 (PTX selp) + ALB-074 (stale binary). Step 1000 ckpt saved. |
-| 350M v3 (seq=1024, batch=4, codeparrot) | 0/250K | 10.40 | ~12 days | **RUNNING** (PID 1288901): 5.29B tokens pretokenized, save_interval=1000 (~1.2h). gnorm 3.6→2.7 over first 1100 steps of prior start. |
+| 350M v3 (seq=1024, batch=4, codeparrot) | 650/250K | 10.40→6.24 | ~1.5 days | **RUNNING** (PID 1975811): ALB-077 fixed (tensor core NaN), 7,579 tok/s, 21.9% MFU, 525ms/step. 5.29B tokens pretokenized, save_interval=1000. |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
@@ -181,6 +181,7 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 - C-EVALBUF-001: `eval_single_sequence` truncates to max_seq_len before GPU forward (ALB-074 fix)
 - C-GPUINIT-001: All optimizer m/v buffers zero-initialized (ALB-059 fix)
 - C-LOSSSCALE-001: fp16 loss scaling excluded from GPU backward (all backward uses f32; scaling causes overflow) (ALB-072 fix)
+- C-CUBLAS-NOTENCORE-001: cuBLAS uses CUBLAS_DEFAULT_MATH (no tensor cores) — tensor core algorithms produce NaN for transposed backward GEMMs at ~1e5 gradient magnitude (ALB-077 fix)
 
 ### 6.5 Checkpointing Strategy
 
@@ -196,10 +197,11 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 | Export | `apr publish --format safetensors` for HuggingFace |
 
 **Checkpoint interval rationale (v3)**: `save_interval: 1000` balances crash
-recovery (~1.2h max lost work) against I/O overhead (~3s per checkpoint write
-vs ~4200s between checkpoints = 0.07% overhead). With automatic pruning, disk
-usage stays constant regardless of training length. For the 250K-step v3 run
-(~12 days), this yields 250 checkpoint events with ~8.4 GB steady-state disk.
+recovery (~8.7min max lost work at 525ms/step) against I/O overhead (~3s per
+checkpoint write vs ~525s between checkpoints = 0.6% overhead). With automatic
+pruning, disk usage stays constant regardless of training length. For the
+250K-step v3 run (~1.5 days at 7,579 tok/s), this yields 250 checkpoint events
+with ~8.4 GB steady-state disk.
 
 ### 6.6 Experiment Tracking & Training Monitoring
 
