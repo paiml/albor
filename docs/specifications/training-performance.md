@@ -1409,8 +1409,8 @@ CPU optimizer become the dominant bottlenecks** (~400ms + ~300ms = ~700ms of
 | Baseline | PTX GEMMs, CPU optimizer | 4,400 ms | 934 | 1.3% | training-gpu-kernel-v1 |
 | **Phase 1-3** | **cuBLAS linear GEMMs** | **1,379 ms** | **1,485** | **4.3%** | **cublas-gemm-v1 (MEASURED)** |
 | **Phase 4** | **+ cuBLAS attention GEMMs** | **1,347 ms** | **1,520** | **4.4%** | **cublas-attention-v1 (MEASURED)** |
-| Phase 5 | + Fused kernels (CE, RMSNorm, SwiGLU) | ~1,100 ms | ~1,864 | ~5.2% | fused-kernels-v1 |
-| Phase 6 | + GPU-resident AdamW | ~800 ms | ~2,560 | ~7.1% | gpu-optimizer-v1 (future) |
+| Phase 5 | + Fused QKV (3→1 GEMM per block) | ~1,200 ms | ~1,707 | ~4.7% | fused-qkv-v1 |
+| Phase 6 | + CUDA Graphs (eliminate dispatch overhead) | ~800 ms | ~2,560 | ~7.1% | cuda-graphs-v1 (future) |
 | Phase 7 | + FP16 embedding on GPU | ~600 ms | ~3,413 | ~9.5% | gpu-embedding-v1 (future) |
 | Phase 8 | + Overlap compute/transfer | ~400 ms | ~5,120 | ~14.2% | async-pipeline-v1 (future) |
 | Phase 9 | + Larger batch (batch=8) | ~500 ms | ~8,192 | ~22.7% | grad-checkpoint-v1 (future) |
@@ -1444,10 +1444,47 @@ seq=2048 the improvement would be larger as attention GEMMs scale as O(seq²).
 - `batch_count = batch_size * num_heads` (4 × 16 = 64)
 - Fast path in `batched_4d_gemm_forward` with PTX fallback
 
-**Next bottleneck**: CPU optimizer + PCIe transfers (~800ms/step combined).
-Requires GPU-resident AdamW (Phase 6) to eliminate CPU roundtrip.
+### 6.6 Step Time Profiling (KAIZEN-047, MEASURED)
 
-### 6.6 v3 Training Time Impact
+Per-phase wall-clock breakdown from `StepProfiler` (KAIZEN-047). Profiled on
+350M model, seq=512, batch=4, RTX 4090, cuBLAS enabled. Combined forward-only
+(NaN-skipped) and full forward+backward samples.
+
+**Forward-only steps** (200 profiled samples, avg 255.7 ms/step):
+
+| Phase | pct | avg_ms | Notes |
+|-------|-----|--------|-------|
+| forward | **93.9%** | 240.0 | 24 blocks × 5 GEMMs + attention + norms |
+| norm_lm | 1.8% | 4.7 | Final RMSNorm + LM head GEMM |
+| other | 4.0% | 10.2 | Kernel launch overhead, dispatch |
+| embed | 0.1% | 0.2 | CPU embedding lookup |
+| h2d | 0.1% | 0.2 | Hidden state H2D transfer |
+
+**Full forward+backward step** (1 sample, 323 ms):
+
+| Phase | pct | avg_ms | Notes |
+|-------|-----|--------|-------|
+| forward | **80.3%** | 259.4 | Same as above |
+| blk_bwd | 12.9% | 41.7 | 24 blocks backward (cuBLAS GEMMs) |
+| loss | 3.3% | 10.5 | Fused cross-entropy (GPU) |
+| norm_lm | 1.6% | 5.3 | Final RMSNorm + LM head GEMM |
+| lm_bwd | 0.7% | 2.2 | LM head GEMM backward |
+| embed_bwd | 0.4% | 1.5 | D2H + clip + scatter-add |
+| norm_bwd | 0.2% | 0.7 | Final RMSNorm backward |
+
+**Key finding**: Forward pass dominates at **80-94% of step time**. Each block
+dispatches 5 GEMMs (Q, K, V, O_proj, gate, up, down) = 120+ kernel launches
+per step. The bottleneck is not individual GEMM throughput (cuBLAS is fast) but
+the **aggregate dispatch overhead** of 120+ sequential kernel launches.
+
+**Next bottleneck**: Not CPU optimizer (only ~0.4ms) — it's **forward pass
+dispatch overhead**. Optimization targets:
+
+1. **Fused QKV projection** — merge 3 GEMMs (Q, K, V) into 1 per block = -48 launches
+2. **CUDA Graphs** — capture forward/backward as graph, eliminate per-kernel dispatch
+3. **Kernel fusion** — merge element-wise ops (residual_add + RMSNorm) into GEMM epilogues
+
+### 6.7 v3 Training Time Impact
 
 The v3 run targets 250K steps at 1B tokens:
 
