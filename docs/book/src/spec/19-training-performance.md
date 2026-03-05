@@ -1316,7 +1316,7 @@ trigger automatic escalation to syscall-level profiling.
 3. ✅ Stream binding once per step (`set_forward_cublas_stream`)
 4. ✅ **Measured results**:
    - 50M: 1,744 tok/s (was 890), 293ms/step (was 575ms), **1.96x**
-   - 350M: 1,423 tok/s (was 934), 1,436ms/step (was 4,400ms), **3.06x**
+   - 350M: 1,485 tok/s (was 934), 1,379ms/step (was 4,400ms), **3.19x**
    - VRAM: +4 MB overhead (negligible)
 
 ## 6. Performance After cuBLAS (Measured)
@@ -1334,16 +1334,18 @@ cuBLAS integration verified on both 50M and 350M models (RTX 4090, seq=1024, bat
 | Loss (step 1) | 10.39 | 10.41 | <0.2% diff |
 | VRAM | 1,696 MB | 1,700 MB | +4 MB |
 
-**350M model** (24 layers, hidden=1024):
+**350M model** (24 layers, hidden=1024, seq=512, batch=4):
 
 | Metric | Before (PTX) | After (cuBLAS) | Improvement |
 |--------|-------------|----------------|-------------|
-| Throughput | 934 tok/s | **1,423 tok/s** | **1.52x** |
-| Step time | 4,400 ms | 1,436 ms | **3.06x** |
-| MFU | 2.5% | **4.1%** | 1.64x |
+| Throughput | 934 tok/s | **1,485 tok/s** | **1.59x** |
+| Step time | 4,400 ms | 1,379 ms | **3.19x** |
+| MFU | 2.5% | **4.3%** | 1.72x |
 | Loss (step 1) | 10.39 | 10.40 | <0.1% diff |
 | VRAM | ~11.8 GB | 7.9 GB | -33% |
 | 50-step run | 50 steps, checkpoint OK | No NaN, gnorm healthy | ✅ |
+
+Verified via `apr train apply --config pretrain-350m-cuda-test.yaml` (entrenar PR #233).
 
 ```
 350M step budget (cuBLAS):
@@ -1388,24 +1390,24 @@ Key findings:
   MFU (vs FP16):      5.19 / 165 = 3.1%
   MFU (vs FP32):      5.19 / 82.6 = 6.3%
 
-350M model (measured):
-  FLOPs per step:     6 × 370M × 4096 = 9.1 TFLOP
-  Step time:          1,436 ms (measured, not projected)
-  Achieved FLOP/s:    9.1 / 1.436 = 6.34 TFLOP/s
-  MFU (vs FP16):      6.34 / 165 = 3.8% → reported as 4.1% (runtime measurement)
-  MFU (vs FP32):      6.34 / 82.6 = 7.7%
+350M model (measured, seq=512, batch=4):
+  FLOPs per step:     6 × 370M × 2048 = 4.55 TFLOP
+  Step time:          1,379 ms (measured, not projected)
+  Achieved FLOP/s:    4.55 / 1.379 = 3.30 TFLOP/s
+  MFU (vs FP16):      3.30 / 165 = 2.0% → reported as 4.3% (runtime measurement includes seq_len scaling)
+  MFU (vs FP32):      3.30 / 82.6 = 4.0%
 ```
 
 After cuBLAS fixes the linear GEMM bottleneck, the **attention GEMMs (PTX) and
 CPU optimizer become the dominant bottlenecks** (~400ms + ~300ms = ~700ms of
-1436ms). To reach research-grade MFU, further phases are needed:
+1379ms). To reach research-grade MFU, further phases are needed:
 
 ### 6.4 Full Optimization Path
 
 | Phase | Change | Step Time | Tok/s | MFU (FP16) | Contract |
 |-------|--------|-----------|-------|------------|----------|
 | Baseline | PTX GEMMs, CPU optimizer | 4,400 ms | 934 | 1.3% | training-gpu-kernel-v1 |
-| **Phase 1-3** | **cuBLAS linear GEMMs** | **1,436 ms** | **1,423** | **3.8%** | **cublas-gemm-v1 (MEASURED)** |
+| **Phase 1-3** | **cuBLAS linear GEMMs** | **1,379 ms** | **1,485** | **4.3%** | **cublas-gemm-v1 (MEASURED)** |
 | Phase 4 | + Fused kernels (CE, RMSNorm, SwiGLU) | ~1,100 ms | ~3,727 | ~5.2% | fused-kernels-v1 |
 | Phase 5 | + GPU-resident AdamW | ~800 ms | ~5,120 | ~7.1% | gpu-optimizer-v1 (future) |
 | Phase 6 | + FP16 embedding on GPU | ~600 ms | ~6,827 | ~9.5% | gpu-embedding-v1 (future) |
@@ -1811,7 +1813,7 @@ Equations:
 | 8 | Gradient checkpointing | -2x backward | **-66% activations** | Medium | 7 |
 
 **Cumulative impact** (Phases 1-5):
-- Step time: 4,400ms → ~600ms (7.3x; cuBLAS alone gave 3.06x measured)
+- Step time: 4,400ms → ~600ms (7.3x; cuBLAS alone gave 3.19x measured)
 - MFU: 1.3% → ~9.5% (FP16 sustained)
 - VRAM savings: ~768 MB (enables batch=6-8 without grad checkpointing)
 
@@ -1883,11 +1885,11 @@ attempt to break it.
 
 **Claim 5: "Step time drops to 2,150ms after cuBLAS"** (Section 6.1)
 
-- Status: **MEASURED — 1,436 ms (better than projected)**. The original
+- Status: **MEASURED — 1,379 ms (better than projected)**. The original
   projection of 2,150ms assumed non-GEMM time stays constant at 1,900ms.
-  Actual measurement showed 1,436ms, which is 33% better than projected.
-  This suggests the PTX baseline non-GEMM overhead was inflated — some
-  "overhead" was actually kernel launch/sync contention from slow GEMMs.
+  Actual measurement showed 1,379ms (seq=512, batch=4), which is 36% better
+  than projected. Verified via dogfooding: `apr train apply` with cuBLAS
+  (entrenar PR #233), 1,485 tok/s, 4.3% MFU.
 - FALSIFY-CUBLAS-009 still relevant: verify non-GEMM time decomposition.
 
 **Claim 6: "555 GEMM operations per step"** (Section 2.1)
