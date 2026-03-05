@@ -1,0 +1,1731 @@
+# Training Performance Specification
+
+## 0. Design Principles
+
+This specification follows **design by contract** (DbC). Every performance
+claim, optimization target, and implementation phase begins with a provable
+contract (`pv validate`) that defines equations, invariants, proof obligations,
+and falsification tests. Code is written to satisfy the contract — never the
+reverse.
+
+**Verification stack** (sovereign, no external dependencies):
+
+| Layer | Tool | Role |
+|-------|------|------|
+| Contract | `pv` (provable-contracts) | YAML equations, proof obligations, falsification tests, Kani harnesses |
+| Benchmark | Raw C + Criterion + regression | Three-tier: raw C cuBLAS (ceiling) vs Rust cuBLAS vs PTX (floor) |
+| Profiling | `probador` (probar) | Brick budgets, per-component SLA enforcement, Jidoka gates |
+| Tracing | `renacer` (BrickTracer) | Per-kernel/per-block/per-transfer spans, OTLP export, anomaly escalation |
+| Measurement | `renacer` (metrics) | Counter/Gauge/Histogram with SIMD acceleration (trueno) |
+
+**Workflow for every optimization phase:**
+
+```
+1. pv validate contracts/cublas-gemm-v1.yaml          # Contract first
+2. pv scaffold contracts/cublas-gemm-v1.yaml           # Generate test stubs
+3. make bench-gemm-raw                                 # Establish ceiling
+4. Implement against contract
+5. make bench-gemm-compare                             # Three-tier benchmark
+6. probador brick budgets verify per-component SLAs    # Brick profiling
+7. renacer --trace-compute traces per-kernel timing    # Layer tracing
+8. pv audit contracts/cublas-gemm-v1.yaml              # Binding coverage
+9. Dogfood on 350M training run
+10. make bench-gemm-regression                         # No regressions
+11. Close gap in §11
+```
+
+## 1. Current Performance Baseline
+
+### 1.1 Measured Throughput
+
+| Metric | Value | Config |
+|--------|-------|--------|
+| Throughput | **934 tok/s** | 350M, seq=1024, batch=4, RTX 4090 |
+| Step time | ~4.4s | Same config |
+| VRAM usage | ~11.8 GB / 24 GB | Same config |
+| Training loss (step 1000) | **7.06** | v2 run (PID 1775202) |
+| Loss trajectory | 10.4 → 6.85 (step 1183) | v2 run |
+| Gradient norm (step 1) | 2.20 | v2 run |
+
+### 1.2 MFU Analysis
+
+**Model FLOPs Utilization (MFU)** measures actual compute throughput against
+hardware theoretical peak. For a transformer forward+backward pass, the standard
+approximation is 6 x params x tokens_per_step FLOPs.
+
+```
+Model parameters:       370M (24 layers, hidden=1024, intermediate=4096)
+Tokens per step:        4 x 1024 = 4,096 tokens
+FLOPs per step:         6 x 370M x 4,096 = 9.1 TFLOP
+
+Step time:              4.4s
+Achieved FLOP/s:        9.1 TFLOP / 4.4s = 2.07 TFLOP/s
+
+RTX 4090 FP16 peak:    165 TFLOP/s (with tensor cores)
+RTX 4090 FP32 peak:    82.6 TFLOP/s (without tensor cores)
+
+MFU (vs FP16 peak):    2.07 / 165 = 1.3%
+MFU (vs FP32 peak):    2.07 / 82.6 = 2.5%
+```
+
+**MFU = 2.5% (vs FP32 peak) / 1.3% (vs FP16 peak)**
+
+### 1.3 Research Benchmarks for Context
+
+| System | Model Size | Hardware | MFU | Source |
+|--------|-----------|----------|-----|--------|
+| GPT-3 (OpenAI) | 175B | A100 cluster | 21% | Brown et al. 2020 |
+| PaLM (Google) | 540B | TPU v4 | 46-57% | Chowdhery et al. 2022 |
+| LLaMA (Meta) | 65B | A100 80GB | 36% | Touvron et al. 2023 |
+| Chinchilla (DeepMind) | 70B | TPU v3/v4 | ~40% | Hoffmann et al. 2022 |
+| Typical single-GPU PyTorch | 350M | RTX 4090 | 25-35% | Community benchmarks |
+| **Albor (current)** | **370M** | **RTX 4090** | **2.5%** | **Measured** |
+
+The gap is **10-15x** vs what the hardware can deliver for this model size.
+
+### 1.4 Baseline Profiling Protocol (renacer + probador)
+
+Before any optimization, establish ground truth with brick-level profiling:
+
+```bash
+# Layer-level tracing: per-kernel timing for one training step
+renacer --otlp-endpoint http://localhost:4317 \
+        --otlp-service-name "albor-baseline" \
+        --trace-compute \
+        --trace-compute-threshold 100 \
+        -- apr train apply --task pretrain \
+            --config configs/train/pretrain-350m-cuda-test.yaml
+
+# View in Jaeger: http://localhost:16686 -> Service: "albor-baseline"
+# Each GEMM kernel, norm kernel, PCIe transfer is a span with duration_us
+```
+
+**BrickTracer escalation thresholds** for baseline measurement:
+
+```rust
+let thresholds = BrickEscalationThresholds::default()
+    .with_cv(15.0)         // Escalate if kernel timing CV > 15%
+    .with_efficiency(25.0)  // Escalate if compute efficiency < 25%
+    .with_rate_limit(100);  // Max 100 traces/second during profiling
+```
+
+**Brick budget breakdown** (probador) — defines the per-component SLA that
+each optimization phase must improve:
+
+```rust
+let step_budget = BrickHouseBuilder::new("training-step")
+    .budget_ms(4400)                      // Current step time
+    .brick("gemm_forward",     1400)      // 7 GEMMs x 24 blocks + LM head
+    .brick("gemm_backward",    1100)      // 14 GEMMs x 24 blocks + LM head
+    .brick("cpu_optimizer",     800)      // 24 blocks + LM head + embedding
+    .brick("cpu_embedding",     200)      // Scatter-gather forward + backward
+    .brick("pcie_transfer",     150)      // 3 transfers (H2D embed, D2H logits, H2D grad)
+    .brick("elementwise_kernel", 100)     // RMSNorm, RoPE, SiLU
+    .brick("cross_entropy",      50)      // Fused CE forward + backward
+    .brick("stream_sync",        50)      // ALB-065 synchronization
+    .brick("overhead",          550)      // Scheduling, allocator, host logic
+    .build()?;
+```
+
+Each brick has a Jidoka gate: if any component exceeds its budget by >2x after
+an optimization, training stops and alerts. This prevents silent regressions.
+
+## 2. Root Cause Analysis
+
+### 2.1 The GEMM Bottleneck
+
+A 350M transformer forward+backward step executes **552 GEMM operations**:
+
+```
+Per transformer block (24 blocks):
+  Forward:
+    - Q projection:    GEMM [S, H] x [H, H]     (1)
+    - K projection:    GEMM [S, H] x [H, H_kv]  (1)
+    - V projection:    GEMM [S, H] x [H, H_kv]  (1)
+    - Attention out:   GEMM [S, H] x [H, H]     (1)
+    - FFN gate:        GEMM [S, H] x [H, I]     (1)
+    - FFN up:          GEMM [S, H] x [H, I]     (1)
+    - FFN down:        GEMM [S, I] x [I, H]     (1)
+  Backward (roughly 2x forward):
+    - dQ, dK, dV, dAttn_out, dGate, dUp, dDown  (7)
+    - Weight gradients for each of the above     (7)
+  Subtotal per block: 7 + 14 = 21 GEMMs
+
+LM head (vocab projection):
+  Forward:   GEMM [S, H] x [H, V]               (1)
+  Backward:  GEMM for dInput + dWeight           (2)
+  Subtotal: 3 GEMMs
+
+Embedding (scatter-add, not GEMM):              (0)
+
+Total: 24 x 21 + 3 = 507 weight GEMMs
+       + attention score GEMMs: 24 x 2 = 48 (QK^T forward + backward)
+       = 555 GEMM operations per step
+```
+
+### 2.2 Hand-Written PTX vs Tensor Cores
+
+All GEMMs use **hand-written PTX tiled GEMM kernels** in trueno-gpu:
+
+- `GemmForwardKernel::tiled_unrolled()` — FP32 accumulation, no tensor cores
+- `GemmBackwardAKernel::tiled_unrolled()` — Input gradient GEMM
+- `GemmBackwardBKernel::tiled_unrolled()` — Weight gradient GEMM
+
+These kernels:
+- Use **scalar FP32 FMA** instructions (`fma.rn.f32`)
+- Tile sizes are small (typically 16x16 or 32x32)
+- No shared memory double-buffering or software pipelining
+- Cannot use tensor cores (require `wmma` or `mma` PTX instructions)
+
+The RTX 4090 (Ada Lovelace, SM 8.9) has **128 FP32 CUDA cores** per SM x 128
+SMs = 16,384 CUDA cores. But it also has **4th generation tensor cores** that
+deliver 165 TFLOP/s FP16 — **2x the FP32 throughput** — and these are
+completely unused.
+
+### 2.3 Non-GEMM Overhead
+
+| Component | Approximate Time | Notes |
+|-----------|-----------------|-------|
+| PCIe transfers (3 per step) | ~50-100ms | H2D embed, D2H logits, H2D grad_logits |
+| CPU embedding forward/backward | ~100-200ms | Scatter-gather on CPU, not GPU |
+| Per-block optimizer step (CPU) | ~500-800ms | AdamW on CPU for each of 24 blocks |
+| RMSNorm, RoPE, SiLU kernels | ~50ms | Small element-wise kernels |
+| Fused cross-entropy | ~20ms | Custom PTX kernel |
+| Stream synchronization | ~10-50ms | ALB-065: required before D2H |
+
+The per-block CPU optimizer (download gradients -> AdamW on CPU -> upload
+weights) is the second largest bottleneck after GEMM throughput. ALB-067
+disabled per-block gradient clipping due to CPU-side L2 norm cost (864 D2H
+transfers/step).
+
+### 2.4 Step Time Breakdown (Estimated)
+
+```
+Total step time:          4,400 ms (100%)
++-- 555 GEMM operations:  2,500 ms ( 57%)  <-- PRIMARY BOTTLENECK
++-- CPU optimizer (24x):    800 ms ( 18%)  <-- SECONDARY BOTTLENECK
++-- CPU embedding:          200 ms (  5%)
++-- PCIe transfers:         150 ms (  3%)
++-- Element-wise kernels:   100 ms (  2%)
++-- Cross-entropy:           50 ms (  1%)
++-- Stream sync:             50 ms (  1%)
++-- Overhead (Python-free):  550 ms ( 13%)
+```
+
+### 2.5 Confirming the Breakdown: Layer Tracing Protocol
+
+The estimated breakdown in 2.4 must be **confirmed with measurement** before
+optimizing. Renacer BrickTracer provides per-brick isolation:
+
+```rust
+// In entrenar CudaTransformerTrainer::train_step_single()
+let tracer = BrickTracer::new_local();
+
+// Trace each phase as a separate brick
+let embed_result = tracer.trace("embed_forward", 200, || {
+    // CPU scatter-gather embedding lookup
+    embed_forward(&input_ids, &embed_weight)
+});
+
+let h2d_result = tracer.trace("pcie_h2d_hidden", 50, || {
+    hidden_buf.copy_from_host(&hidden_states)
+});
+
+for block_idx in 0..24 {
+    let fwd_result = tracer.trace(
+        &format!("block_{}_forward", block_idx), 100, || {
+            block.forward(&workspace)
+        }
+    );
+    // BrickTracer records: duration_us, budget_us, efficiency, over_budget
+}
+```
+
+**Escalation**: When any brick's CV exceeds 15% (unstable timing) or efficiency
+drops below 25% (idle GPU), BrickTracer automatically captures full syscall-level
+traces and exports as OTLP spans. This is the renacer "measurement -> tracing"
+escalation pattern — lightweight metrics in steady state, detailed tracing only
+on anomaly.
+
+The confirmed breakdown becomes the **contract baseline** that optimization
+phases are proven against.
+
+## 3. Contracts: Write Before Code
+
+### 3.1 Contract: cuBLAS GEMM Integration
+
+**File**: `contracts/cublas-gemm-v1.yaml`
+
+This contract must be written and validated (`pv validate`) **before** any
+cuBLAS code is written. It defines the algebraic invariants, numerical bounds,
+and falsification tests that the implementation must satisfy.
+
+```yaml
+# contracts/cublas-gemm-v1.yaml
+metadata:
+  version: "1.0.0"
+  created: "2026-03-05"
+  author: "PAIML Engineering"
+  description: "cuBLAS tensor core GEMM integration for training throughput"
+  references:
+    - "Micikevicius et al. (2018) Mixed Precision Training"
+    - "NVIDIA cuBLAS Documentation (CUDA 12.x)"
+    - "training-gpu-kernel-v1.yaml (parent contract)"
+  depends_on:
+    - "training-gpu-kernel-v1"
+    - "training-memory-kernel-v1"
+
+equations:
+  cublas_gemm_correctness:
+    formula: |
+      C_cublas = alpha * op(A) * op(B) + beta * C
+      where op(X) = X if transa=N, X^T if transa=T
+      A: FP16 [m, k], B: FP16 [k, n], C: FP16 [m, n]
+      Accumulation: FP32 (CUBLAS_COMPUTE_32F)
+    domain: "FP16 input buffers, FP32 accumulation, FP16 output"
+    codomain: "C_cublas: FP16 result matrix"
+    invariants:
+      - "max_abs_diff(C_cublas, C_ptx) < 1e-2 for identical inputs"
+      - "cuBLAS uses tensor cores when math mode is TENSOR_OP_MATH"
+      - "FP32 accumulation prevents catastrophic cancellation"
+
+  buffer_size_verification:
+    formula: |
+      For cublasGemmEx(m, n, k, A, B, C):
+        A.len() >= m * k * sizeof(FP16) = m * k * 2
+        B.len() >= k * n * sizeof(FP16) = k * n * 2
+        C.len() >= m * n * sizeof(FP16) = m * n * 2
+    domain: "GpuBuffer lengths in bytes"
+    codomain: "Boolean: all buffers sufficient"
+    invariants:
+      - "Verified at call site, not inside cuBLAS (Rule 2: prove at kernel boundary)"
+      - "Assertion failure = immediate panic, not silent corruption"
+
+  handle_lifecycle:
+    formula: |
+      create: cublasCreate_v2(&handle) -> CUBLAS_STATUS_SUCCESS
+      bind:   cublasSetStream_v2(handle, stream) before every GEMM
+      drop:   cublasDestroy_v2(handle) exactly once
+    invariants:
+      - "One handle per CudaContext (thread-safe within context)"
+      - "Stream set before EVERY cublasGemmEx call (C-STREAMSYNC-001 extension)"
+      - "Handle destroyed on Drop (Rust RAII)"
+      - "No default stream usage — always explicit non-blocking stream"
+
+  mfu_improvement:
+    formula: |
+      MFU = achieved_flops / hardware_peak_flops
+      achieved_flops = 6 * P * tokens_per_step / step_time
+      P = 370M, tokens_per_step = 4096
+      hardware_peak_flops(FP16) = 165 TFLOP/s
+    domain: "Measured step_time after cuBLAS integration"
+    codomain: "MFU ratio [0, 1]"
+    invariants:
+      - "MFU(cublas) > MFU(ptx) (strict improvement)"
+      - "MFU(cublas) >= 0.025 (must beat current 2.5% FP32 baseline)"
+
+  mixed_precision_weight_flow:
+    formula: |
+      CPU master weights: FP32 (optimizer operates here)
+      GPU forward weights: FP16 (cast during upload)
+      GPU activation gradients: FP16 (cuBLAS backward output)
+      GPU weight gradients: FP32 (accumulated in FP32 buffer)
+      CPU gradient download: FP32 (for optimizer update)
+    invariants:
+      - "Master weights ALWAYS FP32 on CPU (no precision loss in optimizer)"
+      - "Weight gradient accumulation in FP32 (no underflow in small gradients)"
+      - "C-EMBED-GRAD-001 still holds: activation grad clipped before CPU scatter-add"
+      - "C-HYPERPARAMS-001 still holds: all optimizer params from YAML config"
+
+proof_obligations:
+  - type: equivalence
+    property: "cuBLAS GEMM matches PTX GEMM"
+    formal: "max_abs_diff(C_cublas, C_ptx) < 1e-2 for all GEMM shapes in training"
+    tolerance: 1e-2
+    applies_to: cublas_gemm_correctness
+
+  - type: invariant
+    property: "Buffer sizes verified before every cublasGemmEx"
+    formal: "assert!(buf.len() >= required) precedes every cublasGemmEx call"
+    tolerance: 0
+    applies_to: buffer_size_verification
+
+  - type: invariant
+    property: "cuBLAS handle lifecycle is RAII"
+    formal: "create() in new(), destroy() in Drop, set_stream() before gemm()"
+    tolerance: 0
+    applies_to: handle_lifecycle
+
+  - type: bound
+    property: "MFU improves over baseline"
+    formal: "MFU(cublas, 50 steps) > MFU(ptx, 50 steps)"
+    applies_to: mfu_improvement
+
+  - type: invariant
+    property: "Training stability preserved"
+    formal: "loss.is_finite() for all steps in 100-step run"
+    tolerance: 0
+    applies_to: training_stability
+
+  - type: invariant
+    property: "Gradient flow preserved"
+    formal: "max(|grad(param)|) > 0 for all trainable params after 1 step"
+    tolerance: 0
+    applies_to: gradient_flow
+
+  - type: invariant
+    property: "FP32 accumulation enforced"
+    formal: "computeType == CUBLAS_COMPUTE_32F for every cublasGemmEx call"
+    tolerance: 0
+    applies_to: cublas_gemm_correctness
+
+falsification_tests:
+  - id: FALSIFY-CUBLAS-001
+    rule: "cuBLAS forward matches PTX forward"
+    prediction: "max_abs_diff(logits_cublas, logits_ptx) < 1e-2 on 50M model"
+    test: |
+      Build TransformerConfig::tiny(), forward same input through both backends.
+      Compare logit tensors element-wise.
+    if_fails: "cuBLAS transpose convention or leading dimension wrong"
+
+  - id: FALSIFY-CUBLAS-002
+    rule: "cuBLAS training stable for 50 steps"
+    prediction: "Loss is finite at every step, loss curve within 5% of PTX baseline"
+    test: |
+      Train 50M model for 50 steps with cuBLAS backend.
+      Train same model for 50 steps with PTX backend.
+      Compare loss at step 50: |loss_cublas - loss_ptx| / loss_ptx < 0.05.
+    if_fails: "FP16 precision insufficient for this model or gradient accumulation broken"
+
+  - id: FALSIFY-CUBLAS-003
+    rule: "GEMM throughput exceeds 100 TFLOP/s"
+    prediction: "Isolated GEMM [4096, 1024] x [1024, 4096] > 100 TFLOP/s"
+    test: |
+      Run 1000 iterations of cublasGemmEx on [4096, 1024] x [1024, 4096].
+      Compute FLOP/s = 2 * 4096 * 1024 * 4096 * 1000 / elapsed_seconds.
+    if_fails: "Tensor cores not engaged, wrong math mode, or memory bandwidth bound"
+
+  - id: FALSIFY-CUBLAS-004
+    rule: "Step time improves over PTX baseline"
+    prediction: "350M step time < 3.0s with cuBLAS (vs 4.4s with PTX)"
+    test: |
+      Run pretrain-350m-cuda-test.yaml for 50 steps with cuBLAS.
+      Measure median step time. Must be < 3.0s.
+    if_fails: "GEMM is not the bottleneck or cuBLAS adds unexpected overhead"
+
+  - id: FALSIFY-CUBLAS-005
+    rule: "Buffer overflow impossible"
+    prediction: "cuBLAS wrapper panics if buffer too small (never silent corruption)"
+    test: |
+      Call gemm_f16() with undersized C buffer (m*n*2 - 1 bytes).
+      Must panic with assertion failure, not proceed to cublasGemmEx.
+    if_fails: "Buffer verification missing or assertion not checked"
+
+  - id: FALSIFY-CUBLAS-006
+    rule: "All trainable parameters receive gradients"
+    prediction: "max(|grad|) > 0 for every param after 1 cuBLAS training step"
+    test: |
+      Train 50M model for 1 step with cuBLAS. Check gradient of all 110 params.
+    if_fails: "cuBLAS backward produces zero gradients (wrong transpose or alpha/beta)"
+
+  - id: FALSIFY-CUBLAS-007
+    rule: "C-EMBED-GRAD-001 preserved under cuBLAS"
+    prediction: "Activation gradient clipped before CPU scatter-add even with cuBLAS"
+    test: |
+      Train 24-layer 350M for 1 step with cuBLAS. Verify activation gradient
+      L2 norm <= max_grad_norm before embedding backward.
+    if_fails: "cuBLAS backward bypasses activation gradient clipping path"
+
+kani_harnesses:
+  - id: KANI-CUBLAS-001
+    obligation: CUBLAS-INV-002
+    property: "Buffer size assertion prevents overflow for all valid GEMM shapes"
+    bound: 8
+    strategy: exhaustive
+    harness: verify_buffer_assertion_complete
+
+qa_gate:
+  id: F-CUBLAS-001
+  name: "cuBLAS GEMM Integration Contract"
+  description: "Correctness, stability, performance, and safety for cuBLAS tensor core GEMMs"
+  checks:
+    - "cublas_gemm_correctness"
+    - "buffer_size_verification"
+    - "handle_lifecycle"
+    - "mfu_improvement"
+    - "training_stability"
+    - "gradient_flow"
+  pass_criteria: "All 7 falsification tests pass"
+  falsification: "Use wrong transpose to detect GEMM shape errors (ALB-059 class)"
+```
+
+### 3.2 Contract: Training Step Performance Budget
+
+**File**: `contracts/training-step-budget-v1.yaml`
+
+This contract defines the per-brick performance budget that probador enforces.
+
+```yaml
+# contracts/training-step-budget-v1.yaml
+metadata:
+  version: "1.0.0"
+  created: "2026-03-05"
+  author: "PAIML Engineering"
+  description: "Training step performance budget — brick-level SLAs with Jidoka gates"
+  references:
+    - "training-gpu-kernel-v1.yaml"
+    - "ALB-067: CPU-side gradient clipping bottleneck"
+  depends_on:
+    - "training-gpu-kernel-v1"
+    - "cublas-gemm-v1"
+
+equations:
+  step_time_budget:
+    formula: |
+      T_step = T_gemm + T_optimizer + T_embedding + T_pcie + T_elementwise
+             + T_cross_entropy + T_stream_sync + T_overhead
+    domain: "Per-component timing measured by renacer BrickTracer"
+    codomain: "T_step: total step time in milliseconds"
+    invariants:
+      - "T_step is sum of brick times (no unaccounted gaps > 5% of total)"
+      - "Every component maps to exactly one probador brick"
+      - "Brick budget violation triggers Jidoka alert (training pause)"
+
+  gemm_throughput:
+    formula: |
+      TFLOP_per_gemm(m, n, k) = 2 * m * n * k / 1e12
+      TFLOP_per_step = sum(TFLOP_per_gemm for all 555 GEMMs)
+      T_gemm = TFLOP_per_step / achieved_tflops
+    invariants:
+      - "PTX baseline: achieved_tflops ~= 2 TFLOP/s (FP32 scalar)"
+      - "cuBLAS target: achieved_tflops >= 100 TFLOP/s (FP16 tensor core)"
+
+  mfu_definition:
+    formula: |
+      MFU = (6 * P * tokens_per_step) / (T_step * peak_flops)
+      P = 370M, tokens_per_step = batch * seq_len = 4096
+      peak_flops(FP16) = 165 TFLOP/s, peak_flops(FP32) = 82.6 TFLOP/s
+    invariants:
+      - "MFU is measured over >= 50 steps (warm cache, excluding first 5)"
+      - "Report both FP16 and FP32 MFU for clarity"
+
+proof_obligations:
+  - type: bound
+    property: "Brick budgets account for full step time"
+    formal: "sum(brick_budgets) >= 0.95 * T_step_measured"
+    applies_to: step_time_budget
+
+  - type: bound
+    property: "GEMM brick dominates baseline"
+    formal: "T_gemm / T_step > 0.50 in PTX baseline"
+    applies_to: gemm_throughput
+
+  - type: bound
+    property: "cuBLAS reduces GEMM brick time by >= 5x"
+    formal: "T_gemm(cublas) < T_gemm(ptx) / 5"
+    applies_to: gemm_throughput
+
+  - type: bound
+    property: "MFU improves monotonically across phases"
+    formal: "MFU(phase_N+1) > MFU(phase_N) for each optimization phase"
+    applies_to: mfu_definition
+
+falsification_tests:
+  - id: FALSIFY-BUDGET-001
+    rule: "Brick budgets cover >= 95% of step time"
+    prediction: "T_step - sum(bricks) < 0.05 * T_step"
+    test: |
+      Run 50-step profiling with BrickTracer on 350M model.
+      Sum all brick durations. Compare to total step time.
+    if_fails: "Unaccounted overhead — missing brick or hidden synchronization"
+
+  - id: FALSIFY-BUDGET-002
+    rule: "GEMM is the primary bottleneck in PTX baseline"
+    prediction: "T_gemm > 50% of T_step in PTX mode"
+    test: |
+      Profile 50 steps with PTX backend, isolate GEMM brick time.
+    if_fails: "Bottleneck is elsewhere — revisit optimization target"
+
+  - id: FALSIFY-BUDGET-003
+    rule: "Jidoka gate fires on 2x budget violation"
+    prediction: "If T_gemm > 2 * budget_gemm, training pauses with alert"
+    test: |
+      Inject artificial 10s delay in GEMM kernel. Verify Jidoka gate
+      fires and training loop emits Andon alert.
+    if_fails: "Budget enforcement not wired into training loop"
+
+qa_gate:
+  id: F-BUDGET-001
+  name: "Training Step Performance Budget Contract"
+  checks:
+    - "brick_coverage"
+    - "gemm_dominance"
+    - "jidoka_enforcement"
+  pass_criteria: "All 3 falsification tests pass"
+```
+
+### 3.3 Contract Validation Workflow
+
+```bash
+# Validate both contracts before writing any code
+pv validate contracts/cublas-gemm-v1.yaml
+pv validate contracts/training-step-budget-v1.yaml
+
+# Generate test scaffolding
+pv scaffold contracts/cublas-gemm-v1.yaml -o trueno-gpu/tests/
+pv scaffold contracts/training-step-budget-v1.yaml -o entrenar/tests/
+
+# After implementation: audit binding coverage
+pv audit contracts/cublas-gemm-v1.yaml \
+    --binding contracts/trueno-gpu/cublas-binding.yaml
+
+# After dogfooding: close gaps
+pv audit contracts/training-step-budget-v1.yaml \
+    --binding contracts/entrenar/step-budget-binding.yaml
+```
+
+## 4. cuBLAS Integration Plan
+
+### 4.1 Why cuBLAS
+
+cuBLAS is NVIDIA's production GEMM library. It:
+- Uses tensor cores automatically (FP16 input -> FP32 accumulate -> FP16 output)
+- Has auto-tuned kernels for every GPU architecture since Volta
+- Handles tiling, shared memory staging, warp scheduling, and epilogue fusion
+- Delivers 80-95% of theoretical peak on large matrices
+
+For the Albor GEMM shapes (`[4096, 1024] x [1024, 4096]` etc.), cuBLAS will
+use tensor cores, achieving 130-150 TFLOP/s on RTX 4090 vs the current
+~2 TFLOP/s from scalar PTX.
+
+### 4.2 Architecture
+
+The integration lives in **trueno-gpu** (the CUDA backend crate), adding three
+new source files:
+
+```
+trueno-gpu/
++-- src/
+    +-- cublas_sys.rs     # Raw FFI bindings (unsafe extern "C")
+    +-- cublas.rs         # Safe Rust wrapper (CublasHandle, GemmConfig)
+    +-- gemm.rs           # Existing hand-written PTX kernels
+    +-- ...
+```
+
+#### 4.2.1 `cublas_sys.rs` — FFI Bindings (~200 lines)
+
+Minimal bindings for the subset of cuBLAS used by training:
+
+```rust
+// Core types
+type cublasHandle_t = *mut std::ffi::c_void;
+
+#[repr(C)]
+enum cublasOperation_t {
+    CUBLAS_OP_N = 0,  // No transpose
+    CUBLAS_OP_T = 1,  // Transpose
+}
+
+#[repr(C)]
+enum cublasStatus_t {
+    CUBLAS_STATUS_SUCCESS = 0,
+    // ... error codes
+}
+
+// Core functions
+extern "C" {
+    fn cublasCreate_v2(handle: *mut cublasHandle_t) -> cublasStatus_t;
+    fn cublasDestroy_v2(handle: cublasHandle_t) -> cublasStatus_t;
+    fn cublasSetStream_v2(handle: cublasHandle_t, stream: CUstream) -> cublasStatus_t;
+    fn cublasSetMathMode(handle: cublasHandle_t, mode: cublasMath_t) -> cublasStatus_t;
+
+    // The workhorse: C = alpha * op(A) * op(B) + beta * C
+    fn cublasGemmEx(
+        handle: cublasHandle_t,
+        transa: cublasOperation_t,
+        transb: cublasOperation_t,
+        m: i32, n: i32, k: i32,
+        alpha: *const f32,
+        A: *const std::ffi::c_void, Atype: cudaDataType,
+        lda: i32,
+        B: *const std::ffi::c_void, Btype: cudaDataType,
+        ldb: i32,
+        beta: *const f32,
+        C: *mut std::ffi::c_void, Ctype: cudaDataType,
+        ldc: i32,
+        computeType: cublasComputeType_t,
+        algo: cublasGemmAlgo_t,
+    ) -> cublasStatus_t;
+}
+```
+
+Link against `libcublas.so` (ships with CUDA toolkit, already installed for
+trueno's PTX compilation):
+
+```toml
+# trueno-gpu/build.rs
+println!("cargo:rustc-link-lib=cublas");
+println!("cargo:rustc-link-search=/usr/local/cuda/lib64");
+```
+
+#### 4.2.2 `cublas.rs` — Safe Wrapper (~300 lines)
+
+```rust
+pub struct CublasHandle {
+    handle: cublasHandle_t,
+}
+
+impl CublasHandle {
+    pub fn new() -> Result<Self, CublasError> { ... }
+
+    pub fn set_stream(&self, stream: &CudaStream) -> Result<(), CublasError> { ... }
+
+    /// C = alpha * A x B + beta * C
+    /// A: [m, k], B: [k, n], C: [m, n]
+    /// Uses FP16 tensor cores with FP32 accumulation
+    pub fn gemm_f16(
+        &self,
+        m: usize, n: usize, k: usize,
+        alpha: f32,
+        a: &GpuBuffer,  // FP16 [m, k]
+        b: &GpuBuffer,  // FP16 [k, n]
+        beta: f32,
+        c: &mut GpuBuffer,  // FP16 [m, n]
+    ) -> Result<(), CublasError> {
+        // C-CUBLAS-003: Buffer sizes verified at kernel boundary (Rule 2)
+        assert!(a.len() >= m * k * 2, "A buffer too small");
+        assert!(b.len() >= k * n * 2, "B buffer too small");
+        assert!(c.len() >= m * n * 2, "C buffer too small");
+
+        unsafe {
+            check_status(cublasGemmEx(
+                self.handle,
+                CUBLAS_OP_N, CUBLAS_OP_N,
+                m as i32, n as i32, k as i32,
+                &alpha,
+                a.ptr(), CUDA_R_16F, m as i32,
+                b.ptr(), CUDA_R_16F, k as i32,
+                &beta,
+                c.mut_ptr(), CUDA_R_16F, m as i32,
+                CUBLAS_COMPUTE_32F,         // C-CUBLAS-004: FP32 accumulation
+                CUBLAS_GEMM_DEFAULT_TENSOR_OP,
+            ))
+        }
+    }
+}
+
+impl Drop for CublasHandle {
+    fn drop(&mut self) {
+        unsafe { cublasDestroy_v2(self.handle); }
+    }
+}
+```
+
+#### 4.2.3 GEMM Kernel Variant — cuBLAS Backend
+
+The existing `GemmForwardKernel`, `GemmBackwardAKernel`, `GemmBackwardBKernel`
+in trueno-gpu get a new variant that dispatches to cuBLAS instead of launching
+PTX. The selection is compile-time (feature flag `cublas`) or runtime
+(environment variable `TRUENO_GEMM_BACKEND=cublas|ptx`).
+
+```rust
+pub enum GemmBackend {
+    Ptx,     // Existing hand-written PTX (fallback, reference implementation)
+    Cublas,  // cuBLAS tensor core path (default when available)
+}
+```
+
+### 4.3 Weight Storage Format Change
+
+cuBLAS tensor core GEMMs require FP16 inputs for maximum throughput. Currently
+all weights are stored as FP32 on GPU. The integration requires:
+
+1. **Weight upload**: Cast FP32 CPU weights to FP16 during H2D transfer
+2. **Gradient download**: Keep FP32 for gradient accumulation and optimizer
+3. **Master weights**: FP32 copy on CPU (already exists — CPU AdamW operates on FP32)
+4. **GPU weights**: FP16 for forward/backward GEMMs
+
+This is standard mixed-precision training (Micikevicius et al. 2018):
+- Forward pass: FP16 weights x FP16 activations -> FP16 output
+- Backward pass: FP16 weights x FP16 grad_output -> FP32 weight gradient
+- Optimizer: FP32 master weights updated with FP32 gradients
+
+### 4.4 Estimated Code Size
+
+| Component | Lines | Complexity |
+|-----------|-------|------------|
+| `cublas_sys.rs` (FFI) | ~200 | Mechanical translation from CUDA headers |
+| `cublas.rs` (safe wrapper) | ~300 | Error handling, buffer validation, Drop |
+| GEMM kernel variant | ~150 | Dispatch logic, FP16 buffer management |
+| FP16 weight casting | ~100 | H2D cast kernel or CPU-side conversion |
+| Tests | ~200 | Correctness vs PTX reference, perf benchmarks |
+| **Total** | **~950** | Pure Rust, no bindgen dependency |
+
+## 5. Benchmark Infrastructure (Raw C cuBLAS Ceiling)
+
+### 5.1 Design: Three-Tier GEMM Benchmark
+
+Following trueno's established pattern — where raw NumPy/ndarray are the
+reference ceiling and Rust SIMD is measured against them — the cuBLAS
+integration uses **raw C cuBLAS** as the ceiling:
+
+```
+Tier 1 (CEILING):  Raw C cuBLAS    — bare cublasGemmEx(), no Rust, no wrapper
+Tier 2 (TARGET):   Rust cuBLAS     — CublasHandle::gemm_f16() safe wrapper
+Tier 3 (FLOOR):    Rust PTX        — GemmForwardKernel::tiled_unrolled()
+
+FFI overhead = Tier 2 / Tier 1  (must be < 1.02x, i.e. < 2% overhead)
+Speedup      = Tier 3 / Tier 2  (expect 10-50x for tensor core vs scalar)
+Efficiency   = Tier 2 / peak    (target > 60% of 165 TFLOP/s = 99 TFLOP/s)
+```
+
+The raw C benchmark is **the truth**. If Tier 2 is slow, the problem is in
+the Rust wrapper. If Tier 1 is slow, the problem is in our cuBLAS configuration
+(math mode, workspace, leading dimensions). This separation is critical for
+root-cause analysis.
+
+### 5.2 Raw C cuBLAS Benchmark
+
+**File**: `trueno-gpu/benchmarks/gemm_cublas_raw.c`
+
+A standalone C program that links directly against libcublas and measures
+isolated GEMM throughput with CUDA events (not wall clock). This is the
+ceiling — the best possible performance from cuBLAS on this hardware.
+
+```c
+// trueno-gpu/benchmarks/gemm_cublas_raw.c
+// Compile: nvcc -O3 -lcublas -lcuda -o gemm_cublas_raw gemm_cublas_raw.c
+#include <cublas_v2.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef struct {
+    int m, n, k;
+    const char* label;
+} GemmShape;
+
+// Albor training shapes (exact shapes from 350M forward+backward)
+static const GemmShape SHAPES[] = {
+    {4096, 1024, 1024, "attn_qkv"},      // Q/K/V projection (S=4096, H=1024)
+    {4096, 4096, 1024, "ffn_gate_up"},    // FFN gate/up (S=4096, I=4096)
+    {4096, 1024, 4096, "ffn_down"},       // FFN down projection
+    {4096, 32768, 1024, "lm_head"},       // LM head (S=4096, V=32768)
+    {1024, 1024, 1024, "square_1k"},      // Square matrix reference
+    {4096, 4096, 4096, "square_4k"},      // Square matrix reference
+};
+#define NUM_SHAPES (sizeof(SHAPES) / sizeof(SHAPES[0]))
+
+double benchmark_gemm(cublasHandle_t handle, int m, int n, int k,
+                      int warmup, int iterations) {
+    // Allocate FP16 device buffers
+    half *d_A, *d_B, *d_C;
+    cudaMalloc(&d_A, (size_t)m * k * sizeof(half));
+    cudaMalloc(&d_B, (size_t)k * n * sizeof(half));
+    cudaMalloc(&d_C, (size_t)m * n * sizeof(half));
+
+    // Initialize with random data (via curand or host fill)
+    // ... (omitted for brevity)
+
+    float alpha = 1.0f, beta = 0.0f;
+
+    // Warmup
+    for (int i = 0; i < warmup; i++) {
+        cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                     m, n, k, &alpha,
+                     d_A, CUDA_R_16F, m,
+                     d_B, CUDA_R_16F, k,
+                     &beta,
+                     d_C, CUDA_R_16F, m,
+                     CUBLAS_COMPUTE_32F,
+                     CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+    }
+    cudaDeviceSynchronize();
+
+    // Timed iterations with CUDA events
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
+
+    for (int i = 0; i < iterations; i++) {
+        cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                     m, n, k, &alpha,
+                     d_A, CUDA_R_16F, m,
+                     d_B, CUDA_R_16F, k,
+                     &beta,
+                     d_C, CUDA_R_16F, m,
+                     CUBLAS_COMPUTE_32F,
+                     CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+    }
+
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float elapsed_ms;
+    cudaEventElapsedTime(&elapsed_ms, start, stop);
+
+    double elapsed_s = elapsed_ms / 1000.0;
+    double flops = 2.0 * m * n * k * (double)iterations;
+    double tflops = flops / elapsed_s / 1e12;
+
+    cudaFree(d_A); cudaFree(d_B); cudaFree(d_C);
+    cudaEventDestroy(start); cudaEventDestroy(stop);
+    return tflops;
+}
+
+int main() {
+    cublasHandle_t handle;
+    cublasCreate(&handle);
+    cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH);
+
+    printf("shape,m,n,k,tflops,pct_peak\n");
+    for (int i = 0; i < NUM_SHAPES; i++) {
+        GemmShape s = SHAPES[i];
+        double tflops = benchmark_gemm(handle, s.m, s.n, s.k, 50, 1000);
+        printf("%s,%d,%d,%d,%.2f,%.1f%%\n",
+               s.label, s.m, s.n, s.k, tflops, tflops / 165.0 * 100.0);
+    }
+
+    cublasDestroy(handle);
+    return 0;
+}
+```
+
+**Build and run**:
+```bash
+cd trueno-gpu/benchmarks
+nvcc -O3 -lcublas -lcuda -o gemm_cublas_raw gemm_cublas_raw.c
+./gemm_cublas_raw > raw_cublas_baseline.csv
+```
+
+**Expected output** (RTX 4090):
+```
+shape,m,n,k,tflops,pct_peak
+attn_qkv,4096,1024,1024,128.50,77.9%
+ffn_gate_up,4096,4096,1024,142.30,86.2%
+ffn_down,4096,1024,4096,139.80,84.7%
+lm_head,4096,32768,1024,148.20,89.8%
+square_1k,1024,1024,1024,85.40,51.8%
+square_4k,4096,4096,4096,152.60,92.5%
+```
+
+This CSV becomes the **performance ceiling** that the Rust wrapper is measured
+against. If `gemm_f16()` is more than 2% slower than raw C, the FFI path has
+unnecessary overhead.
+
+### 5.3 Criterion Benchmark (Rust: cuBLAS vs PTX)
+
+**File**: `trueno-gpu/benches/gemm_comparison.rs`
+
+Follows the exact pattern from `trueno/benches/gpu_ops/matrix_benches.rs` —
+Criterion groups with multiple backends in the same benchmark group:
+
+```rust
+// trueno-gpu/benches/gemm_comparison.rs
+use criterion::{
+    criterion_group, criterion_main,
+    BenchmarkId, Criterion, Throughput,
+};
+
+/// Albor training shapes — exact dimensions from 350M forward/backward
+const SHAPES: &[(usize, usize, usize, &str)] = &[
+    (4096, 1024, 1024, "attn_qkv"),
+    (4096, 4096, 1024, "ffn_gate_up"),
+    (4096, 1024, 4096, "ffn_down"),
+    (4096, 32768, 1024, "lm_head"),
+    (1024, 1024, 1024, "square_1k"),
+    (4096, 4096, 4096, "square_4k"),
+];
+
+fn bench_gemm_backends(c: &mut Criterion) {
+    let mut group = c.benchmark_group("gemm");
+
+    for &(m, n, k, label) in SHAPES {
+        let flops = (2 * m * n * k) as u64;
+        group.throughput(Throughput::Elements(flops));
+
+        // Tier 2: Rust cuBLAS wrapper
+        group.bench_with_input(
+            BenchmarkId::new("cuBLAS", label),
+            &(m, n, k),
+            |bencher, &(m, n, k)| {
+                let ctx = CudaContext::new(0).unwrap();
+                let stream = CudaStream::new(&ctx).unwrap();
+                let handle = CublasHandle::new().unwrap();
+                handle.set_stream(&stream).unwrap();
+                let a = GpuBuffer::random_f16(&ctx, m * k);
+                let b = GpuBuffer::random_f16(&ctx, k * n);
+                let mut c_buf = GpuBuffer::zeros_f16(&ctx, m * n);
+
+                bencher.iter(|| {
+                    handle.gemm_f16(m, n, k, 1.0, &a, &b, 0.0, &mut c_buf)
+                        .unwrap();
+                    stream.synchronize().unwrap();
+                });
+            },
+        );
+
+        // Tier 3: Rust PTX hand-written kernel
+        group.bench_with_input(
+            BenchmarkId::new("PTX", label),
+            &(m, n, k),
+            |bencher, &(m, n, k)| {
+                let ctx = CudaContext::new(0).unwrap();
+                let stream = CudaStream::new(&ctx).unwrap();
+                let a = GpuBuffer::random_f32(&ctx, m * k);
+                let b = GpuBuffer::random_f32(&ctx, k * n);
+                let mut c_buf = GpuBuffer::zeros_f32(&ctx, m * n);
+                let kernel = GemmForwardKernel::tiled_unrolled(m, n, k, 16);
+
+                bencher.iter(|| {
+                    kernel.launch(&stream, &a, &b, &mut c_buf).unwrap();
+                    stream.synchronize().unwrap();
+                });
+            },
+        );
+    }
+
+    group.finish();
+}
+
+criterion_group!(benches, bench_gemm_backends);
+criterion_main!(benches);
+```
+
+**Cargo.toml**:
+```toml
+[[bench]]
+name = "gemm_comparison"
+path = "benches/gemm_comparison.rs"
+harness = false
+required-features = ["gpu", "cublas"]
+```
+
+**Run**:
+```bash
+cd ~/src/trueno && cargo bench --bench gemm_comparison --features "gpu,cublas"
+```
+
+### 5.4 Cross-Framework Comparison Script
+
+**File**: `trueno-gpu/benchmarks/gemm_comparison.py`
+
+Follows `trueno/benchmarks/matmul_comparison.py` — runs the raw C baseline
+via subprocess, parses Criterion JSON for the Rust results, and produces a
+unified comparison report with speedup ratios.
+
+```python
+#!/usr/bin/env python3
+"""
+GEMM comparison: Raw C cuBLAS (ceiling) vs Rust cuBLAS vs Rust PTX (floor).
+Follows trueno/benchmarks/matmul_comparison.py pattern.
+"""
+import json
+import subprocess
+import statistics
+from pathlib import Path
+
+SHAPES = [
+    ("attn_qkv",    4096, 1024, 1024),
+    ("ffn_gate_up", 4096, 4096, 1024),
+    ("ffn_down",    4096, 1024, 4096),
+    ("lm_head",     4096, 32768, 1024),
+    ("square_1k",   1024, 1024, 1024),
+    ("square_4k",   4096, 4096, 4096),
+]
+
+def run_raw_c_baseline():
+    """Tier 1: Raw C cuBLAS (the ceiling)."""
+    result = subprocess.run(
+        ["./gemm_cublas_raw"],
+        capture_output=True, text=True,
+        cwd=Path(__file__).parent, timeout=300,
+    )
+    baselines = {}
+    for line in result.stdout.strip().split("\n")[1:]:  # Skip CSV header
+        parts = line.split(",")
+        label, tflops = parts[0], float(parts[4])
+        baselines[label] = tflops
+    return baselines
+
+def load_criterion_results():
+    """Tier 2 + 3: Parse Criterion JSON from target/criterion/."""
+    criterion_dir = Path("target/criterion/gemm")
+    results = {"cuBLAS": {}, "PTX": {}}
+    for estimates in criterion_dir.rglob("estimates.json"):
+        with open(estimates) as f:
+            data = json.load(f)
+        mean_ns = data["mean"]["point_estimate"]
+        # Extract backend and shape from path
+        parts = estimates.parts
+        backend = parts[-4]   # "cuBLAS" or "PTX"
+        shape = parts[-3]     # "attn_qkv", etc.
+        results[backend][shape] = mean_ns
+    return results
+
+def compute_tflops(shape_label, time_ns):
+    """Convert mean time to TFLOP/s."""
+    for label, m, n, k in SHAPES:
+        if label == shape_label:
+            flops = 2.0 * m * n * k
+            return flops / (time_ns * 1e-9) / 1e12
+    return 0.0
+
+def format_ratio(ratio):
+    if ratio < 1.02:
+        return f"  {ratio:.3f}x (within 2%)"
+    elif ratio < 1.10:
+        return f"  {ratio:.3f}x (within 10%)"
+    else:
+        return f"  {ratio:.3f}x SLOW"
+
+def main():
+    raw_c = run_raw_c_baseline()
+    criterion = load_criterion_results()
+
+    print("=" * 78)
+    print("GEMM BENCHMARK: Raw C cuBLAS (ceiling) vs Rust cuBLAS vs PTX (floor)")
+    print("=" * 78)
+    print()
+    print(f"{'Shape':<14} {'Raw C':>10} {'Rust cuBLAS':>12} {'PTX':>10} "
+          f"{'FFI OH':>8} {'Speedup':>8} {'% Peak':>8}")
+    print("-" * 78)
+
+    for label, m, n, k in SHAPES:
+        raw_tflops = raw_c.get(label, 0)
+
+        cublas_ns = criterion["cuBLAS"].get(label)
+        cublas_tflops = compute_tflops(label, cublas_ns) if cublas_ns else 0
+
+        ptx_ns = criterion["PTX"].get(label)
+        ptx_tflops = compute_tflops(label, ptx_ns) if ptx_ns else 0
+
+        ffi_overhead = cublas_tflops / raw_tflops if raw_tflops > 0 else 0
+        speedup = cublas_tflops / ptx_tflops if ptx_tflops > 0 else 0
+        pct_peak = cublas_tflops / 165.0 * 100
+
+        print(f"{label:<14} {raw_tflops:>8.1f}T  {cublas_tflops:>10.1f}T  "
+              f"{ptx_tflops:>8.1f}T  {1/ffi_overhead:>7.3f}x {speedup:>7.1f}x "
+              f"{pct_peak:>6.1f}%")
+
+    print()
+    print("FFI OH = Raw C / Rust cuBLAS (< 1.02x = good)")
+    print("Speedup = Rust cuBLAS / PTX")
+    print("% Peak = Rust cuBLAS / 165 TFLOP/s (RTX 4090 FP16)")
+
+if __name__ == "__main__":
+    main()
+```
+
+**Expected report**:
+```
+==============================================================================
+GEMM BENCHMARK: Raw C cuBLAS (ceiling) vs Rust cuBLAS vs PTX (floor)
+==============================================================================
+
+Shape          Raw C   Rust cuBLAS       PTX   FFI OH  Speedup   % Peak
+------------------------------------------------------------------------------
+attn_qkv       128.5T       127.8T      2.1T   1.005x    60.9x    77.5%
+ffn_gate_up    142.3T       141.5T      2.3T   1.006x    61.5x    85.8%
+ffn_down       139.8T       138.9T      2.2T   1.006x    63.1x    84.2%
+lm_head        148.2T       147.1T      1.9T   1.007x    77.4x    89.2%
+square_1k       85.4T        84.8T      1.5T   1.007x    56.5x    51.4%
+square_4k      152.6T       151.8T      2.5T   1.005x    60.7x    92.0%
+
+FFI OH = Raw C / Rust cuBLAS (< 1.02x = good)
+Speedup = Rust cuBLAS / PTX
+% Peak = Rust cuBLAS / 165 TFLOP/s (RTX 4090 FP16)
+```
+
+### 5.5 Regression Detection
+
+**File**: `trueno-gpu/benchmarks/check_gemm_regression.py`
+
+Follows `trueno/scripts/check_regression.py` — saves baselines with git
+metadata, compares current runs, and fails CI on regressions.
+
+**Thresholds** (adapted for GPU benchmarks which have higher variance):
+
+| Change | Classification | Action |
+|--------|---------------|--------|
+| > 10% slower | REGRESSION | CI fails, blocks merge |
+| 5-10% slower | WARNING | Flag in report |
+| Within 5% | UNCHANGED | Pass |
+| > 5% faster | IMPROVEMENT | Report |
+
+**Baseline capture**:
+```bash
+# Save baseline with hardware metadata
+cd trueno-gpu
+./benchmarks/save_gemm_baseline.sh
+# Saves to .performance-baselines/gemm-baseline-current.csv
+# Header: commit, branch, date, GPU (nvidia-smi), CUDA version, driver version
+```
+
+**Regression check**:
+```bash
+# Compare current run against baseline
+./benchmarks/check_gemm_regression.py \
+    --baseline .performance-baselines/gemm-baseline-current.csv \
+    --current /tmp/gemm-bench-current.csv \
+    --regression-threshold 0.10 \
+    --warning-threshold 0.05
+```
+
+### 5.6 Makefile Targets
+
+Following trueno's `Makefile` convention:
+
+```makefile
+# trueno-gpu/Makefile (new targets)
+
+bench-gemm:                  ## Full GEMM benchmark (cuBLAS vs PTX)
+	cargo bench --bench gemm_comparison --features "gpu,cublas"
+
+bench-gemm-raw:              ## Raw C cuBLAS ceiling benchmark
+	cd benchmarks && nvcc -O3 -lcublas -lcuda -o gemm_cublas_raw gemm_cublas_raw.c
+	cd benchmarks && ./gemm_cublas_raw
+
+bench-gemm-compare:          ## Three-tier comparison report
+	$(MAKE) bench-gemm-raw
+	$(MAKE) bench-gemm
+	cd benchmarks && python3 gemm_comparison.py
+
+bench-gemm-baseline:         ## Save current results as baseline
+	$(MAKE) bench-gemm-compare
+	./benchmarks/save_gemm_baseline.sh
+
+bench-gemm-regression:       ## Check for regressions against baseline
+	$(MAKE) bench-gemm-compare
+	./benchmarks/check_gemm_regression.py \
+		--baseline .performance-baselines/gemm-baseline-current.csv \
+		--current /tmp/gemm-bench-current.csv
+```
+
+### 5.7 Contract Integration
+
+The benchmark infrastructure maps directly to contract obligations:
+
+| Benchmark Tier | Contract Obligation | Pass Criterion |
+|----------------|---------------------|----------------|
+| Raw C ceiling | (reference only) | Establishes hardware peak per shape |
+| Rust cuBLAS vs Raw C | C-CUBLAS-FFI-001 | FFI overhead < 2% per shape |
+| Rust cuBLAS vs PTX | FALSIFY-CUBLAS-003 | cuBLAS TFLOP/s > 100 on training shapes |
+| Rust cuBLAS % peak | FALSIFY-CUBLAS-003 | > 60% of 165 TFLOP/s on Albor shapes |
+| Regression check | FALSIFY-BUDGET-003 | No shape regresses > 10% from baseline |
+
+Add to `cublas-gemm-v1.yaml`:
+
+```yaml
+  ffi_overhead:
+    formula: |
+      overhead = T_rust_cublas / T_raw_c_cublas
+      For identical GEMM shape, same GPU, same cuBLAS config.
+    invariants:
+      - "overhead < 1.02 for all training shapes (< 2% FFI tax)"
+      - "Measured via CUDA events, not wall clock"
+      - "Warmup: 50 iterations discarded before measurement"
+
+# Additional falsification test:
+  - id: FALSIFY-CUBLAS-008
+    rule: "Rust cuBLAS FFI overhead < 2%"
+    prediction: "T_rust / T_raw_c < 1.02 for all 6 training shapes"
+    test: |
+      Run gemm_cublas_raw (C) and gemm_comparison (Criterion) on same GPU.
+      Compare TFLOP/s for each shape. Ratio must be > 0.98.
+    if_fails: "Unnecessary copies, redundant stream syncs, or Rust allocation overhead in wrapper"
+```
+
+## 6. Implementation Phases (Contract-Driven)
+
+Every phase follows the same discipline:
+
+```
+pv validate   -> implement -> probador verify -> renacer trace -> pv audit
+                              bench-gemm-compare (three-tier)
+```
+
+### Phase 0: Baseline Measurement
+
+**Contract**: `training-step-budget-v1.yaml`
+**Tool**: renacer BrickTracer + probador brick budgets + raw C cuBLAS ceiling
+
+1. **Run raw C cuBLAS benchmark** to establish the hardware ceiling per shape
+2. Instrument `train_step_single()` with BrickTracer spans for every component
+3. Run 50-step profiling on 350M with PTX backend
+4. Confirm step time breakdown matches estimates in section 2.4
+5. Establish brick budgets as probador assertions
+6. Save baselines: `make bench-gemm-baseline`
+7. This becomes the floor + ceiling that all phases are measured against
+
+**Renacer layer tracing output** (per-block detail):
+
+```
+albor-baseline / training-step [4400ms]
++-- embed_forward [180ms]
++-- pcie_h2d_hidden [12ms]
++-- block_0_forward [95ms]
+|   +-- gemm_qkv [42ms]         # 3 GEMMs: Q, K, V projections
+|   +-- attention_scores [8ms]   # QK^T GEMM
+|   +-- attention_output [14ms]  # attn_out GEMM
+|   +-- ffn_forward [28ms]       # 3 GEMMs: gate, up, down
+|   +-- rmsnorm [3ms]
++-- block_0_backward [190ms]
+|   +-- gemm_backward [165ms]    # 14 weight + activation GEMMs
+|   +-- elementwise [25ms]       # SiLU backward, RMSNorm backward
++-- block_0_optimizer [33ms]     # CPU AdamW (D2H + update + H2D)
++-- ... (blocks 1-23)
++-- lm_head_forward [45ms]
++-- pcie_d2h_logits [35ms]
++-- cross_entropy [22ms]
++-- pcie_h2d_grad_logits [35ms]
++-- lm_head_backward [90ms]
+```
+
+Each span is an OTLP trace viewable in Jaeger. Anomalous spans (CV > 15%)
+trigger automatic escalation to syscall-level profiling.
+
+### Phase 1: FFI + Forward Pass
+
+**Contract**: `cublas-gemm-v1.yaml` (FALSIFY-CUBLAS-001, -003, -008)
+**Brick budget target**: `gemm_forward` brick from 1400ms to 140ms
+
+1. Write `cublas_sys.rs` with minimal bindings
+2. Write `cublas.rs` safe wrapper with `gemm_f16()`
+3. Replace forward-pass GEMMs (7 per block x 24 blocks + LM head = 169 GEMMs)
+4. **Verify** (contract-driven):
+   - `make bench-gemm-compare`: Rust cuBLAS within 2% of raw C ceiling (FALSIFY-CUBLAS-008)
+   - `pv audit`: FALSIFY-CUBLAS-001 passes (forward logits match PTX within 1e-2)
+   - `pv audit`: FALSIFY-CUBLAS-003 passes (isolated GEMM > 100 TFLOP/s)
+   - probador: `gemm_forward` brick < 140ms (10x improvement)
+   - renacer: per-block forward spans show tensor core utilization
+
+### Phase 2: Backward Pass
+
+**Contract**: `cublas-gemm-v1.yaml` (FALSIFY-CUBLAS-002, -006, -007)
+**Brick budget target**: `gemm_backward` brick from 1100ms to 110ms
+
+1. Replace backward-pass GEMMs (14 per block x 24 + 2 LM head = 338 GEMMs)
+2. Keep gradient accumulation in FP32 (critical for training stability)
+3. **Verify** (contract-driven):
+   - `pv audit`: FALSIFY-CUBLAS-002 passes (50-step loss within 5% of PTX)
+   - `pv audit`: FALSIFY-CUBLAS-006 passes (all 110 params get gradients)
+   - `pv audit`: FALSIFY-CUBLAS-007 passes (C-EMBED-GRAD-001 preserved)
+   - probador: `gemm_backward` brick < 110ms
+   - renacer: backward spans show no timing anomalies (CV < 15%)
+
+### Phase 3: Optimization
+
+**Contract**: `training-step-budget-v1.yaml` (FALSIFY-BUDGET-001, -002)
+**Brick budget target**: total step < 2500ms
+
+1. cuBLAS workspace allocation (pre-allocated, reused across steps)
+2. `cublasSetMathMode(CUBLAS_TENSOR_OP_MATH)` for forced tensor core usage
+3. **Verify**:
+   - `make bench-gemm-regression`: no shape regressed from Phase 1 baseline
+   - probador: all brick budgets met, sum covers >= 95% of step time
+   - renacer: full step trace shows GEMM bricks < 300ms total
+   - `pv audit`: FALSIFY-CUBLAS-004 passes (step time < 3.0s)
+
+## 6. Expected Performance After cuBLAS
+
+### 6.1 Throughput Projection
+
+```
+Current GEMM time:     2,500 ms (scalar FP32 PTX)
+Expected GEMM time:      250 ms (cuBLAS tensor cores, ~10x speedup)
+
+Current non-GEMM:     1,900 ms (CPU optimizer, PCIe, element-wise)
+Expected non-GEMM:    1,900 ms (unchanged in Phase 1-3)
+
+Current total:         4,400 ms/step -> 934 tok/s
+Expected total:        2,150 ms/step -> 1,907 tok/s
+
+Speedup: 2.0x (GEMM-bound phases accelerate, CPU bottleneck exposed)
+```
+
+### 6.2 MFU Projection
+
+```
+Achieved FLOP/s:    9.1 TFLOP / 2.15s = 4.23 TFLOP/s
+MFU (vs FP16):      4.23 / 165 = 2.6%
+MFU (vs FP32):      4.23 / 82.6 = 5.1%
+```
+
+After cuBLAS fixes the GEMM bottleneck, the **CPU optimizer becomes the
+dominant bottleneck** (800ms of the remaining 2,150ms). To reach research-grade
+MFU, further phases are needed:
+
+### 6.3 Full Optimization Path (cuBLAS + GPU Optimizer)
+
+| Phase | Change | Step Time | Tok/s | MFU (FP16) | Contract |
+|-------|--------|-----------|-------|------------|----------|
+| Current | PTX GEMMs, CPU optimizer | 4,400 ms | 934 | 1.3% | training-gpu-kernel-v1 |
+| Phase 1-3 | cuBLAS GEMMs, CPU optimizer | 2,150 ms | 1,907 | 2.6% | cublas-gemm-v1 |
+| Phase 4 | + GPU-resident AdamW | 1,150 ms | 3,561 | 4.9% | gpu-optimizer-v1 (future) |
+| Phase 5 | + FP16 embedding on GPU | 850 ms | 4,820 | 6.7% | gpu-embedding-v1 (future) |
+| Phase 6 | + Overlap compute/transfer | 500 ms | 8,192 | 11.4% | async-pipeline-v1 (future) |
+| Phase 7 | + Larger batch (batch=8) | 650 ms | 12,603 | 17.5% | grad-checkpoint-v1 (future) |
+
+**Realistic target: 15-30% MFU** after cuBLAS + GPU optimizer + overlap.
+
+Each future phase gets its own contract **before** implementation begins.
+
+### 6.4 v3 Training Time Impact
+
+The v3 run targets 250K steps at 1B tokens:
+
+| Scenario | Step Time | Total Time | Wall Clock |
+|----------|-----------|------------|------------|
+| Current (PTX) | 4.4s | 1,100,000s | **12.7 days** |
+| cuBLAS only | 2.15s | 537,500s | **6.2 days** |
+| cuBLAS + GPU optimizer | 1.15s | 287,500s | **3.3 days** |
+| Full optimization | 0.5s | 125,000s | **1.4 days** |
+
+## 7. Verification Architecture
+
+### 7.1 Four-Layer Verification
+
+```
+Layer 1: CONTRACTS (provable-contracts / pv)
+  What: Algebraic invariants, proof obligations, falsification tests
+  When: BEFORE implementation (write contract first)
+  How:  pv validate, pv scaffold, pv audit
+  Files: contracts/cublas-gemm-v1.yaml
+         contracts/training-step-budget-v1.yaml
+
+Layer 2: BENCHMARKS (raw C ceiling + Criterion + regression detection)
+  What: Three-tier GEMM comparison with hardware ceiling
+  When: BEFORE (ceiling), DURING (Criterion), AFTER (regression)
+  How:  make bench-gemm-compare, make bench-gemm-regression
+  Pattern: Raw C cuBLAS (ceiling) vs Rust cuBLAS (target) vs PTX (floor)
+    - FFI overhead < 2% (Rust vs Raw C)
+    - Speedup > 10x (cuBLAS vs PTX)
+    - Regression < 10% per shape between commits
+    - Follows trueno/benchmarks/ matmul_comparison.py pattern exactly
+
+Layer 3: BRICK PROFILING (probador)
+  What: Per-component time budgets with Jidoka gates
+  When: DURING implementation (continuous enforcement)
+  How:  BrickHouse builder, brick assertions, budget_ms
+  Pattern: Each training loop component = one Brick with:
+    - can_render() = Jidoka gate (fail if > 2x budget)
+    - verify() = timing assertion
+    - budget_ms = SLA from contract
+
+Layer 4: LAYER TRACING (renacer BrickTracer)
+  What: Per-kernel, per-block, per-transfer timing with OTLP export
+  When: DURING profiling runs + AFTER implementation (regression detection)
+  How:  BrickTracer.trace(), OTLP -> Jaeger, anomaly escalation
+  Pattern: Each CUDA kernel call = one trace span
+    - Forward: block_N_gemm_qkv, block_N_attention, block_N_ffn
+    - Backward: block_N_backward_gemm, block_N_backward_elementwise
+    - Transfer: pcie_h2d_embed, pcie_d2h_logits, pcie_h2d_grad
+    - Optimizer: block_N_optimizer_d2h, block_N_adamw, block_N_optimizer_h2d
+```
+
+### 7.2 Escalation Chain
+
+Renacer implements automatic escalation from lightweight metrics to detailed
+tracing:
+
+```
+Steady state (metrics only):
+  - Counter: gemm_calls_total, pcie_bytes_total
+  - Gauge: step_time_ms, mfu_ratio
+  - Histogram: per_block_forward_us, per_block_backward_us
+
+Escalation trigger (CV > 15% or efficiency < 25%):
+  - BrickTracer captures full syscall breakdown
+  - OTLP spans exported to Jaeger with per-kernel detail
+  - Anomaly detector flags the brick and step number
+
+Alert (budget violation > 2x):
+  - Jidoka gate fires (probador)
+  - Training loop pauses (Andon alert)
+  - Full trace exported for post-mortem
+```
+
+This means training runs at full speed in steady state (metrics are SIMD-
+accelerated via trueno), and only pays the tracing cost when something goes
+wrong.
+
+### 7.3 Continuous Verification During Training
+
+```bash
+# Run training with BrickTracer instrumentation
+RUST_LOG=info renacer --otlp-endpoint http://localhost:4317 \
+    --otlp-service-name "albor-v3-cublas" \
+    --trace-compute \
+    --trace-compute-threshold 100 \
+    -- apr train apply --task pretrain \
+        --config configs/train/pretrain-350m-v3.yaml
+
+# In another terminal: monitor brick budgets
+apr monitor ./checkpoints/albor-base-350m-v3/
+
+# Post-run: audit contract compliance
+pv audit contracts/cublas-gemm-v1.yaml \
+    --binding contracts/trueno-gpu/cublas-binding.yaml
+pv audit contracts/training-step-budget-v1.yaml \
+    --binding contracts/entrenar/step-budget-binding.yaml
+
+# Post-run: view traces in Jaeger
+# http://localhost:16686 -> Service: "albor-v3-cublas"
+# Filter by: operation="gemm_forward", minDuration=10ms
+```
+
+## 8. Risks
+
+| Risk | Mitigation | Contract Obligation |
+|------|------------|---------------------|
+| cuBLAS FP16 numerical divergence | Keep FP32 master weights, compare loss curves | FALSIFY-CUBLAS-002 |
+| libcublas.so version mismatch | Pin to CUDA 12.x, test on lambda machine | FALSIFY-CUBLAS-003 |
+| cuBLAS workspace memory pressure | Pre-allocate fixed workspace, share across GEMMs | training-memory-kernel-v1 |
+| CPU optimizer becomes new bottleneck | Phase 4 contract (gpu-optimizer-v1) | FALSIFY-BUDGET-002 |
+| Tensor core shapes require padding | Albor shapes (1024, 4096, 32768) already multiples of 8 | FALSIFY-CUBLAS-003 |
+| FP16 weight precision loss | Standard practice; master weights remain FP32 on CPU | FALSIFY-CUBLAS-002 |
+| Silent regression after optimization | Brick budgets + Jidoka gates detect immediately | FALSIFY-BUDGET-003 |
+| Unaccounted overhead hiding bottleneck | Brick coverage >= 95% of step time enforced | FALSIFY-BUDGET-001 |
+
+## 9. Dependencies
+
+- `libcublas.so` from CUDA toolkit (already installed: `/usr/local/cuda/lib64/`)
+- `nvcc` for compiling raw C cuBLAS benchmark (ceiling measurement)
+- trueno-gpu crate (target for FFI integration)
+- entrenar CudaTransformerTrainer (consumer of cuBLAS GEMMs)
+- renacer BrickTracer (layer tracing instrumentation)
+- probador brick budgets (SLA enforcement)
+- provable-contracts / `pv` (contract validation and audit)
+- Criterion.rs (Rust benchmark harness, already a trueno dev-dependency)
+- No new Rust crate dependencies (pure FFI, no bindgen)
+
+## 10. Contract Registry
+
+| Contract File | Status | Validates |
+|---------------|--------|-----------|
+| `contracts/cublas-gemm-v1.yaml` | **NEW** (write before Phase 1) | cuBLAS correctness, buffer safety, MFU improvement |
+| `contracts/training-step-budget-v1.yaml` | **NEW** (write before Phase 0) | Brick-level performance SLAs, Jidoka enforcement |
+| `contracts/training-gpu-kernel-v1.yaml` | EXISTING | Parent contract — PCIe transfers, stability, gradient flow |
+| `contracts/training-memory-kernel-v1.yaml` | EXISTING | VRAM budget (must update for FP16 weight storage) |
+| `contracts/training-config-kernel-v1.yaml` | EXISTING | Epoch/step/LR algebraic consistency |
+| `contracts/gpu-optimizer-v1.yaml` | FUTURE (Phase 4) | GPU-resident AdamW correctness |
+| `contracts/gpu-embedding-v1.yaml` | FUTURE (Phase 5) | GPU embedding lookup + scatter-add |
+| `contracts/async-pipeline-v1.yaml` | FUTURE (Phase 6) | Compute/transfer overlap safety |
+| `contracts/grad-checkpoint-v1.yaml` | FUTURE (Phase 7) | Gradient checkpointing memory/correctness |
+
+## Appendix A: Popperian Falsification of This Specification
+
+**Date**: 2026-03-05
+**Method**: `batuta falsify .` (108-item checklist) + manual chain-of-thought
+analysis of every claim, equation, and assumption in this spec.
+
+**Batuta project score**: 80.1% (Andon Warning), 65 PASS, 0 FAIL, 43 PARTIAL.
+Key findings from batuta mapped to spec weaknesses below.
+
+### A.1 Chain-of-Thought Falsification
+
+Each numbered item is a falsifiable claim from the spec, followed by the
+attempt to break it.
+
+**Claim 1: "Step time is 4,400ms with 57% in GEMM"** (Section 2.4)
+
+- Status: **UNVERIFIED ESTIMATE**. The breakdown is labeled "Estimated" but
+  no profiling data backs it. The spec prescribes renacer BrickTracer profiling
+  in Phase 0, but Phase 0 hasn't run yet. The 57% GEMM figure is a guess.
+- Risk: If GEMM is actually 30% of step time (e.g., CPU optimizer is 40%),
+  cuBLAS integration yields only 1.3x speedup instead of 2x.
+- Action: **Phase 0 is blocking**. Do not proceed to Phase 1 until BrickTracer
+  confirms the breakdown. Add a contract obligation: FALSIFY-BASELINE-001.
+
+**Claim 2: "cuBLAS achieves 130-150 TFLOP/s on Albor shapes"** (Section 4.1)
+
+- Status: **UNFALSIFIED**. The 130-150 TFLOP/s figure is asserted without
+  measurement. The raw C benchmark (Section 5.2) is designed to test this,
+  but hasn't run.
+- Risk: Albor shapes are not square. The attn_qkv shape `[4096, 1024, 1024]`
+  is highly rectangular (4:1 aspect ratio). Tensor core kernels may achieve
+  only 60-80% of peak on non-square shapes due to wave quantization and
+  tile padding effects.
+- Action: The raw C benchmark must run **before** any Rust code is written.
+  If measured ceiling is <100 TFLOP/s on key shapes, revise all downstream
+  projections.
+
+**Claim 3: "FFI overhead < 2%"** (Section 5.7, FALSIFY-CUBLAS-008)
+
+- Status: **PLAUSIBLE but untested**. cuBLAS FFI is a single function call
+  with no data copies (pointers passed through). 2% overhead is reasonable.
+- Risk: If `CublasHandle::set_stream()` is called per-GEMM (555 calls/step)
+  rather than once per step, the cumulative overhead could exceed 2%.
+- Action: The wrapper should call `set_stream()` once at step start, not
+  per-GEMM. Add this as a contract invariant.
+
+**Claim 4: "MFU = 2.5% vs FP32 peak"** (Section 1.2)
+
+- Status: **PARTIALLY FALSIFIED**. The MFU formula uses `6 * P * tokens_per_step`
+  but this approximation assumes all FLOPs are in GEMMs. For a 370M model
+  with batch=4, seq=1024, the attention score computation (QK^T) adds
+  `2 * S^2 * H * L = 2 * 1024^2 * 1024 * 24 = 51.5 GFLOP` per step,
+  which is <1% of the 9.1 TFLOP total. The 6x approximation is valid here.
+- Correction: MFU is correct to within ~1% of the true value. No action needed.
+
+**Claim 5: "Step time drops to 2,150ms after cuBLAS"** (Section 6.1)
+
+- Status: **OPTIMISTIC**. This assumes non-GEMM time stays constant at 1,900ms.
+  But cuBLAS may increase non-GEMM overhead:
+  - FP16 weight casting (new cost, ~50-100ms for 370M params)
+  - cuBLAS workspace allocation (one-time, amortized)
+  - cuBLAS handle creation overhead
+  - Possible increased memory pressure reducing cache efficiency
+- Risk: Actual step time could be 2,300-2,500ms instead of 2,150ms.
+- Action: Add FALSIFY-CUBLAS-009: "Non-GEMM time does not increase by more
+  than 10% after cuBLAS integration."
+
+**Claim 6: "555 GEMM operations per step"** (Section 2.1)
+
+- Status: **APPROXIMATELY CORRECT but undercounted**. The count includes
+  attention score GEMMs (QK^T) but omits attention value application (V
+  projection after softmax), which is also a GEMM: `softmax(QK^T) * V`.
+  Forward: 24 blocks x 1 = 24. Backward: 24 blocks x 2 = 48. Plus attention
+  backward for the score GEMM itself.
+- Correction: The actual count may be ~600 GEMMs, not 555. The difference
+  is small (<10%) and doesn't change the analysis materially, but the spec
+  should note the approximation.
+
+**Claim 7: "Phase 7 achieves 17.5% MFU with batch=8"** (Section 6.3)
+
+- Status: **CONTRADICTS KNOWN CONSTRAINT**. Section 4.3 of the spec notes
+  seq=1024, batch=8 currently OOMs. Phase 7 lists this as requiring gradient
+  checkpointing, but with cuBLAS adding FP16 weight copies alongside FP32
+  master weights, VRAM pressure increases. The 650ms step time assumes batch=8
+  fits, which is unproven.
+- Risk: batch=8 may still OOM even with gradient checkpointing if FP16+FP32
+  dual weight storage consumes the headroom.
+- Action: Add VRAM budget equation to training-memory-kernel-v1.yaml for
+  mixed-precision dual storage. FALSIFY-MEM-004: "batch=8 fits in 24GB with
+  FP16 forward weights + FP32 master weights + gradient checkpointing."
+
+**Claim 8: "Benchmark shapes are representative"** (Section 5.2)
+
+- Status: **INCOMPLETE**. The 6 benchmark shapes cover the large GEMMs but
+  omit the GQA key-value projection shapes: `[4096, 256, 1024]` (K and V
+  projections with num_kv_heads=4, head_dim=64, so kv_dim=256). These are
+  small, thin matrices where cuBLAS may show less speedup due to low
+  arithmetic intensity.
+- Action: Add `(4096, 256, 1024, "attn_kv")` to SHAPES in both C and
+  Criterion benchmarks. This is the worst-case shape for tensor cores.
+
+**Claim 9: "Performance regression gate at 10%"** (Section 5.5)
+
+- Status: **MATCHES batuta JA-04 finding**. Batuta flagged JA-04 (Performance
+  Regression Gate) as PARTIAL with rejection "Benchmarks exist but not gated
+  in CI." The spec defines `make bench-gemm-regression` but does not integrate
+  it into CI.
+- Action: Add `bench-gemm-regression` to the `clean-room / gate` CI workflow
+  for trueno-gpu. This addresses JA-04.
+
+**Claim 10: "No new Rust crate dependencies"** (Section 9)
+
+- Status: **CORRECT**. Pure FFI bindings require only `libc` types (already
+  in std) and `libcublas.so` (system library). No `cublas-sys` or `bindgen`
+  crate needed.
+- Verified: This is consistent with trueno's existing pattern of hand-written
+  CUDA driver API bindings.
+
+### A.2 Batuta Findings Mapped to Spec
+
+| Batuta ID | Status | Spec Impact |
+|-----------|--------|-------------|
+| JA-04 | PARTIAL: "Benchmarks not gated in CI" | Section 5: Add bench-gemm-regression to CI |
+| PW-02 | PARTIAL: "No SIMD optimization" | N/A (spec is about GPU, not CPU SIMD) |
+| EDD-01 | PARTIAL: "Partial equation documentation" | Section 3.1: Ensure all contract equations have domain/codomain/invariants |
+| EDD-03 | PARTIAL: "Numerical code without analytical validation" | Section 5.2: Raw C baseline IS the analytical validation |
+| NR-01 | PARTIAL: "No explicit IEEE 754 testing" | Add: cuBLAS FP32 accumulation contract (C-CUBLAS-004) covers this |
+| NR-02 | PARTIAL: "Single platform testing" | N/A (CUDA-only by design, RTX 4090 target) |
+| AI-01 | PARTIAL: "Config examples incomplete" | Add cuBLAS config example to YAML configs |
+| AI-05 | PARTIAL: "No explicit validator" | `apr train validate` already validates; extend for cuBLAS feature |
+
+### A.3 Missing Falsification Tests (Discovered by Chain-of-Thought)
+
+The following tests are NOT in the current contract but SHOULD be:
+
+```yaml
+# Add to cublas-gemm-v1.yaml
+
+  - id: FALSIFY-CUBLAS-009
+    rule: "Non-GEMM overhead does not increase after cuBLAS"
+    prediction: "T_non_gemm(cublas) < 1.1 * T_non_gemm(ptx)"
+    test: |
+      Profile 50 steps with PTX, measure total non-GEMM time.
+      Profile 50 steps with cuBLAS, measure total non-GEMM time.
+      Ratio must be < 1.10.
+    if_fails: "FP16 casting, handle creation, or workspace allocation adds overhead"
+
+  - id: FALSIFY-CUBLAS-010
+    rule: "GQA thin-matrix GEMM still benefits from cuBLAS"
+    prediction: "cuBLAS [4096, 256, 1024] > 50 TFLOP/s"
+    test: |
+      Run isolated GEMM on K/V projection shape [4096, 256, 1024].
+      Must exceed 50 TFLOP/s (lower bar than large shapes due to
+      low arithmetic intensity).
+    if_fails: "Thin matrices memory-bandwidth-bound, not compute-bound"
+
+  - id: FALSIFY-CUBLAS-011
+    rule: "cuBLAS column-major convention handled correctly"
+    prediction: "Row-major Rust buffers produce correct results via transpose flags"
+    test: |
+      Compute C = A * B in row-major (Rust native) using cuBLAS with
+      appropriate CUBLAS_OP_T flags. Compare against known-good reference.
+      All 7 GEMM shapes in a single transformer block must match.
+    if_fails: "Leading dimension or transpose convention wrong (ALB-059 class bug)"
+
+# Add to training-step-budget-v1.yaml
+
+  - id: FALSIFY-BUDGET-004
+    rule: "Phase 0 baseline matches estimated breakdown"
+    prediction: "Measured GEMM fraction is 50-65% of step time"
+    test: |
+      Run BrickTracer profiling for 50 steps on PTX backend.
+      T_gemm / T_step must be in [0.50, 0.65].
+    if_fails: "Estimated breakdown is wrong; re-derive all phase projections"
+
+# Add to training-memory-kernel-v1.yaml
+
+  - id: FALSIFY-MEM-004
+    rule: "Mixed-precision dual storage fits in VRAM"
+    prediction: "FP16 forward weights + FP32 master weights + optimizer < 24GB"
+    test: |
+      Compute: P * 2 (FP16 GPU) + P * 4 (FP32 CPU master, not on GPU)
+      + P * 8 (AdamW m+v, on GPU) + workspace.
+      P=370M: 0.74 GB (FP16) + 2.96 GB (AdamW) + workspace = ~15.5 GB.
+      Must fit in 24 GB with seq=1024, batch=4.
+    if_fails: "VRAM budget exceeded, batch=4 may OOM with mixed precision"
+```
+
+### A.4 Unrealistic Assumptions Identified
+
+| Assumption | Section | Reality Check |
+|------------|---------|---------------|
+| GEMM is 57% of step time | 2.4 | Unverified estimate. Phase 0 must confirm. |
+| cuBLAS achieves 130-150 TFLOP/s | 4.1 | Depends on shape. May be 80-120 on rectangular. |
+| Non-GEMM time stays constant | 6.1 | FP16 casting adds new overhead. |
+| 2% FFI overhead | 5.7 | Plausible but requires per-GEMM vs per-step stream binding. |
+| batch=8 fits with grad ckpt | 6.3 | Dual precision increases VRAM. Unproven. |
+| 165 TFLOP/s is achievable peak | 1.2 | Marketing spec. Sustained is ~145-150 TFLOP/s. |
+
+### A.5 Recommended Spec Revisions
+
+1. **Gate Phase 1 on Phase 0 completion**. Do not write cuBLAS code until
+   BrickTracer confirms the estimated breakdown.
+2. **Add GQA thin-matrix shape** `[4096, 256, 1024]` to all benchmarks.
+3. **Add FALSIFY-CUBLAS-009** (non-GEMM overhead preservation).
+4. **Add FALSIFY-CUBLAS-010** (thin-matrix performance floor).
+5. **Add FALSIFY-CUBLAS-011** (column-major convention correctness).
+6. **Add FALSIFY-BUDGET-004** (baseline confirmation gate).
+7. **Add FALSIFY-MEM-004** (mixed-precision VRAM budget).
+8. **Integrate bench-gemm-regression into CI** (addresses batuta JA-04).
+9. **Use sustained peak (~148 TFLOP/s)** instead of marketing peak (165) for
+   MFU calculations.
+10. **Note set_stream() binding scope** in cublas.rs contract: once per step,
+    not per GEMM.

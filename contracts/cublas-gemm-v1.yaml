@@ -1,0 +1,253 @@
+# cublas-gemm-v1.yaml — ALB-075
+#
+# Provable contract for cuBLAS tensor core GEMM integration.
+# cuBLAS replaces hand-written PTX GEMMs for 5-10x training throughput.
+# Write BEFORE implementation (CLAUDE.md Rule 7: contracts before code).
+
+metadata:
+  version: "1.0.0"
+  created: "2026-03-05"
+  author: "PAIML Engineering"
+  description: "cuBLAS tensor core GEMM integration — FFI bindings, safe wrapper, mixed precision"
+  references:
+    - "Micikevicius et al. (2018) Mixed Precision Training"
+    - "NVIDIA cuBLAS Documentation (CUDA 12.x)"
+    - "training-gpu-kernel-v1.yaml (parent contract)"
+    - "ALB-059: GEMM backward constructor arg order (same class — transpose convention)"
+  depends_on:
+    - "training-gpu-kernel-v1"
+    - "training-memory-kernel-v1"
+
+equations:
+  cublas_gemm_correctness:
+    formula: |
+      C_cublas = alpha * op(A) * op(B) + beta * C
+      where op(X) = X if transa=N, X^T if transa=T
+      A: FP16 [m, k], B: FP16 [k, n], C: FP16 [m, n]
+      Accumulation: FP32 (CUBLAS_COMPUTE_32F)
+    domain: "FP16 input buffers, FP32 accumulation, FP16 output"
+    codomain: "C_cublas: FP16 result matrix"
+    invariants:
+      - "max_abs_diff(C_cublas, C_ptx) < 1e-2 for identical inputs"
+      - "cuBLAS uses tensor cores when math mode is TENSOR_OP_MATH"
+      - "FP32 accumulation prevents catastrophic cancellation"
+
+  buffer_size_verification:
+    formula: |
+      For cublasGemmEx(m, n, k, A, B, C):
+        A.len() >= m * k * sizeof(FP16) = m * k * 2
+        B.len() >= k * n * sizeof(FP16) = k * n * 2
+        C.len() >= m * n * sizeof(FP16) = m * n * 2
+    domain: "GpuBuffer lengths in bytes"
+    codomain: "Boolean: all buffers sufficient"
+    invariants:
+      - "Verified at call site, not inside cuBLAS (Rule 2: prove at kernel boundary)"
+      - "Assertion failure = immediate panic, not silent corruption"
+
+  handle_lifecycle:
+    formula: |
+      create: cublasCreate_v2(&handle) -> CUBLAS_STATUS_SUCCESS
+      bind:   cublasSetStream_v2(handle, stream) once per training step
+      drop:   cublasDestroy_v2(handle) exactly once
+    invariants:
+      - "One handle per CudaContext (thread-safe within context)"
+      - "Stream set ONCE per step, not per GEMM (555 calls = measurable overhead)"
+      - "Handle destroyed on Drop (Rust RAII)"
+      - "No default stream usage — always explicit non-blocking stream"
+
+  ffi_overhead:
+    formula: |
+      overhead = T_rust_cublas / T_raw_c_cublas
+      For identical GEMM shape, same GPU, same cuBLAS config.
+    domain: "Measured via CUDA events, not wall clock"
+    codomain: "Overhead ratio (should be < 1.02)"
+    invariants:
+      - "overhead < 1.02 for all training shapes (< 2% FFI tax)"
+      - "Warmup: 50 iterations discarded before measurement"
+      - "Raw C benchmark is the ceiling (gemm_cublas_raw.c)"
+
+  mfu_improvement:
+    formula: |
+      MFU = achieved_flops / hardware_peak_flops
+      achieved_flops = 6 * P * tokens_per_step / step_time
+      P = 370M, tokens_per_step = 4096
+      hardware_peak_flops(FP16) = 148 TFLOP/s (sustained, not marketing 165)
+    domain: "Measured step_time after cuBLAS integration"
+    codomain: "MFU ratio [0, 1]"
+    invariants:
+      - "MFU(cublas) > MFU(ptx) (strict improvement)"
+      - "MFU(cublas) >= 0.025 (must beat current 2.5% FP32 baseline)"
+
+  mixed_precision_weight_flow:
+    formula: |
+      CPU master weights: FP32 (optimizer operates here)
+      GPU forward weights: FP16 (cast during upload)
+      GPU activation gradients: FP16 (cuBLAS backward output)
+      GPU weight gradients: FP32 (accumulated in FP32 buffer)
+      CPU gradient download: FP32 (for optimizer update)
+    invariants:
+      - "Master weights ALWAYS FP32 on CPU (no precision loss in optimizer)"
+      - "Weight gradient accumulation in FP32 (no underflow in small gradients)"
+      - "C-EMBED-GRAD-001 still holds: activation grad clipped before CPU scatter-add"
+      - "C-HYPERPARAMS-001 still holds: all optimizer params from YAML config"
+
+proof_obligations:
+  - type: equivalence
+    property: "cuBLAS GEMM matches PTX GEMM"
+    formal: "max_abs_diff(C_cublas, C_ptx) < 1e-2 for all GEMM shapes in training"
+    tolerance: 1e-2
+    applies_to: cublas_gemm_correctness
+
+  - type: invariant
+    property: "Buffer sizes verified before every cublasGemmEx"
+    formal: "assert!(buf.len() >= required) precedes every cublasGemmEx call"
+    tolerance: 0
+    applies_to: buffer_size_verification
+
+  - type: invariant
+    property: "cuBLAS handle lifecycle is RAII"
+    formal: "create() in new(), destroy() in Drop, set_stream() once per step"
+    tolerance: 0
+    applies_to: handle_lifecycle
+
+  - type: bound
+    property: "FFI overhead < 2%"
+    formal: "T_rust_cublas / T_raw_c_cublas < 1.02 for all training shapes"
+    applies_to: ffi_overhead
+
+  - type: bound
+    property: "MFU improves over baseline"
+    formal: "MFU(cublas, 50 steps) > MFU(ptx, 50 steps)"
+    applies_to: mfu_improvement
+
+  - type: invariant
+    property: "Training stability preserved"
+    formal: "loss.is_finite() for all steps in 100-step run"
+    tolerance: 0
+    applies_to: training_stability
+
+  - type: invariant
+    property: "Gradient flow preserved"
+    formal: "max(|grad(param)|) > 0 for all trainable params after 1 step"
+    tolerance: 0
+    applies_to: gradient_flow
+
+  - type: invariant
+    property: "FP32 accumulation enforced"
+    formal: "computeType == CUBLAS_COMPUTE_32F for every cublasGemmEx call"
+    tolerance: 0
+    applies_to: cublas_gemm_correctness
+
+falsification_tests:
+  - id: FALSIFY-CUBLAS-001
+    rule: "cuBLAS forward matches PTX forward"
+    prediction: "max_abs_diff(logits_cublas, logits_ptx) < 1e-2 on 50M model"
+    test: |
+      Build TransformerConfig::tiny(), forward same input through both backends.
+      Compare logit tensors element-wise.
+    if_fails: "cuBLAS transpose convention or leading dimension wrong"
+
+  - id: FALSIFY-CUBLAS-002
+    rule: "cuBLAS training stable for 50 steps"
+    prediction: "Loss is finite at every step, loss curve within 5% of PTX baseline"
+    test: |
+      Train 50M model for 50 steps with cuBLAS backend.
+      Train same model for 50 steps with PTX backend.
+      Compare loss at step 50: |loss_cublas - loss_ptx| / loss_ptx < 0.05.
+    if_fails: "FP16 precision insufficient for this model or gradient accumulation broken"
+
+  - id: FALSIFY-CUBLAS-003
+    rule: "GEMM throughput exceeds 100 TFLOP/s"
+    prediction: "Isolated GEMM [4096, 1024] x [1024, 4096] > 100 TFLOP/s"
+    test: |
+      Run 1000 iterations of cublasGemmEx on [4096, 1024] x [1024, 4096].
+      Compute FLOP/s = 2 * 4096 * 1024 * 4096 * 1000 / elapsed_seconds.
+    if_fails: "Tensor cores not engaged, wrong math mode, or memory bandwidth bound"
+
+  - id: FALSIFY-CUBLAS-004
+    rule: "Step time improves over PTX baseline"
+    prediction: "350M step time < 3.0s with cuBLAS (vs 4.4s with PTX)"
+    test: |
+      Run pretrain-350m-cuda-test.yaml for 50 steps with cuBLAS.
+      Measure median step time. Must be < 3.0s.
+    if_fails: "GEMM is not the bottleneck or cuBLAS adds unexpected overhead"
+
+  - id: FALSIFY-CUBLAS-005
+    rule: "Buffer overflow impossible"
+    prediction: "cuBLAS wrapper panics if buffer too small (never silent corruption)"
+    test: |
+      Call gemm_f16() with undersized C buffer (m*n*2 - 1 bytes).
+      Must panic with assertion failure, not proceed to cublasGemmEx.
+    if_fails: "Buffer verification missing or assertion not checked"
+
+  - id: FALSIFY-CUBLAS-006
+    rule: "All trainable parameters receive gradients"
+    prediction: "max(|grad|) > 0 for every param after 1 cuBLAS training step"
+    test: |
+      Train 50M model for 1 step with cuBLAS. Check gradient of all 110 params.
+    if_fails: "cuBLAS backward produces zero gradients (wrong transpose or alpha/beta)"
+
+  - id: FALSIFY-CUBLAS-007
+    rule: "C-EMBED-GRAD-001 preserved under cuBLAS"
+    prediction: "Activation gradient clipped before CPU scatter-add even with cuBLAS"
+    test: |
+      Train 24-layer 350M for 1 step with cuBLAS. Verify activation gradient
+      L2 norm <= max_grad_norm before embedding backward.
+    if_fails: "cuBLAS backward bypasses activation gradient clipping path"
+
+  - id: FALSIFY-CUBLAS-008
+    rule: "Rust cuBLAS FFI overhead < 2%"
+    prediction: "T_rust / T_raw_c < 1.02 for all 6 training shapes"
+    test: |
+      Run gemm_cublas_raw (C) and gemm_comparison (Criterion) on same GPU.
+      Compare TFLOP/s for each shape. Ratio must be > 0.98.
+    if_fails: "Unnecessary copies, redundant stream syncs, or Rust allocation overhead"
+
+  - id: FALSIFY-CUBLAS-009
+    rule: "Non-GEMM overhead does not increase after cuBLAS"
+    prediction: "T_non_gemm(cublas) < 1.1 * T_non_gemm(ptx)"
+    test: |
+      Profile 50 steps with PTX, measure total non-GEMM time.
+      Profile 50 steps with cuBLAS, measure total non-GEMM time.
+      Ratio must be < 1.10.
+    if_fails: "FP16 casting, handle creation, or workspace allocation adds overhead"
+
+  - id: FALSIFY-CUBLAS-010
+    rule: "GQA thin-matrix GEMM still benefits from cuBLAS"
+    prediction: "cuBLAS [4096, 256, 1024] > 50 TFLOP/s"
+    test: |
+      Run isolated GEMM on K/V projection shape [4096, 256, 1024].
+      Must exceed 50 TFLOP/s (lower bar for thin matrices).
+    if_fails: "Thin matrices memory-bandwidth-bound, not compute-bound"
+
+  - id: FALSIFY-CUBLAS-011
+    rule: "cuBLAS column-major convention handled correctly"
+    prediction: "Row-major Rust buffers produce correct results via transpose flags"
+    test: |
+      Compute C = A * B in row-major (Rust native) using cuBLAS with
+      appropriate CUBLAS_OP_T flags. Compare against known-good reference.
+      All 7 GEMM shapes in a single transformer block must match.
+    if_fails: "Leading dimension or transpose convention wrong (ALB-059 class bug)"
+
+kani_harnesses:
+  - id: KANI-CUBLAS-001
+    obligation: CUBLAS-INV-002
+    property: "Buffer size assertion prevents overflow for all valid GEMM shapes"
+    bound: 8
+    strategy: exhaustive
+    harness: verify_buffer_assertion_complete
+
+qa_gate:
+  id: F-CUBLAS-001
+  name: "cuBLAS GEMM Integration Contract"
+  description: "Correctness, stability, performance, and safety for cuBLAS tensor core GEMMs"
+  checks:
+    - "cublas_gemm_correctness"
+    - "buffer_size_verification"
+    - "handle_lifecycle"
+    - "ffi_overhead"
+    - "mfu_improvement"
+    - "training_stability"
+    - "gradient_flow"
+  pass_criteria: "All 11 falsification tests pass"
+  falsification: "Use wrong transpose to detect GEMM shape errors (ALB-059 class)"

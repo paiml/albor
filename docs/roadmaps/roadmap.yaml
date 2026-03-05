@@ -53,3 +53,19 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: PMAT-004
+  github_issue: null
+  item_type: task
+  title: 'ALB-075: cuBLAS tensor core GEMM integration'
+  status: inprogress
+  priority: critical
+  assigned_to: null
+  created: 2026-03-05T15:35:58Z
+  updated: 2026-03-05T15:36:02.668584120+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null

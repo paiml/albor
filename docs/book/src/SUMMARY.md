@@ -32,6 +32,12 @@
 - [Pruning](./contracts/pruning-kernel-v1.md)
 - [Training Memory](./contracts/training-memory-kernel-v1.md)
 - [Training GPU](./contracts/training-gpu-kernel-v1.md)
+- [Training Step Budget](./contracts/training-step-budget-v1.md)
+- [cuBLAS GEMM](./contracts/cublas-gemm-v1.md)
+
+# Training Performance
+
+- [Training Performance Spec](./spec/19-training-performance.md)
 
 # Model Cards
 

@@ -108,5 +108,11 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-073 | [#55](https://github.com/paiml/albor/issues/55) | trueno | fused_cross_entropy PTX `selp` argument mismatch — JIT compilation failure | High | **FIXED** | Same class as ALB-069. `selp_f32(true_val, false_val, pred)` instead of `(pred, true_val, false_val)` in fused cross-entropy kernel. Training fell back to non-fused path. Fix: `trueno@10bec89`. |
 | ALB-074 | [#56](https://github.com/paiml/albor/issues/56) | entrenar | Buffer overflow — 2048-token seq hits 1024-sized GPU buffer during eval | Critical | **FIXED** | Stale binary missed ALB-070 eval truncation fix. 2048-token pretokenized sequence passed to eval_single_sequence without max_seq_len truncation → slice overflow at cuda_trainer.rs:711 (2096128 > 1048576). Crashed at step 1183. Fix: binary rebuild with `entrenar@5c4c2d8`. |
 
+### 11.5 Performance Optimization Gaps
+
+| ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
+|----|-------|-----------|-----|----------|--------|---------------------|
+| ALB-075 | [#57](https://github.com/paiml/albor/issues/57) | trueno / entrenar | cuBLAS tensor core GEMM integration — 555 hand-written PTX GEMMs at ~2 TFLOP/s, no tensor core utilization | Critical | IN PROGRESS | cuBLAS FFI in trueno-gpu (`cublas_sys.rs` + `cublas.rs`), FP16 tensor core GEMMs with FP32 accumulation, GEMM throughput > 100 TFLOP/s, step time < 3.0s (vs 4.4s PTX), MFU > 2.5%. Contracts: `cublas-gemm-v1.yaml` (11 falsification tests), `training-step-budget-v1.yaml` (4 falsification tests). |
+
 *Gaps are added as they are discovered during implementation and dogfooding.*
 
