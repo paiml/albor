@@ -153,7 +153,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M test (seq=512, batch=4) | 50 | 10.39→5.92 (best 5.53) | ~400s | PASS (post ALB-059 fix) |
 | 350M full v1 (seq=1024, batch=4, accum=128) | 43/5000 | 10.39 flat | ~12s | **FAIL (ALB-060)**: epochs=1 exhausted data |
 | 350M full v2 (seq=1024, batch=4, accum=1) | 1183/5000 | 10.4→6.85 | ~1.4h | **CRASHED**: ALB-073 (PTX selp) + ALB-074 (stale binary). Step 1000 ckpt saved. |
-| 350M v3 (seq=1024, batch=4, codeparrot) | 650/250K | 10.40→6.24 | ~1.5 days | **RUNNING** (PID 1975811): ALB-077 fixed (tensor core NaN), 7,579 tok/s, 21.9% MFU, 525ms/step. 5.29B tokens pretokenized, save_interval=1000. |
+| 350M v3 (seq=1024, batch=4, codeparrot) | 2000/250K | 10.40→6.36 | ~1.5 days | **RUNNING** (PID 1975811): val_loss=7.19, val_ppl=1332 at step 2000. 7K tok/s, 20.2% MFU, 587ms/step. Checkpoints at step 1000, 2000 (1520 MB each, verified). |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 

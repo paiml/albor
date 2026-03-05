@@ -46,9 +46,9 @@ reverse.
 | **Step time (current, Phase 5b)** | **513 ms** | Same config (steady state) |
 | **MFU (current, Phase 5b)** | **22.2%** | vs FP32 peak (as reported by trainer) |
 | VRAM usage | ~11.6 GB / 24 GB | Same config |
-| Training loss (v3, step 1000) | **6.93** | v3 run (PID 1975811, codeparrot-clean) |
-| Validation loss (v3, step 1000) | **7.38** | val_ppl=1607.64 |
-| Loss trajectory (v3) | 10.40 → 6.93 (step 1000) | v3 run (250K steps target) |
+| Training loss (v3, step 2000) | **6.36** | v3 run (PID 1975811, codeparrot-clean) |
+| Validation loss (v3, step 2000) | **7.19** | val_ppl=1331.7 |
+| Loss trajectory (v3) | 10.40 → 6.36 (step 2000) | v3 run (250K steps target) |
 | Gradient norm (v3, step 1) | 2.19 | v3 run |
 
 ### 1.2 MFU Analysis
@@ -1860,7 +1860,10 @@ production gradient magnitudes) before enabling tensor cores in training.
 | 200 | 6.89 | — | — | 7,194 | 20.8% | 2.43 | 3.0e-5 |
 | 700 | 6.78 | — | — | 7,608 | 22.0% | 2.49 | 1.1e-4 |
 | 900 | 6.90 | — | — | 7,653 | 22.2% | 2.32 | 1.4e-4 |
-| **1000** | **6.93** | **7.38** | **1607.6** | **7,676** | **22.2%** | **3.04** | **1.5e-4** |
+| 1000 | 6.93 | 7.38 | 1607.6 | 7,676 | 22.2% | 3.04 | 1.5e-4 |
+| 1800 | 6.71 | — | — | 6,977 | 20.2% | 3.12 | 2.7e-4 |
+| 1900 | 6.50 | — | — | 6,974 | 20.2% | 2.01 | 2.9e-4 |
+| **2000** | **6.36** | **7.19** | **1331.7** | **6,972** | **20.2%** | **2.85** | **3.0e-4** |
 
 **Steady-state performance** (steps 100-1000 average):
 - **7,600 tok/s** ± 200 (consistent)
