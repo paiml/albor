@@ -1410,21 +1410,23 @@ CPU optimizer become the dominant bottlenecks** (~400ms + ~300ms = ~700ms of
 | **Phase 1-3** | **cuBLAS linear GEMMs** | **1,379 ms** | **1,485** | **2.0%** | **cublas-gemm-v1 (MEASURED)** |
 | **Phase 4** | **+ cuBLAS attention GEMMs** | **1,347 ms** | **1,520** | **2.0%** | **cublas-attention-v1 (MEASURED)** |
 | **Phase 5a** | **+ TF32 tensor cores** | **257 ms*** | **7,966*** | **10.7%*** | **tf32-tensor-cores (MEASURED)** |
-| Phase 5b | nsys profiling + overhead investigation | TBD | TBD | TBD | profiling-investigation-v1 |
-| Phase 6 | + CUDA Graphs (eliminate dispatch overhead) | ~150 ms | ~13,600 | ~25% | cuda-graphs-v1 (future) |
-| Phase 7 | + Kernel fusion (norm+GEMM epilogues) | ~120 ms | ~17,000 | ~31% | fused-kernels-v1 (future) |
-| Phase 8 | + FP16 embedding on GPU | ~100 ms | ~20,480 | ~38% | gpu-embedding-v1 (future) |
+| **Phase 5b** | **+ Batched RMSNorm (ALB-076)** | **~60 ms*** | **~34K*** | **~46%*** | **batched-rmsnorm-v1 (MEASURED)** |
+| Phase 6 | + CUDA Graphs (eliminate remaining dispatch) | ~40 ms | ~51K | ~69% | cuda-graphs-v1 (future) |
+| Phase 7 | + Kernel fusion (norm+GEMM epilogues) | ~30 ms | ~68K | ~92% | fused-kernels-v1 (future) |
 
-*Phase 5a note: the 257ms measurement uses seq=512 (profile config) vs seq=1024
-for Phases 1-4. TF32 itself provides 0% measurable improvement over strict FP32
-at 350M model size (GEMM compute is <15% of step time). The speedup vs Phase 4
-is entirely from the shorter sequence length. See §6.9 for full analysis.
+*Phase 5a: 257ms uses seq=512 profile config vs seq=1024 for Phases 1-4.
+TF32 provides 0% measurable improvement at 350M (compute <15% of step time).
+
+*Phase 5b: 339ms step 1 (incl warmup), ~60ms steady state. Forward GPU time
+347ms → 14ms (**24.8x**). 100,352 kernel launches → ~550 (**182x fewer**).
+Measured with `CUDA_LAUNCH_BLOCKING=1` for true GPU timing.
 
 **Fused QKV (originally Phase 5): CANCELLED** — all GEMMs already use cuBLAS.
 Identical FLOP count, negligible dispatch saving (0.1%), high implementation cost.
 
-**Realistic target: 25-38% MFU** via CUDA Graphs (largest single improvement —
-eliminates per-kernel dispatch overhead) + kernel fusion + GPU embedding.
+**Realistic target: 50-70% MFU** — with the RMSNorm bottleneck eliminated,
+CUDA Graphs would remove remaining per-kernel dispatch overhead to approach
+theoretical hardware peak.
 
 Each future phase gets its own contract **before** implementation begins.
 
@@ -1539,51 +1541,77 @@ Analysis during implementation revealed this is **not impactful**:
 expected for async GPU dispatches. Understanding and fixing this anomaly would
 yield far greater improvement than any kernel-level fusion.
 
-### 6.8 Forward Pass Anomaly Investigation (Phase 5)
+### 6.8 Forward Pass Anomaly — ROOT CAUSE FOUND (ALB-076, FIXED)
 
 **Observation**: The `StepProfiler` measures 240ms of CPU wall-clock time for
-the 24-block forward loop. All operations in this loop are async GPU dispatches
-(cuBLAS GEMMs, PTX element-wise kernels, D2D copies). Expected CPU dispatch
-time: ~2.4ms. **Actual: 240ms (100x discrepancy)**.
+the 24-block forward loop. Expected CPU dispatch time: ~2.4ms. nsys profiling
+was used to identify the root cause.
 
-**Theoretical analysis** (RTX 4090, 350M, seq=512, batch=4):
+**nsys profiling results** (50 steps, RTX 4090):
 
-| Resource | Budget per block | Total (24 blocks) | Observed |
-|----------|-----------------|-------------------|----------|
-| GEMM compute (82.6 TFLOPS) | 0.19 ms | 4.5 ms | ~240 ms |
-| Memory traffic (1008 GB/s) | 0.3 ms | 7.2 ms | ~240 ms |
-| Dispatch overhead (5μs × ~20) | 0.1 ms | 2.4 ms | ~240 ms |
-
-The forward pass runs **33x slower** than theoretical peak. Either:
-(a) GPU kernels are much slower than expected, or
-(b) there are hidden synchronization barriers serializing work.
-
-**Investigation protocol:**
-
-```bash
-# Method 1: nsys timeline (identifies GPU idle gaps + sync points)
-nsys profile -o profile-350m \
-  /mnt/nvme-raid0/targets/aprender/release/apr train apply \
-  --task pretrain --config configs/train/pretrain-350m-profile.yaml
-
-# Method 2: CUDA_LAUNCH_BLOCKING (makes CPU timing = GPU timing)
-CUDA_LAUNCH_BLOCKING=1 \
-  /mnt/nvme-raid0/targets/aprender/release/apr train apply \
-  --task pretrain --config configs/train/pretrain-350m-profile.yaml
-
-# Method 3: nvtx ranges (if CUDA events are added to step profiler)
-# Requires trueno support for cuEventCreate/cuEventRecord/cuEventElapsedTime
+```
+GPU Kernel Time Breakdown (nsys --stats=true):
+  97.1%  46.6s  5,017,600 instances  rmsnorm          avg=9.3μs
+   0.8%   0.4s      9,600 instances  cutlass GEMM     avg=37.8μs
+   0.6%   0.3s     19,200 instances  cutlass GEMM     avg=14.1μs
+   0.4%   0.2s      4,800 instances  cutlass GEMM     avg=42.3μs
+   ...remaining kernels < 0.2% each
 ```
 
-**Hypotheses to test:**
+**Root cause: Per-row RMSNorm kernel launches**
 
-| # | Hypothesis | Test | Expected if true |
-|---|-----------|------|-----------------|
-| H1 | cuBLAS implicit sync between GEMMs | nsys timeline shows GPU idle gaps between GEMMs | Fix: use separate cuBLAS handles or workspaces |
-| H2 | CUDA driver command queue backpressure | CPU blocks mid-forward when GPU is saturated | Fix: batch dispatches, reduce queue depth |
-| H3 | Kernel cache lock contention | CPU time in mutex > dispatch time | Fix: pre-warm cache, lock-free dispatch |
-| H4 | PTX JIT recompilation | Different seq_len per step → cache miss | Fix: pad to max_seq_len or pre-compile |
-| H5 | GPU memory allocation in hot path | cuMemAlloc inside forward loop | Fix: pre-allocate all buffers |
+The `rms_norm_forward()` in `normalization.rs` launched `RmsNormKernel` in a
+CPU loop:
+
+```rust
+// BEFORE (97.1% of GPU time):
+let config = LaunchConfig { grid: (1, 1, 1), block: (32, 1, 1), shared_mem: 0 };
+for batch_idx in 0..batch_size {  // 2,048 iterations per norm call!
+    stream.launch_kernel(module, kernel_name, &config, &mut args)?;
+}
+```
+
+- 49 norm calls/step × 2,048 launches each = **100,352 kernel launches/step**
+- Each launch: grid=(1,1,1), block=(32,1,1) = **1 warp on 1 SM** out of 128
+- At ~9.3μs per launch: **933ms of GPU time per step** just in RMSNorm
+- Meanwhile, all cuBLAS GEMMs total only ~22ms per step
+
+**Five Whys**:
+
+1. **Why is forward 240ms?** GPU backpressure from 100K RMSNorm kernel launches
+2. **Why 100K launches?** `rms_norm_forward` loops `batch_size=2048` times
+3. **Why per-row loop?** `RmsNormKernel` processes one row (grid=(1,1,1))
+4. **Why single-row kernel?** Written before `BatchedVectorizedRmsNormKernel`
+5. **Why not updated?** Backward module already used batched variant; forward wasn't
+
+**Fix** (entrenar PR #238, merged):
+
+```rust
+// AFTER (single launch, all rows in parallel):
+let kernel = BatchedVectorizedRmsNormKernel::new(hidden_size, batch_size);
+let config = LaunchConfig {
+    grid: (1, batch_size, 1),  // One block per row
+    block: (256, 1, 1),        // 8 warps per block
+    shared_mem: 8 * 4,
+};
+stream.launch_kernel(module, "batched_rmsnorm_vectorized", &config, &mut args)?;
+```
+
+**Measured impact** (350M, seq=512, batch=4, RTX 4090):
+
+| Metric | Before (per-row) | After (batched) | Speedup |
+|--------|-----------------|-----------------|---------|
+| Forward GPU time (blocking) | 347 ms | **14.0 ms** | **24.8x** |
+| Forward CPU dispatch (async) | 241 ms | **2.66 ms** | **91x** |
+| Total step GPU time | 356 ms | **15.1 ms** | **23.6x** |
+| Step 1 (with warmup) | 1,357 ms | **339 ms** | **4.0x** |
+| MFU (step 1) | 4.4% | **17.5%** | **4.0x** |
+| 50-step training | 53.2s | **2.2s** | **24x** |
+| Kernel launches/step | 100,352 | **~550** | **182x fewer** |
+
+**Lesson**: Always profile with nsys before optimizing. The per-GEMM analysis
+(TF32, fused QKV, attention GEMMs) was looking at the wrong bottleneck. A
+single `for` loop in a support kernel consumed 97% of GPU time.
 
 ### 6.9 TF32 Tensor Core Investigation (Phase 5a, MEASURED)
 
