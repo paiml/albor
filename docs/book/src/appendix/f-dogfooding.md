@@ -165,7 +165,10 @@
 | `apr train apply` (350M ALB-071) | `apr train apply --config pretrain-350m-cuda-test.yaml` (embed clip fix) | **PASS** (5 steps, embed grad clipped with unwrap_or(1.0), no NaN) | ~~ALB-071~~ FIXED |
 | `apr train apply` (350M ALB-072 FP32) | `apr train apply --config pretrain-350m-fp32-test.yaml` | **PASS** (5 steps, all 218 tensors OK, gnorm=2.29, FP32 baseline) | — |
 | `apr train apply` (350M ALB-072 FP16) | `apr train apply --config pretrain-350m-cuda-test.yaml` (loss scale fix) | **PASS** (50 steps, all 218 tensors OK, gnorm matches FP32 baseline, zero NaN) | ~~ALB-072~~ FIXED |
-| `apr train apply` (350M v2 full) | `apr train apply --config pretrain-350m-v2.yaml` (all fixes) | **IN PROGRESS** (step 500+, loss 10.40→6.77, val_ppl=1008, gnorm stable 2-9, checkpoint OK 1520 MB) | ALB-063 |
+| `apr train apply` (350M v2 full) | `apr train apply --config pretrain-350m-v2.yaml` (all fixes) | **CRASHED** step 1183/5000. Loss 10.40→6.85. ALB-073 (PTX selp) + ALB-074 (stale binary buffer overflow). Step 1000 checkpoint saved. | ALB-063 |
+| `apr train apply` (binary verify) | `apr train apply --config pretrain-350m-cuda-test.yaml` (rebuilt binary) | **PASS** (5 steps, loss=10.40, gnorm=2.29, no PTX errors, no buffer overflow) | ~~ALB-073~~ ~~ALB-074~~ FIXED |
+| codeparrot download | `scripts/download-codeparrot.py --max-rows 2000000` | **PASS** (2M files, 20 shards, 6.1 GB, ~4.4B tokens, 99.2% filter pass rate, 499s) | Data scaling |
+| pretokenize v3 | `scripts/pretokenize.py --shard-output --seq-len 1024` | **IN PROGRESS** (20 shards, ~260K seqs/shard, ~266M tokens/shard) | Data scaling |
 
 ## ALB-060: Training Config Epoch/Step Mismatch (Critical)
 
@@ -933,3 +936,77 @@ All sovereign stack tools are installed and reachable:
 | `batuta` | `/home/noah/.cargo/bin/batuta` | batuta |
 | `pmat` | `/home/noah/.cargo/bin/pmat` | pmat |
 | `bashrs` | `/home/noah/.cargo/bin/bashrs` | bashrs v6.65.0 |
+
+## ALB-073: fused_cross_entropy PTX selp Argument Mismatch (High)
+
+**Discovery**: Training log showed repeated PTX JIT compilation failures:
+```
+ptxas application ptx input, line 182; error: Arguments mismatch for instruction 'selp'
+```
+
+**Five Whys (per CLAUDE.md Rule 7)**:
+
+1. Why did PTX fail to compile? → `selp` instruction received arguments in wrong
+   order (type mismatch at position).
+2. Why were arguments in wrong order? → `selp_f32(true_val, false_val, pred)`
+   instead of `(pred, true_val, false_val)`. Same class as ALB-069.
+3. Why wasn't it caught by ALB-069 fix? → The fused cross-entropy kernel was
+   written/updated independently. The selp pattern was copy-pasted from unfixed code.
+4. Why did training continue despite the error? → trueno has a fallback code path
+   when JIT compilation fails. Training used the non-fused cross-entropy.
+5. Why no regression test for PTX compilation? → PTX JIT happens at runtime on
+   specific GPU targets (sm_89). CI doesn't have GPU hardware.
+
+**Fix**: `trueno@10bec89` — corrected selp_f32 argument order in fused
+cross-entropy kernels.
+
+**Lesson**: Same class of bug recurring (ALB-059, ALB-069, ALB-073) indicates
+a systematic issue. `selp_f32` helper should be wrapped in a typed macro/function
+that makes argument order unambiguous.
+
+## ALB-074: Buffer Overflow from Stale Binary (Critical)
+
+**Discovery**: Training crashed at step 1183 with:
+```
+range end index 2096128 out of range for slice of length 1048576
+```
+at `cuda_trainer.rs:711`.
+
+**Five Whys (per CLAUDE.md Rule 7)**:
+
+1. Why did the buffer overflow? → A 2048-token sequence was passed to GPU buffers
+   sized for max_seq_len=1024 (2048×1024 > 1024×1024).
+2. Why wasn't the sequence truncated? → The eval_single_sequence path in the
+   running binary lacked the truncation fix from ALB-070.
+3. Why was the binary stale? → `cargo build` said "already up to date" because
+   Cargo's fingerprinting didn't detect the entrenar source change. The binary was
+   from 20:55 but the fix was committed after the binary was linked.
+4. Why only at step 1183? → The eval path is triggered at save_interval=250. The
+   crash likely occurred during a validation eval when a 2048-token sequence was
+   processed. Steps 250/500/750/1000 worked because those sequences happened to
+   be ≤1024 tokens.
+5. Why didn't the train path crash? → `train_step_single` already had truncation.
+   Only `eval_single_sequence` was missing it.
+
+**Fix**: Force rebuild with `touch src/train/transformer_trainer/cuda_trainer.rs`
+to invalidate Cargo fingerprint, then rebuild. Verified: no crash on 5-step test.
+
+**Lesson**: When patching upstream dependencies, always force-rebuild with `touch`
+or `cargo clean -p` to ensure Cargo picks up changes. Fingerprinting heuristics
+can miss source changes in [patch.crates-io] dependencies.
+
+### Data Scaling (2026-03-05)
+
+codeparrot/codeparrot-clean: 5M Python files on HuggingFace (no gating).
+
+| Metric | Value |
+|--------|-------|
+| Files downloaded | 2,000,000 |
+| Filter pass rate | 99.2% |
+| Raw size | 6.1 GB (20 Parquet shards) |
+| Estimated raw tokens | ~4.4B |
+| Pretokenized (seq=1024) | ~5.2M sequences × 1024 = ~5.3B tokens |
+| Download time | 499s (~8.3 min) |
+| Pretokenize time | ~2h (20 shards × ~6 min/shard) |
+
+Quality filters: skip autogenerated, alpha_frac < 0.25, files > 100KB, < 50 chars.
