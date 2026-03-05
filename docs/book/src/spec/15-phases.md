@@ -65,13 +65,17 @@
 - [x] Expand training data: Tier 1 10x + 8 Tier 2 repos → v2 dataset (67,977 seqs, 139M tokens)
 - [x] ~~Fix ALB-071~~ FIXED — embed gradient clipping decoupled from weight grad_clip (`entrenar@d07d67d`)
 - [x] ~~Fix ALB-072~~ FIXED — fp16 loss scaling (65536x) removed from fused CE kernel; all backward uses f32, no underflow risk (`entrenar@44d3e74`)
-- [ ] Full 350M training — **IN PROGRESS (ALB-063)**: PID 1775202, ALB-072 fix verified. Loss 10.40→6.77 (step 338). Step 250 eval: val_loss=6.92, val_ppl=1008. Step 500 checkpoint OK (1520 MB). gnorm stable 2-9. ETA ~5h for 5000 steps.
+- [x] Full 350M v2 training — reached step 1183/5000, loss 10.40→6.85, val_ppl=1008. Crashed: ALB-073 (PTX selp) + ALB-074 (buffer overflow from stale binary). Step 1000 checkpoint saved (1520 MB).
+- [x] ~~Fix ALB-073~~ FIXED — fused_cross_entropy selp arg order, same class as ALB-069 (`trueno@10bec89`)
+- [x] ~~Fix ALB-074~~ FIXED — stale binary missed eval truncation fix. Rebuilt with `entrenar@5c4c2d8`.
 - [x] Monitor training via `apr monitor` (ALB-025 FIXED)
+- [ ] **Data scaling**: Download codeparrot-clean (2M files, ~4.4B tokens) → pretokenize at 1024 → ~5.2M sequences
+- [ ] Full 350M v3 training — **PENDING**: 250K steps on ~1B tokens from codeparrot-clean. Config: `pretrain-350m-v3.yaml`. ETA ~10 days.
 - [ ] Validate loss curve, perplexity convergence
-- [ ] Tune hyperparameters (LR, batch size, warmup)
+- [ ] HumanEval pass@1 evaluation (target >8%)
 - [ ] Verify FALSIFY-ALBOR-003 (checkpoint determinism)
 - [ ] `pmat tdg check-regression` on all touched components
-- [ ] **Milestone**: Perplexity < 30, TDG grade A maintained
+- [ ] **Milestone**: HumanEval pass@1 > 8%, Perplexity < 30, TDG grade A maintained
 
 ### Phase 4: Teacher Setup & Logit Pre-Computation (Week 3-5)
 - [ ] Fix ALB-010: Add Qwen3-Coder-Next support to realizar (stretch — 3-4 week blocker)
