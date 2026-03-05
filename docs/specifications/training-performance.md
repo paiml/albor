@@ -42,13 +42,14 @@ reverse.
 |--------|-------|--------|
 | Throughput (pre-optimization) | **934 tok/s** | 350M, seq=1024, batch=4, RTX 4090 |
 | Step time (pre-optimization) | ~4.4s | Same config |
-| **Throughput (current, Phase 5b)** | **9,216 tok/s** | Same config (9.9x improvement) |
-| **Step time (current, Phase 5b)** | **444 ms** | Same config (step 1 incl JIT warmup) |
-| **MFU (current, Phase 5b)** | **26.7%** | vs FP32 peak (as reported by trainer) |
+| **Throughput (current, Phase 5b)** | **7,676 tok/s** | Same config (steady state, step 1000) |
+| **Step time (current, Phase 5b)** | **513 ms** | Same config (steady state) |
+| **MFU (current, Phase 5b)** | **22.2%** | vs FP32 peak (as reported by trainer) |
 | VRAM usage | ~11.6 GB / 24 GB | Same config |
-| Training loss (step 1000) | **7.06** | v2 run (PID 1775202) |
-| Loss trajectory | 10.4 → 6.85 (step 1183) | v2 run |
-| Gradient norm (step 1) | 2.20 | v2 run |
+| Training loss (v3, step 1000) | **6.93** | v3 run (PID 1975811, codeparrot-clean) |
+| Validation loss (v3, step 1000) | **7.38** | val_ppl=1607.64 |
+| Loss trajectory (v3) | 10.40 → 6.93 (step 1000) | v3 run (250K steps target) |
+| Gradient norm (v3, step 1) | 2.19 | v3 run |
 
 ### 1.2 MFU Analysis
 
@@ -1843,6 +1844,41 @@ entirely. Phase numbering unchanged; Phase 5a is now a null operation.
 with large-magnitude transposed operands. The NVIDIA documentation does not
 warn about this failure mode. Always validate full backward pass (all layers,
 production gradient magnitudes) before enabling tensor cores in training.
+
+### 6.13 v3 Training Results (LIVE, step 1000+)
+
+**Config**: 350M model, seq=1024, batch=4, codeparrot-clean (5.29B tokens,
+20 shards × ~260K sequences), max_steps=250K, save_interval=1000.
+
+**Loss curve** (v3, measured):
+
+| Step | Loss | Val Loss | Val PPL | Tok/s | MFU | gnorm | lr |
+|------|------|----------|---------|-------|-----|-------|-----|
+| 1 | 10.40 | — | — | 5,606 | 16.2% | 2.19 | 1.5e-7 |
+| 100 | 8.26 | — | — | 7,648 | 22.1% | 5.08 | 1.5e-5 |
+| 200 | 6.89 | — | — | 7,194 | 20.8% | 2.43 | 3.0e-5 |
+| 700 | 6.78 | — | — | 7,608 | 22.0% | 2.49 | 1.1e-4 |
+| 900 | 6.90 | — | — | 7,653 | 22.2% | 2.32 | 1.4e-4 |
+| **1000** | **6.93** | **7.38** | **1607.6** | **7,676** | **22.2%** | **3.04** | **1.5e-4** |
+
+**Steady-state performance** (steps 100-1000 average):
+- **7,600 tok/s** ± 200 (consistent)
+- **22.1% MFU** vs FP32 peak (RTX 4090, 82.6 TFLOP/s)
+- **516 ms/step** (p50)
+- **VRAM**: 11.6 GB / 24 GB (48% utilization)
+- **0 NaN** in 1000 steps (ALB-077 fix verified)
+
+**Checkpoint at step 1000**: 1520 MB SafeTensors, verified OK.
+
+**Training dynamics**:
+- Loss converges from 10.4 to ~6.9 in 1000 steps (during warmup)
+- gnorm stable at 2-5 with occasional ZClip spikes (max z=4.4 at step 1)
+- 3 early rollbacks (steps 2-4) from EMA-based spike detector — expected for
+  random init where EMA starts near 0. No rollbacks after step 4.
+- B_noise (gradient noise scale) stable at 0.11-0.18
+
+**ETA**: 250K steps × 0.516s = **35.8 hours** (~1.5 days).
+Compare: PTX baseline would be 250K × 4.4s = **12.7 days**.
 
 ## 7. Verification Architecture
 
