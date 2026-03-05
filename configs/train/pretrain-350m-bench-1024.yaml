@@ -36,8 +36,7 @@ training:
   lr_scheduler: "cosine"
   warmup_steps: 10
   gradient_accumulation: 1
-  mixed_precision: "fp16"
   output_dir: "./checkpoints/albor-350m-bench-1024"
-  save_interval: 100
-  max_steps: 50
+  save_interval: 1
+  max_steps: 2
   profile_interval: 100

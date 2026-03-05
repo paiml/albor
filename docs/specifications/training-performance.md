@@ -1412,8 +1412,8 @@ CPU optimizer become the dominant bottlenecks** (~400ms + ~300ms = ~700ms of
 | Baseline | PTX GEMMs, CPU optimizer | 4,400 ms | 934 | 0.6% | training-gpu-kernel-v1 |
 | **Phase 1-3** | **cuBLAS linear GEMMs** | **1,379 ms** | **1,485** | **2.0%** | **cublas-gemm-v1 (MEASURED)** |
 | **Phase 4** | **+ cuBLAS attention GEMMs** | **1,347 ms** | **1,520** | **2.0%** | **cublas-attention-v1 (MEASURED)** |
-| **Phase 5a** | **+ TF32 tensor cores** | **257 ms*** | **7,966*** | **10.7%*** | **tf32-tensor-cores (MEASURED)** |
-| **Phase 5b** | **+ Batched RMSNorm (ALB-076)** | **444 ms** | **9,216** | **26.7%** | **batched-rmsnorm-v1 (MEASURED)** |
+| ~~Phase 5a~~ | ~~+ TF32 tensor cores~~ | ~~257 ms~~ | ~~7,966~~ | ~~10.7%~~ | ~~**REVERTED** (ALB-076 NaN, §6.12)~~ |
+| **Phase 5b** | **+ Batched RMSNorm** | **444 ms** | **9,216** | **26.7%** | **batched-rmsnorm-v1 (MEASURED)** |
 | Phase 6 | + CUDA Graphs (eliminate remaining dispatch) | ~200 ms | ~20K | ~58% | cuda-graphs-v1 (future) |
 | Phase 7 | + Kernel fusion (norm+GEMM epilogues) | ~150 ms | ~27K | ~79% | fused-kernels-v1 (future) |
 
@@ -1768,6 +1768,81 @@ Post-ALB-076 at seq=1024, batch=4, grad_accum=1:
 Note: Phase 5b step time of 444ms includes JIT warmup. Steady-state estimated
 ~250-350ms based on profiler forward pass timing. With grad_accum=128 (production),
 effective training time is per micro-batch × accum_steps.
+
+### 6.12 Tensor Core NaN in Backward GEMMs — ROOT CAUSE FOUND (ALB-076, FIXED)
+
+**Discovery**: cuBLAS tensor core GEMM algorithms (`CUBLAS_GEMM_DEFAULT_TENSOR_OP`,
+algorithm 99) produce **ALL NaN output** for transposed backward GEMMs when
+input gradient magnitudes reach ~1e5. Forward GEMMs (NoTrans/NoTrans) are
+unaffected. This was the root cause of complete NaN corruption in v3 training.
+
+**Symptom**: ALL GPU-resident transformer block weights become NaN after the
+first optimizer step. Every gradient produced by cuBLAS backward is NaN.
+
+**Five Whys analysis**:
+
+1. **Why NaN weights?** Optimizer reads NaN weight gradients from cuBLAS backward
+2. **Why NaN gradients?** cuBLAS `gemm_backward_a`/`gemm_backward_b` output ALL NaN
+   starting at backward call #36 (first backward of block 18, FFN down_proj)
+3. **Why NaN output from valid finite inputs?** Tensor core GEMM algorithm
+   (`CUBLAS_GEMM_DEFAULT_TENSOR_OP`) has a numerical fault for transposed operands
+4. **Why only backward and not forward?** Backward uses `Trans/NoTrans` and
+   `NoTrans/Trans` transpose flags; forward uses `NoTrans/NoTrans` (unaffected)
+5. **Why only after ~5 blocks (call #36)?** Gradient magnification through
+   24-layer backward reaches ~1e5 magnitude at block 18, triggering the fault
+
+**Diagnostic evidence** (NaN scan on every cuBLAS backward call):
+
+| Call # | Block | Direction | grad_out max | cuBLAS output | Status |
+|--------|-------|-----------|-------------|---------------|--------|
+| 0 | 23 | bwd_a | small | max=3.24e-5 | Valid |
+| 8 | 22 | bwd_a | ~1e-2 | max=1.04e-2 | Valid |
+| 29 | 19 | bwd_b | ~1e2 | max=9.40e2 | Valid |
+| 35 | 19 | bwd_b | ~1e-3 | max=1.49e-3 | Valid |
+| **36** | **18** | **bwd_a** | **2.56e5** | **ALL 4.2M NaN** | **BUG** |
+| 37+ | 18-0 | all | — | ALL NaN | Cascading |
+
+**Key observation**: Call #36 inputs are entirely valid (grad_out: 0 NaN, max=2.56e5;
+weight_b: 0 NaN, max=1.98e-2). The tensor core algorithm converts valid finite
+inputs to NaN.
+
+**Falsified hypotheses** (before root cause found):
+
+1. **TF32 precision**: Changing `CUBLAS_COMPUTE_32F_FAST_TF32` → `CUBLAS_COMPUTE_32F`
+   alone did NOT fix NaN — the algorithm, not precision, was the issue
+2. **Stream synchronization**: `CUDA_LAUNCH_BLOCKING=1` still produced NaN
+3. **Buffer size mismatch**: Oversized buffers verified to be within-bounds access
+
+**Fix** (trueno #170, entrenar #239):
+
+| Change | File | Before | After |
+|--------|------|--------|-------|
+| Math mode | `cublas.rs:CublasHandle::new()` | `CUBLAS_TF32_TENSOR_OP_MATH` (3) | `CUBLAS_DEFAULT_MATH` (0) |
+| Compute type | `cublas.rs:gemm_f32()` | `CUBLAS_COMPUTE_32F_FAST_TF32` (74) | `CUBLAS_COMPUTE_32F` (68) |
+| Algorithm | `cublas.rs:gemm_f32()` | `CUBLAS_GEMM_DEFAULT_TENSOR_OP` (99) | `CUBLAS_GEMM_DEFAULT` (-1) |
+
+**Result** (350M, seq=1024, batch=4, RTX 4090, 2 steps):
+
+| Metric | With tensor cores | Without tensor cores | Delta |
+|--------|-------------------|---------------------|-------|
+| NaN in gradients | ALL (4.2M elements) | **0** | Fixed |
+| Loss (step 1) | NaN | **10.4007** | Fixed |
+| Tok/s | — | **5,216** | 5.9x over PTX |
+| MFU (step 1) | — | **15.1%** | vs FP32 peak |
+| gnorm | NaN | **2.05** | Healthy |
+
+**Performance impact**: cuBLAS SIMD (no tensor cores) is still **5.9x faster**
+than hand-written PTX (5,216 vs 890 tok/s). The tensor core advantage (~2x
+theoretical) is irrelevant when it produces NaN.
+
+**Phase 5a status: REVERTED**. TF32 tensor cores (§6.9) provided 0% measurable
+improvement at 350M AND cause NaN in backward. The optimization is removed
+entirely. Phase numbering unchanged; Phase 5a is now a null operation.
+
+**Lesson**: Tensor core GEMM algorithms have undocumented numerical edge cases
+with large-magnitude transposed operands. The NVIDIA documentation does not
+warn about this failure mode. Always validate full backward pass (all layers,
+production gradient magnitudes) before enabling tensor cores in training.
 
 ## 7. Verification Architecture
 
@@ -2151,10 +2226,11 @@ Equations:
 | 7 | Chunked CE (vocab >65K) | 0 (future) | 0 | Low | Deferred |
 | 8 | Gradient checkpointing | -2x backward | **-66% activations** | Medium | 7 |
 
-**Cumulative impact** (Phases 1-5):
-- Step time: 4,400ms → ~600ms (7.3x; cuBLAS alone gave 3.19x measured)
-- MFU: 1.3% → ~9.5% (FP16 sustained)
-- VRAM savings: ~768 MB (enables batch=6-8 without grad checkpointing)
+**Cumulative impact** (Phases 1-5b, measured):
+- Step time: 4,400ms → 444ms (9.9x; cuBLAS SIMD 5.9x, batched RMSNorm 24.8x fwd)
+- MFU: 2.5% → 26.7% (vs FP32 peak, runtime-reported)
+- Tok/s: 934 → 9,216 (9.9x improvement)
+- Note: Tensor cores disabled (ALB-076, §6.12) — produce NaN in transposed backward GEMMs
 
 ### 11.10 Falsification Tests for Kernel Optimizations
 
@@ -2351,6 +2427,19 @@ The following tests are NOT in the current contract but SHOULD be:
       Must fit in 24 GB with seq=1024, batch=4.
     if_fails: "VRAM budget exceeded, batch=4 may OOM with mixed precision"
 ```
+
+**Claim 11: "TF32 tensor cores provide ~2x throughput"** (Section 6.9, Phase 5a)
+
+- Status: **FALSIFIED — REVERTED (ALB-076)**. TF32 tensor cores showed 0%
+  improvement at 350M model size (§6.9). More critically, tensor core GEMM
+  algorithms (`CUBLAS_GEMM_DEFAULT_TENSOR_OP`) produce ALL NaN output for
+  transposed backward GEMMs when gradient magnitudes reach ~1e5 (§6.12).
+- Root cause: cuBLAS tensor core algorithm has undocumented numerical failure
+  mode with transposed operands at high magnitudes. Forward (NoTrans/NoTrans)
+  is unaffected.
+- Fix: Disabled tensor cores entirely (`CUBLAS_DEFAULT_MATH`). cuBLAS SIMD path
+  still 5.9x faster than PTX. Phase 5a reverted (trueno #170).
+- Action: Phase 5a removed from optimization path. Added to bug pattern catalog.
 
 ### A.4 Unrealistic Assumptions Identified
 
