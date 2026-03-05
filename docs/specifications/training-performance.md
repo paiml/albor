@@ -40,9 +40,12 @@ reverse.
 
 | Metric | Value | Config |
 |--------|-------|--------|
-| Throughput | **934 tok/s** | 350M, seq=1024, batch=4, RTX 4090 |
-| Step time | ~4.4s | Same config |
-| VRAM usage | ~11.8 GB / 24 GB | Same config |
+| Throughput (pre-optimization) | **934 tok/s** | 350M, seq=1024, batch=4, RTX 4090 |
+| Step time (pre-optimization) | ~4.4s | Same config |
+| **Throughput (current, Phase 5b)** | **9,216 tok/s** | Same config (9.9x improvement) |
+| **Step time (current, Phase 5b)** | **444 ms** | Same config (step 1 incl JIT warmup) |
+| **MFU (current, Phase 5b)** | **26.7%** | vs FP32 peak (as reported by trainer) |
+| VRAM usage | ~11.6 GB / 24 GB | Same config |
 | Training loss (step 1000) | **7.06** | v2 run (PID 1775202) |
 | Loss trajectory | 10.4 → 6.85 (step 1183) | v2 run |
 | Gradient norm (step 1) | 2.20 | v2 run |
@@ -1410,23 +1413,24 @@ CPU optimizer become the dominant bottlenecks** (~400ms + ~300ms = ~700ms of
 | **Phase 1-3** | **cuBLAS linear GEMMs** | **1,379 ms** | **1,485** | **2.0%** | **cublas-gemm-v1 (MEASURED)** |
 | **Phase 4** | **+ cuBLAS attention GEMMs** | **1,347 ms** | **1,520** | **2.0%** | **cublas-attention-v1 (MEASURED)** |
 | **Phase 5a** | **+ TF32 tensor cores** | **257 ms*** | **7,966*** | **10.7%*** | **tf32-tensor-cores (MEASURED)** |
-| **Phase 5b** | **+ Batched RMSNorm (ALB-076)** | **~60 ms*** | **~34K*** | **~46%*** | **batched-rmsnorm-v1 (MEASURED)** |
-| Phase 6 | + CUDA Graphs (eliminate remaining dispatch) | ~40 ms | ~51K | ~69% | cuda-graphs-v1 (future) |
-| Phase 7 | + Kernel fusion (norm+GEMM epilogues) | ~30 ms | ~68K | ~92% | fused-kernels-v1 (future) |
+| **Phase 5b** | **+ Batched RMSNorm (ALB-076)** | **444 ms** | **9,216** | **26.7%** | **batched-rmsnorm-v1 (MEASURED)** |
+| Phase 6 | + CUDA Graphs (eliminate remaining dispatch) | ~200 ms | ~20K | ~58% | cuda-graphs-v1 (future) |
+| Phase 7 | + Kernel fusion (norm+GEMM epilogues) | ~150 ms | ~27K | ~79% | fused-kernels-v1 (future) |
 
 *Phase 5a: 257ms uses seq=512 profile config vs seq=1024 for Phases 1-4.
 TF32 provides 0% measurable improvement at 350M (compute <15% of step time).
 
-*Phase 5b: 339ms step 1 (incl warmup), ~60ms steady state. Forward GPU time
-347ms → 14ms (**24.8x**). 100,352 kernel launches → ~550 (**182x fewer**).
-Measured with `CUDA_LAUNCH_BLOCKING=1` for true GPU timing.
+*Phase 5b measured at seq=1024 (production config). Step 1 = 444ms (async) /
+638ms (blocking, true GPU time). Includes JIT warmup (~200ms). Forward GPU time
+347ms → 14ms (**24.8x**) at seq=512. At seq=1024: 9,216 tok/s (9.9x vs baseline).
+100,352 kernel launches → ~550 (**182x fewer**). nsys-verified.
 
 **Fused QKV (originally Phase 5): CANCELLED** — all GEMMs already use cuBLAS.
 Identical FLOP count, negligible dispatch saving (0.1%), high implementation cost.
 
-**Realistic target: 50-70% MFU** — with the RMSNorm bottleneck eliminated,
-CUDA Graphs would remove remaining per-kernel dispatch overhead to approach
-theoretical hardware peak.
+**Current position**: Phase 5b achieves 26.7% MFU at seq=1024 — within 2x of
+research-grade throughput. Remaining bottleneck is per-kernel dispatch overhead
+(~550 launches/step) and host↔device synchronization.
 
 Each future phase gets its own contract **before** implementation begins.
 
