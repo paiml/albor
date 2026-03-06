@@ -316,3 +316,50 @@ pipeline.
 - **Provably correct** — Every kernel has a YAML contract with falsification tests and Kani proofs
 - **pmat compliant** — Upstream changes: TDG grade A, 95% coverage, 85% mutation score, zero SATD
 - **Falsifiable** — Every claim in this spec has a concrete test that could disprove it
+
+### 1.7 Sovereign Stack vs. Standard ML Stack
+
+Most LLM training stacks depend on a deep tower of NVIDIA and Python libraries:
+
+```
+Standard ML Stack              Sovereign Stack (albor)
+─────────────────              ──────────────────────
+Python                         Rust (no Python runtime)
+PyTorch / JAX                  entrenar (training engine)
+cuDNN                          trueno PTX kernels + cuBLAS FFI
+NCCL                           (not needed — single GPU)
+torch.distributed              repartir (stretch goal)
+Weights & Biases               presentar + renacer tracing
+HuggingFace Transformers       realizar (inference)
+```
+
+**What each replaced component does — and why we don't use it:**
+
+| Component | What It Does | Why Albor Doesn't Use It |
+|-----------|-------------|--------------------------|
+| **PyTorch** | Autograd, tensor ops, training loop | entrenar implements autograd, AdamW, checkpointing in Rust. No Python GIL, no dynamic graph overhead. |
+| **cuDNN** | Optimized GPU kernels for conv, norm, attention | trueno provides hand-written PTX kernels (RMSNorm, SiLU, softmax, cross-entropy) and cuBLAS FFI for GEMM. Every kernel has a provable contract. |
+| **NCCL** | Multi-GPU collective communication (all-reduce, broadcast, scatter) | Albor trains on a single RTX 4090. No multi-GPU communication needed. For future multi-GPU work, repartir would implement ring all-reduce directly. |
+| **torch.distributed** | Distributed training orchestration (DDP, FSDP) | Single-GPU training. The model (370M params, ~1.5 GB) fits entirely in 24 GB VRAM with optimizer states. |
+| **Weights & Biases** | Experiment tracking, dashboards | renacer provides structured tracing with BrickTracer spans. presentar provides TUI dashboards and WASM visualization. |
+
+**The GPU interface**: The sovereign stack talks to NVIDIA hardware through two
+interfaces only:
+
+1. **CUDA Driver API** (`libcuda.so`) — Memory allocation, kernel launch,
+   stream management, device queries. This is the lowest stable NVIDIA API.
+   trueno binds it directly via Rust FFI — no CUDA Runtime API (`libcudart`)
+   dependency.
+
+2. **cuBLAS** (`libcublas.so`) — Matrix multiplication (GEMM). The only
+   NVIDIA library used for compute. trueno wraps it with a safe Rust API
+   (`CublasHandle`, `CublasGemm`) that enforces correct argument order at
+   the type level. cuBLAS replaced hand-written PTX GEMMs in ALB-075,
+   improving throughput from 890 tok/s to 6,700 tok/s (7.5x).
+
+**What this means in practice**: The entire training binary is a single
+statically-linked Rust executable (~15 MB). It has no Python interpreter, no
+pip packages, no conda environment, no Docker container, no version conflicts
+between PyTorch and CUDA toolkit. `cargo build --release` produces a binary
+that runs training. The only runtime dependencies are `libcuda.so` (NVIDIA
+driver) and `libcublas.so` (ships with the driver).

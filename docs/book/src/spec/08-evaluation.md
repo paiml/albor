@@ -42,7 +42,44 @@ primary scoreboard.
 | PIQA | Physical intuition | 0 | 50% | Physical interaction Q&A |
 | LAMBADA | Next-word prediction | 0 | 0% | Long-range dependency in text |
 
-### 8.3 Competitive Baselines
+### 8.3 Understanding Perplexity
+
+Perplexity is the primary metric for monitoring pre-training progress. It
+measures how well the model predicts held-out text:
+
+```
+perplexity = e^(cross_entropy_loss)
+```
+
+**Intuition**: Perplexity is the effective number of tokens the model considers
+equally likely at each position. A model with perplexity 100 is, on average,
+choosing between 100 equally probable next tokens. Lower is better — it means
+the model has learned to concentrate probability mass on the correct tokens.
+
+**Scale for albor (vocab_size = 32,768)**:
+
+| Perplexity | Meaning | Training Stage |
+|------------|---------|----------------|
+| 32,768 | Random baseline (uniform over vocab) | Untrained / step 0 |
+| ~1,000 | Basic token frequency learned | v3 plateau (step 12K-28K) |
+| ~100 | Syntactic patterns and common idioms captured | Target for v4 at ~1B tokens |
+| ~30 | Strong code model — predicts Python structure | Good 350M model |
+| ~10 | Excellent — narrows predictions to a few candidates | State-of-the-art at this scale |
+
+**Why perplexity, not loss**: Cross-entropy loss (ln(perplexity)) compresses
+the scale. Loss 6.93 vs 6.83 sounds small but corresponds to perplexity 1018
+vs 922 — a 10% improvement in prediction quality. Perplexity makes the
+magnitude of improvements human-readable.
+
+**Validation perplexity** (`val_ppl`) is computed on held-out data not seen
+during training. It detects overfitting: if train loss keeps falling but
+val_ppl plateaus or rises, the model is memorizing rather than generalizing.
+The v3 training plateau (val_ppl stuck at ~1000 from step 12K to 28K) was
+diagnosed via validation perplexity — train loss was still falling slightly,
+but the model had stopped learning generalizable patterns. Root cause: constant
+learning rate (ALB-079) and insufficient batch size (ALB-080).
+
+### 8.4 Competitive Baselines
 
 **Python Code Completion Baselines (Primary Competition)**
 
@@ -100,7 +137,7 @@ data with a coding teacher — distillation from Qwen3-Coder-Next will not
 improve general reasoning (ARC-E, HellaSwag). The target is OPT-350M parity,
 not Pythia-410M. Code benchmarks are the real scoreboard.*
 
-### 8.4 Evaluation Protocol
+### 8.5 Evaluation Protocol
 
 ```bash
 # Plan: validate model exists, tasks recognized, output writable
@@ -152,7 +189,7 @@ apr eval apply \
 #   --output ./eval/bigcode-leaderboard/
 ```
 
-### 8.5 Continuous Evaluation During Training
+### 8.6 Continuous Evaluation During Training
 
 The intel box runs eval on the latest checkpoint concurrently with training:
 
@@ -199,7 +236,7 @@ The v2 training run (ALB-063) reached step ~1183/5000, loss 10.4→6.9 (clear
 convergence), then stopped. The `checkpoints/albor-base-350m-v2/` checkpoint
 has partially trained weights. Full evaluation awaits training completion.
 
-### 8.6 Local Evaluation Infrastructure
+### 8.7 Local Evaluation Infrastructure
 
 The following scripts provide model evaluation independently of `apr eval`:
 
@@ -236,7 +273,7 @@ python scripts/convert-checkpoint.py checkpoints/albor-base-350m/ \
 - `configs/eval/python-intermediate.jsonl` — 15 intermediate Python problems
 - `configs/eval/humaneval-subset.jsonl` — 20 HumanEval-format problems
 
-### 8.7 Weight Convention & Checkpoint Format
+### 8.8 Weight Convention & Checkpoint Format
 
 entrenar stores linear layer weights as **[in_features, out_features]** in
 row-major (C) order, and computes forward pass as `x @ W` (no transpose).
