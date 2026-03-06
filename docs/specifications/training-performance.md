@@ -2271,7 +2271,58 @@ is naturally low from the start due to the 32x larger batch size.
 - Expect loss plateau to break around step 1000-2000 as lr decays
 - Data supply verified: 5.3B tokens available, 0% recycling at current pace
 
-### 6.19 Stage 2: Distillation Pipeline Performance Plan
+### 6.19 v4 Extended (step 578, LIVE)
+
+**Status**: Training running continuously since resume. Current step 578
+(cumulative ~1078, ~141M tokens).
+
+**Latest metrics** (step 578):
+- Loss: 6.72 (oscillating 6.3–6.9)
+- lr: 2.95e-4 (cosine decay active, 1.7% reduction from peak)
+- gnorm: 0.06–0.16 (healthy, ZClip catching occasional z=2.0–3.4 spikes)
+- Throughput: 3,563 tok/s, 10.3% MFU, VRAM 15.9–16.0/24 GB
+- Step time: 1,093–2,163ms (varies with ZClip overhead)
+
+**Projection**: ~55 hours to 1B tokens. Cosine decay becomes meaningful
+at cumulative step 1500–2000 where lr drops below 2.5e-4. Expect loss
+plateau to break as lr pressure increases.
+
+### 6.20 Data Pipeline Performance: Streaming APR Import (ALB-081)
+
+**Root cause**: `apr import` for Qwen3.5-35B-A3B (67 GB, 14 SafeTensors
+shards, 1,811 tensors) consumed 134 GB RSS → swap storm on 125 GB machine.
+`apr tensors` on the resulting 67 GB .apr consumed 89 GB RSS → second swap.
+
+**Five Whys**:
+1. Why OOM on import? → All 14 shards loaded into RAM simultaneously
+2. Why all shards in RAM? → `load_sharded_safetensors` accumulated BTreeMap
+3. Why not streaming? → No `AprV2StreamingWriter` existed
+4. Why OOM on read? → `reader.read_to_end()` loaded entire 67 GB into Vec
+5. Why not mmap? → `AprV2ReaderRef` existed but wasn't wired into list_tensors
+
+**Fix** (aprender PR #418):
+
+| Component | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| `AprV2StreamingWriter` | N/A (all in RAM) | Temp file + index entries only | **Peak RAM: ~5 GB** (1 shard) |
+| `list_tensors()` for APR | `read_to_end()` → Vec | `MappedFile` + `AprV2ReaderRef` | **10.9 MB RSS** (was 89 GB) |
+| Import wall clock | killed (swap thrash) | ~8 min | Completes without swap |
+| Read wall clock | killed (swap thrash) | **0.00s** | Instant (OS page cache) |
+
+**Contract**: `streaming-reader-v1.yaml`
+- FALSIFY-MMAP-001: 67 GB .apr → 10.9 MB RSS (verified via `/usr/bin/time -v`)
+- Memory ratio: 67 GB / 10.9 MB ≈ **6,100x improvement**
+
+**Architecture**:
+```
+Import: SafeTensors shards → mmap per shard → BF16 raw passthrough
+        → AprV2StreamingWriter (temp file) → finalize (sort index, CRC32)
+
+Read:   MappedFile::open → AprV2ReaderRef::from_bytes(mmap.as_slice())
+        → zero-copy tensor index parsing → on-demand tensor access
+```
+
+### 6.21 Stage 2: Distillation Pipeline Performance Plan
 
 Stage 1 (base pretraining, §6.16–6.18) produces `albor-base-350m`. Stage 2
 distills knowledge from Qwen3.5-35B-A3B (§4, spec chapter 04-distillation)
