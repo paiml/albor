@@ -2213,35 +2213,41 @@ Full data through step 284 (37.2M resume tokens, cumulative 102.7M tokens).
 | 259 | 759 | 5.98 | 0.08 | 2.99e-4 | 99.5M |
 | 262 | 762 | **5.69** | 0.09 | 2.99e-4 | 99.7M |
 | 271 | 771 | 6.24 | 0.14 | 2.99e-4 | 100.9M |
-| 275 | 775 | 6.66 | 0.08 | 2.99e-4 | 101.4M |
-| 278 | 778 | 6.43 | 0.09 | 2.99e-4 | 101.8M |
-| 281 | 781 | 6.65 | 0.07 | 2.99e-4 | 102.2M |
-| 284 | 784 | 6.27 | 0.08 | 2.99e-4 | 102.7M |
+| 284 | 784 | 6.27 | 0.08 | 2.99e-4 | 102.8M |
+| 293 | 793 | 7.92 | 0.32 | 2.99e-4 | 103.9M |
+| 306 | 806 | 6.04 | 0.25 | 2.99e-4 | 105.6M |
+| 318 | 818 | 6.56 | 0.06 | 2.98e-4 | 107.2M |
+| 331 | 831 | 7.85 | 0.06 | 2.98e-4 | 108.9M |
+| 340 | 840 | 6.50 | 0.10 | 2.98e-4 | 110.1M |
+| 350 | 850 | 6.15 | 0.06 | 2.98e-4 | 111.4M |
 
-**Key observations** (updated at step 284):
+**Key observations** (updated at step 350):
 
 1. **Best loss: 5.69 at step 262** (cumulative step 762, ~99.7M tokens).
-   Also 5.98 at step 259, 5.99 at step 112. Consecutive sub-6.0
-   readings confirm these are not noise.
+   No new best since then. Mean loss in 50-step windows: 6.72 (steps
+   50-100) → 6.60 (150-200) → 6.64 (250-300) → 6.69 (300-351).
 
-2. **103M tokens processed**: At step 284 (cum. 784), the model
-   has seen ~102.7M tokens. Loss oscillation band: 5.69–6.94
-   (step 250-284). The floor is dropping while the ceiling holds.
+2. **Loss plateau at ~6.65**: Mean loss has been flat for ~200 steps.
+   This is expected — cosine decay has barely engaged (lr=2.98e-4 vs
+   3.00e-4 peak). The lr schedule becomes meaningful around step 500
+   (cumulative 1000). Not overfitting: dataset has 5.3B tokens available,
+   only 111M consumed (2.1%, zero recycling at this point).
 
-3. **gnorm healthy and stable** (0.05–0.17): No gradient explosions.
-   ZClip triggered frequently (z=2.0–4.0) on individual sub-steps but
-   clipping is working — optimizer-level gnorm stays under 0.17.
+3. **Occasional high-loss spikes**: 7 steps with loss >7.5 out of 114
+   total (~6%). Steps 293 (7.92, gnorm=0.32) and 331 (7.85, gnorm=0.06)
+   are outliers. The latter has normal gnorm — suggesting a particularly
+   hard batch rather than gradient issues.
 
-4. **Cosine decay starting**: lr dropped from 3.00e-4 to 2.99e-4 at step
-   184 (2.6% through schedule). Decay becomes meaningful around step 500
+4. **gnorm healthy** (0.05–0.32): ZClip catching spikes (z=2.0–4.0)
+   on individual sub-steps. Optimizer-level gnorm stays under 0.32.
+   No gradient explosions or collapse.
+
+5. **Cosine decay engaging**: lr dropped from 3.00e-4 to 2.98e-4 at step
+   318 (4.5% into decay schedule). Decay becomes meaningful around step 500
    (7% of schedule, lr ≈ 2.93e-4) and accelerates from step 1000 onward.
 
-5. **Noise scale diagnostic**: B_noise ≈ 0.13–0.14 at step 200 (100-step
-   window). This low noise scale confirms the 131K token batch is large
-   enough — gradient signal dominates noise.
-
-6. **Throughput steady**: 3,546–3,558 tok/s (10.3% MFU) throughout.
-   VRAM: 14.3–16.2 GB / 24 GB.
+6. **Throughput steady**: 3,564–3,569 tok/s (10.3% MFU) throughout.
+   VRAM: 14-16 GB / 24 GB.
 
 **Comparison with v3 at equivalent token count**:
 
@@ -2259,10 +2265,11 @@ collapse that plagued v3 (3.0→0.13 over 28K steps) is absent — v4's gnorm
 is naturally low from the start due to the 32x larger batch size.
 
 **Projection to 1B tokens** (~step 7600 cumulative):
-- At 3,550 tok/s: ~64 hours remaining from step 284
+- At 3,565 tok/s: ~60 hours remaining from step 350
 - Target: val_ppl < 100 (current est. ~300 based on best loss 5.69)
-- Noise scale B_noise ≈ 0.13 confirms batch size is optimal
-- Cosine decay engaging — expect loss acceleration from step 500 onward
+- Key milestone: step 500 (cum. 1000) — cosine decay becomes meaningful
+- Expect loss plateau to break around step 1000-2000 as lr decays
+- Data supply verified: 5.3B tokens available, 0% recycling at current pace
 
 ### 6.19 Stage 2: Distillation Pipeline Performance Plan
 

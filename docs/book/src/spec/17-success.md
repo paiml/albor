@@ -42,12 +42,13 @@
 - Fixes: cosine LR decay (entrenar PR #241) + gradient_accumulation=32 (131K tokens/step)
 - Original run: 500 steps, val_ppl=1032.7 (matched v3 at 57% token budget)
 - System reboot at step 553; resumed from step-500 checkpoint
-- Extended resume: step 284 (cum. step 784), **best loss=5.69** at step 262
-- 103M tokens processed; loss oscillation band 5.69-6.94
-- ZClip catching gradient spikes (z=2.0–4.0), gnorm healthy 0.05–0.17
-- Throughput: 3,546–3,558 tok/s steady, 10.3% MFU, 14-16 GB / 24 GB VRAM
-- Target: val_ppl < 100 by 1B tokens (~64 hours remaining)
-- Same hardware (RTX 4090), same data (codeparrot-clean)
+- Extended resume: step 350 (cum. step 850), **best loss=5.69** at step 262
+- 111M tokens processed (2.1% of 5.3B available); loss plateau at mean ~6.65
+- Cosine decay just engaging (lr 3.00e-4→2.98e-4); expect plateau break at step 1000+
+- ZClip catching gradient spikes (z=2.0–4.0), gnorm healthy 0.05–0.32
+- Throughput: 3,564–3,569 tok/s steady, 10.3% MFU, 14-16 GB / 24 GB VRAM
+- Target: val_ppl < 100 by 1B tokens (~60 hours remaining)
+- Same hardware (RTX 4090), same data (codeparrot-clean, 5.3B tokens available)
 
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen3.5-35B-A3B demonstrated (ALB-010); fallback: Qwen2.5-Coder-3B (dense)
