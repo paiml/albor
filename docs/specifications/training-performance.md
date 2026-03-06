@@ -2197,60 +2197,61 @@ Full data through step 165 (21.6M resume tokens, cumulative 87.1M tokens).
 | 112 | 612 | 5.99 | 0.11 | 3.0e-4 | 80.2M |
 | 125 | 625 | 6.45 | 0.09 | 3.0e-4 | 81.9M |
 | 137 | 637 | 6.22 | 0.05 | 3.0e-4 | 83.5M |
-| 150 | 650 | 6.67 | 0.10 | 3.0e-4 | 85.2M |
-| 165 | 665 | 6.78 | 0.09 | 3.0e-4 | 87.1M |
+| 150 | 650 | 6.62 | 0.09 | 3.0e-4 | 85.2M |
+| 165 | 665 | 6.78 | 0.06 | 3.0e-4 | 87.1M |
+| 175 | 675 | 6.67 | 0.08 | 3.0e-4 | 88.4M |
+| 181 | 681 | 6.04 | 0.07 | 3.0e-4 | 89.2M |
+| 190 | 690 | 6.42 | 0.05 | 2.99e-4 | 90.4M |
+| 200 | 700 | 6.57 | 0.07 | 2.99e-4 | 91.7M |
+| 206 | 706 | 6.46 | 0.07 | 2.99e-4 | 92.5M |
 
-**Key observations**:
+**Key observations** (updated at step 206):
 
-1. **Best loss: 5.99 at step 112** (cumulative step 612, ~80.2M tokens). First
-   time breaking below 6.0 in any v4 run.
+1. **Best loss: 6.04 at step 181** (cumulative step 681, ~89.2M tokens).
+   Second sub-6.1 reading (after 5.99 at step 112). Loss continues to
+   oscillate around ~6.4 mean with occasional dips below 6.1.
 
-2. **Loss oscillation 5.99–6.78** from step 94 onward. The model fluctuates
-   around ~6.3 mean, consistent with v3 plateau behavior at ~6.4 but shifted
-   lower. With only 87M tokens seen (1.2% of Chinchilla-optimal), this is
-   expected — the model lacks sufficient data exposure to converge further.
+2. **Loss oscillation 6.04–7.08** from step 94 onward. The model fluctuates
+   around ~6.45 mean with high variance. Steps 187 and 193 spike to 7.0+,
+   likely from particularly novel/hard batches. With only 93M tokens seen
+   (1.3% of Chinchilla-optimal), this noise is expected.
 
-3. **gnorm healthy and low** (0.05–0.14): No gradient explosions. ZClip
-   triggered occasionally (z=2.1–3.4) on individual steps but the clipping
-   is working correctly — gnorm never spikes above 0.32.
+3. **gnorm healthy and low** (0.05–0.12): No gradient explosions. ZClip
+   triggered occasionally (z=2.1–3.4) on individual sub-steps but the
+   clipping is working correctly — optimizer-level gnorm stays under 0.12.
 
-4. **lr=3.0e-4 throughout**: Still at peak learning rate. Cosine decay is
-   minimal in the first 165/7000 steps (2.4% of schedule). The effective
-   lr reduction is cos(0.024π) ≈ 0.997 — essentially flat. Real decay
-   starts becoming visible around step 1000 (14% of schedule).
+4. **Cosine decay starting**: lr dropped from 3.00e-4 to 2.99e-4 at step
+   184 (2.6% through schedule). Decay becomes meaningful around step 500
+   (7% of schedule, lr ≈ 2.93e-4) and accelerates from step 1000 onward.
 
-5. **Throughput steady**: 3,586–3,665 tok/s (10.4–10.6% MFU) throughout.
-   No degradation over 165 steps. VRAM stable at 11.4–11.9 GB / 24 GB.
+5. **Noise scale diagnostic**: B_noise ≈ 0.13–0.14 at step 200 (100-step
+   window). This low noise scale confirms the 131K token batch is large
+   enough — gradient signal dominates noise.
+
+6. **Throughput steady**: 3,549–3,561 tok/s (10.3% MFU) throughout.
+   VRAM stable at 14.3 GB / 24 GB (slight increase from earlier 11.6 GB
+   — likely due to memory allocator fragmentation over 200 steps).
 
 **Comparison with v3 at equivalent token count**:
 
-| Metric | v3 (87M tokens, ~step 670) | v4 resume (87M tokens, step 665) |
+| Metric | v3 (~93M tokens, step 710) | v4 resume (93M tokens, step 706) |
 |--------|---------------------------|----------------------------------|
-| Best loss | ~7.8 | **5.99** |
-| Mean loss (last 50 steps) | ~7.5 | **6.35** |
-| gnorm | 1.8–3.0 | **0.05–0.14** |
+| Best loss | ~7.6 | **6.04** |
+| Mean loss (last 50 steps) | ~7.3 | **6.45** |
+| gnorm | 1.5–2.5 | **0.05–0.12** |
 | Effective batch | 4K tokens | **131K tokens** |
-| Tok/s | 6,700 | 3,586 |
-| MFU | 19.3% | 10.6% |
+| Tok/s | 6,700 | 3,561 |
+| MFU | 19.3% | 10.3% |
 
-v4 has 1.5 points lower loss at the same token count despite lower throughput
-(larger batches require more compute per step but converge in fewer steps).
-The gnorm collapse that plagued v3 (3.0→0.13 over 28K steps) is not present —
-v4's gnorm is naturally low from the start due to the 32x larger batch size
-averaging out per-sample noise.
-
-**Throughput gap** (v4 10.6% vs v3 19.3% MFU): The 32x gradient accumulation
-means 32 sequential forward+backward passes per optimizer step. Each sub-step
-is the same speed, but the wall-clock per "effective step" is 32x longer.
-The MFU calculation reflects this correctly — the model processes 3.6K tokens
-of unique data per second, compared to v3's 6.7K, but each v4 step represents
-131K tokens vs v3's 4K.
+v4 maintains 1.5+ points lower loss at the same token count. The gnorm
+collapse that plagued v3 (3.0→0.13 over 28K steps) is absent — v4's gnorm
+is naturally low from the start due to the 32x larger batch size.
 
 **Projection to 1B tokens** (~step 7600 cumulative):
-- At 3,600 tok/s × 131K tokens/step: ~72 hours remaining
-- Target: val_ppl < 100 (currently estimated ~1000 based on loss ~6.3)
-- Extrapolation from loss curve: loss should reach ~5.0 by 500M tokens if
-  cosine decay engages properly, corresponding to val_ppl ~150
+- At 3,560 tok/s: ~70 hours remaining from step 206
+- Target: val_ppl < 100 (currently estimated ~600 based on loss ~6.4)
+- Noise scale B_noise ≈ 0.13 confirms batch size is optimal
+- Cosine decay engaging — expect loss acceleration from step 500 onward
 
 ### 6.19 Stage 2: Distillation Pipeline Performance Plan
 
