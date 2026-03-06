@@ -2058,6 +2058,23 @@ warmup_steps=375 (5%), cosine lr decay, `pretrain-350m-v4.yaml`.
 | 262 | **5.76** | 2.1e-4 | 0.09 | 34.3M |
 | 300 | 7.17 | 2.4e-4 | 0.12 | 39.3M |
 | 331 | 7.90 | 2.7e-4 | 0.06 | 43.4M |
+| **375** | **6.52** | **3.0e-4** | **0.10** | **49.2M** |
+| 400 | 6.76 | 3.0e-4 | 0.09 | 52.4M |
+| **500** | **6.90** | **3.0e-4** | **0.07** | **65.5M** |
+
+**First validation** (step 500, 65.5M tokens):
+
+| Metric | v4 (step 500) | v3 (step 28K, final) |
+|--------|---------------|----------------------|
+| val_loss | **6.94** | 6.93 |
+| val_ppl | **1032.7** | 1018.3 |
+| Tokens seen | **65.5M** | 115M |
+| lr | 3.00e-4 (peak) | 3.00e-4 (constant) |
+| Status | cosine decay starting | **PLATEAU** |
+
+v4 matched v3's val_ppl at 57% of the token budget, still at peak lr.
+v3 plateaued here; v4's cosine decay should push val_ppl below 1000.
+Checkpoint verified: 1520 MB SafeTensors, step-500.
 
 **Initial system metrics** (step 12):
 
