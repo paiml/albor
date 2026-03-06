@@ -2175,6 +2175,83 @@ equals the random baseline ln(32768) = 10.40.
 | GPU memory | 11,463 / 24,081 MB |
 | NaN steps | 0 |
 
+### 6.18 v4 Resume Extended Training (step 165, LIVE)
+
+**Status**: Training continued past the initial 53-step observation window.
+Full data through step 165 (21.6M resume tokens, cumulative 87.1M tokens).
+
+**Extended loss curve** (measured, cumulative step = resume_step + 500):
+
+| Resume Step | Cum. Step | Loss | gnorm | lr | Tokens (cum.) |
+|-------------|-----------|------|-------|----|--------------|
+| 0 | 500 | 10.40 | 0.17 | 3.0e-4 | 65.5M |
+| 6 | 506 | 8.54 | 0.15 | 3.0e-4 | 66.3M |
+| 15 | 515 | 6.58 | 0.32 | 3.0e-4 | 67.5M |
+| 25 | 525 | 6.57 | 0.18 | 3.0e-4 | 68.8M |
+| 37 | 537 | 6.31 | 0.13 | 3.0e-4 | 70.4M |
+| 53 | 553 | 6.70 | 0.07 | 3.0e-4 | 72.5M |
+| 68 | 568 | 6.30 | 0.09 | 3.0e-4 | 74.4M |
+| 81 | 581 | 6.35 | 0.08 | 3.0e-4 | 76.1M |
+| 94 | 594 | 6.08 | 0.14 | 3.0e-4 | 77.8M |
+| 100 | 600 | 6.30 | 0.06 | 3.0e-4 | 78.6M |
+| 112 | 612 | 5.99 | 0.11 | 3.0e-4 | 80.2M |
+| 125 | 625 | 6.45 | 0.09 | 3.0e-4 | 81.9M |
+| 137 | 637 | 6.22 | 0.05 | 3.0e-4 | 83.5M |
+| 150 | 650 | 6.67 | 0.10 | 3.0e-4 | 85.2M |
+| 165 | 665 | 6.78 | 0.09 | 3.0e-4 | 87.1M |
+
+**Key observations**:
+
+1. **Best loss: 5.99 at step 112** (cumulative step 612, ~80.2M tokens). First
+   time breaking below 6.0 in any v4 run.
+
+2. **Loss oscillation 5.99–6.78** from step 94 onward. The model fluctuates
+   around ~6.3 mean, consistent with v3 plateau behavior at ~6.4 but shifted
+   lower. With only 87M tokens seen (1.2% of Chinchilla-optimal), this is
+   expected — the model lacks sufficient data exposure to converge further.
+
+3. **gnorm healthy and low** (0.05–0.14): No gradient explosions. ZClip
+   triggered occasionally (z=2.1–3.4) on individual steps but the clipping
+   is working correctly — gnorm never spikes above 0.32.
+
+4. **lr=3.0e-4 throughout**: Still at peak learning rate. Cosine decay is
+   minimal in the first 165/7000 steps (2.4% of schedule). The effective
+   lr reduction is cos(0.024π) ≈ 0.997 — essentially flat. Real decay
+   starts becoming visible around step 1000 (14% of schedule).
+
+5. **Throughput steady**: 3,586–3,665 tok/s (10.4–10.6% MFU) throughout.
+   No degradation over 165 steps. VRAM stable at 11.4–11.9 GB / 24 GB.
+
+**Comparison with v3 at equivalent token count**:
+
+| Metric | v3 (87M tokens, ~step 670) | v4 resume (87M tokens, step 665) |
+|--------|---------------------------|----------------------------------|
+| Best loss | ~7.8 | **5.99** |
+| Mean loss (last 50 steps) | ~7.5 | **6.35** |
+| gnorm | 1.8–3.0 | **0.05–0.14** |
+| Effective batch | 4K tokens | **131K tokens** |
+| Tok/s | 6,700 | 3,586 |
+| MFU | 19.3% | 10.6% |
+
+v4 has 1.5 points lower loss at the same token count despite lower throughput
+(larger batches require more compute per step but converge in fewer steps).
+The gnorm collapse that plagued v3 (3.0→0.13 over 28K steps) is not present —
+v4's gnorm is naturally low from the start due to the 32x larger batch size
+averaging out per-sample noise.
+
+**Throughput gap** (v4 10.6% vs v3 19.3% MFU): The 32x gradient accumulation
+means 32 sequential forward+backward passes per optimizer step. Each sub-step
+is the same speed, but the wall-clock per "effective step" is 32x longer.
+The MFU calculation reflects this correctly — the model processes 3.6K tokens
+of unique data per second, compared to v3's 6.7K, but each v4 step represents
+131K tokens vs v3's 4K.
+
+**Projection to 1B tokens** (~step 7600 cumulative):
+- At 3,600 tok/s × 131K tokens/step: ~72 hours remaining
+- Target: val_ppl < 100 (currently estimated ~1000 based on loss ~6.3)
+- Extrapolation from loss curve: loss should reach ~5.0 by 500M tokens if
+  cosine decay engages properly, corresponding to val_ppl ~150
+
 ## 7. Verification Architecture
 
 ### 7.1 Four-Layer Verification
