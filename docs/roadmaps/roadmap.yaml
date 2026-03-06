@@ -5,15 +5,15 @@ roadmap:
 - id: PMAT-001
   github_issue: null
   item_type: task
-  title: 'ALB-061: Sync monolithic spec with mdBook chapters'
-  status: inprogress
-  priority: high
+  title: 'ALB-010: MoE inference in realizar for Qwen3.5-35B-A3B'
+  status: planned
+  priority: critical
   assigned_to: null
-  created: 2026-03-03T09:45:24Z
-  updated: 2026-03-03T09:48:47.441232808+00:00
+  created: 2026-03-06T10:36:14Z
+  updated: 2026-03-06T10:36:14Z
   spec: null
   acceptance_criteria:
-  - Generate monolithic spec from mdBook chapters, add make spec target
+  - 'Implement MoE expert dispatch. Contracts: moe-router-v1, moe-expert-dispatch-v1. 4 steps: expert weight types, router forward, expert dispatch, integration.'
   phases: []
   subtasks: []
   estimated_effort: null
@@ -22,15 +22,15 @@ roadmap:
 - id: PMAT-002
   github_issue: null
   item_type: task
-  title: 'ALB-062: Fix stale spec chapters'
-  status: inprogress
+  title: 'v4 training: dogfood ALB-079/080, update spec at milestones'
+  status: planned
   priority: high
   assigned_to: null
-  created: 2026-03-03T09:45:26Z
-  updated: 2026-03-03T09:45:32.808627566+00:00
+  created: 2026-03-06T10:36:19Z
+  updated: 2026-03-06T10:36:19Z
   spec: null
   acceptance_criteria:
-  - Fix §3 VRAM, §15/§18 blockers, §16 repro, model card, intro, appendix G
+  - Monitor v4 training, update training-performance.md and mdBook. Target val_ppl < 100 by 1B tokens.
   phases: []
   subtasks: []
   estimated_effort: null
@@ -39,31 +39,15 @@ roadmap:
 - id: PMAT-003
   github_issue: null
   item_type: task
-  title: 'ALB-063: Retrain 350M v2'
+  title: Update training-performance.md with v4 + MoE distillation plan
   status: inprogress
-  priority: critical
+  priority: high
   assigned_to: null
-  created: 2026-03-03T09:45:27Z
-  updated: 2026-03-03T09:51:40.773584156+00:00
+  created: 2026-03-06T10:36:20Z
+  updated: 2026-03-06T10:36:24.891534997+00:00
   spec: null
   acceptance_criteria:
-  - Train with pretrain-350m-v2.yaml (68K seqs, epochs=38, warmup=500)
-  phases: []
-  subtasks: []
-  estimated_effort: null
-  labels: []
-  notes: null
-- id: PMAT-004
-  github_issue: null
-  item_type: task
-  title: 'ALB-075: cuBLAS tensor core GEMM integration'
-  status: inprogress
-  priority: critical
-  assigned_to: null
-  created: 2026-03-05T15:35:58Z
-  updated: 2026-03-05T15:36:02.668584120+00:00
-  spec: null
-  acceptance_criteria: []
+  - Sync training-performance.md with v4 progress, add MoE teacher section, deploy mdBook.
   phases: []
   subtasks: []
   estimated_effort: null
