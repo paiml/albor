@@ -38,11 +38,13 @@
 - Checkpoints: step 1K-28K (1520 MB each, all verified OK)
 - No NaN in 28K steps (ALB-077: tensor cores disabled, CUBLAS_DEFAULT_MATH)
 
-**350M v4 training (ALB-079 + ALB-080 fixes) — RUNNING:**
+**350M v4 training (ALB-079 + ALB-080 fixes) — RESUMED from step 500:**
 - Fixes: cosine LR decay (entrenar PR #241) + gradient_accumulation=32 (131K tokens/step)
-- Step 12 running, loss decreasing from 10.40
+- Original run: 500 steps, val_ppl=1032.7 (matched v3 at 57% token budget)
+- System reboot at step 553; resumed from step-500 checkpoint
+- Resume convergence: loss 10.40→6.31 in 37 steps (8x faster from warm start)
 - Target: val_ppl < 100 by 1B tokens
-- Same hardware (RTX 4090), same data (codeparrot-clean), same wall-clock (~1.6 days)
+- Same hardware (RTX 4090), same data (codeparrot-clean)
 
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen2.5-Coder-3B demonstrated (interim); Qwen3-Coder-Next 80B (stretch, ALB-010)
