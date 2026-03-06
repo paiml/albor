@@ -1,0 +1,89 @@
+# configs/train/pretrain-350m-v4-resume.yaml — Resume v4 from step 500 checkpoint
+#
+# System rebooted at 09:10 UTC, killing v4 at step 553.
+# Checkpoint at step 500 is intact (1520 MB SafeTensors + optimizer_state.json).
+#
+# Resume strategy:
+#   - Load weights from step-500 checkpoint (model.path)
+#   - Optimizer states (AdamW m,v) restart from zero (warm weights, cold optimizer)
+#   - warmup_steps=0: skip warmup (already at peak lr from step 375)
+#   - max_steps=7000: remaining steps (7500 - 500 = 7000)
+#   - Cosine decay starts immediately from lr_max=3e-4 → 0 over 7000 steps
+#   - This matches the original schedule: steps 500-7500 had 7000 cosine steps remaining
+#
+# Token budget: 7000 × 4 × 32 × 1024 = 917,504,000 (~918M tokens)
+# Total with step 500: 65.5M + 918M = ~983M tokens (~1B)
+
+model:
+  path: "./checkpoints/albor-base-350m-v4/"  # Resume from step 500 checkpoint
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+
+data:
+  train: "data/pretokenized-1024-v3/train/"
+  val: "data/pretokenized-2048/val/"
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 0                            # Already warmed up — start at peak lr
+  gradient_accumulation: 32                   # Same as v4: 131K tokens/step
+  output_dir: "./checkpoints/albor-base-350m-v4"
+  save_interval: 500
+  max_steps: 7000                             # Remaining: 7500 - 500 = 7000
+
+monitoring:
+  terminal:
+    enabled: false
+    refresh_rate: 1000
+    metrics: ["loss", "learning_rate", "gradient_norm"]
+    charts:
+      - type: "loss_curve"
+        metric: "loss"
+        window: 100
+        show_eta: true
+
+  tracking:
+    enabled: false
+    backend: "sqlite"
+    experiment: "albor-pretrain-350m-v4-resume"
+    tags:
+      model: "albor-350m"
+      stage: "pretrain"
+      data: "codeparrot-clean-2M"
+      batch: "131K-tokens"
+      resume: "step-500"
+
+  system:
+    enabled: false
+    interval: 5000
+    metrics: ["gpu_utilization", "memory", "temperature"]
+
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded — Andon stop"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion — Andon stop"
