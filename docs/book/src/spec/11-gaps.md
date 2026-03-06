@@ -118,5 +118,12 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 
 | ALB-078 | trueno [#171](https://github.com/paiml/trueno/issues/171), entrenar [#240](https://github.com/paiml/entrenar/issues/240) | trueno / entrenar | Fused GPU gradient clipping — eliminate 26 stream syncs/step | High | **IMPLEMENTED** | Per-block clip calls `stream.synchronize()` + D2H 24×/step. New kernels: `ClipScaleReduceKernel` (single-CTA norm+clip_scale on GPU), `GradientClipGpuScaleKernel` (element-wise clip reading scale from GPU memory). Pipeline: 9× squared_sum_launch_into → 1× clip_scale_reduce → 9× gradient_clip_gpu_scale. Zero sync, zero D2H. IEEE 754 handles zero-norm (div→+inf, min→1.0). Compiles, awaiting dogfood. Expected: ~20% step time reduction. |
 
+### 11.6 Training Quality Gaps
+
+| ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
+|----|-------|-----------|-----|----------|--------|---------------------|
+| ALB-079 | entrenar [#241](https://github.com/paiml/entrenar/issues/241) | entrenar | CUDA trainer ignores lr_scheduler — constant lr after warmup | Critical | **FIXED** | `CudaTransformerTrainer::current_lr()` only had linear warmup; returned constant `base_lr` after warmup. YAML `lr_scheduler: "cosine"` parsed but never applied. Five Whys: val_loss plateau at 6.92 + gnorm collapse 3.0→0.13 at constant lr. Fix: cosine decay using `max_steps` + `set_lr()` for CPU embed optimizer (`entrenar@297308d`). |
+| ALB-080 | albor [#61](https://github.com/paiml/albor/issues/61) | albor config | Effective batch size 48-128x too small for 350M training | Critical | **PENDING** | 4,096 tokens/step vs comparable runs: CodeParrot-small 196K, GPT-2 524K. Root cause: `gradient_accumulation: 1` in v3 config. Fix: v4 config with `gradient_accumulation: 32` → 131K tokens/step. Same wall-clock, 32x better gradient quality. Target: val_ppl < 100 by 1B tokens. |
+
 *Gaps are added as they are discovered during implementation and dogfooding.*
 

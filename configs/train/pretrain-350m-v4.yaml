@@ -1,0 +1,94 @@
+# configs/train/pretrain-350m-v4.yaml — Albor 350M with proper batch size
+#
+# v4 fixes two critical bugs from v3:
+#   ALB-079: Cosine LR decay was missing in CUDA trainer (constant lr after warmup)
+#   ALB-080: Effective batch too small (4K tokens → 131K tokens per optimizer step)
+#
+# C-TRAINCFG-001 pre-flight verification:
+#   num_sequences:    ~5,200,000 (20 shards × ~260K seqs/shard)
+#   tokens_per_step:  4 × 32 × 1024 = 131,072 tokens/optimizer step
+#   steps_per_epoch:  floor(5200000 / (4 × 32)) = 40,625
+#   epochs:           1 (steps_per_epoch >> max_steps)
+#   max_steps:        7,500 optimizer steps = 7,500 × 131K = ~983M tokens (~1B)
+#   warmup_steps:     375 (5% of max_steps, standard for large-batch training)
+#   total_tokens:     7500 × 4 × 32 × 1024 = 983,040,000 (~1B tokens)
+#
+# Wall-clock estimate: 7,500 × 32 × 0.56s = 134,400s = 37.3 hours (~1.6 days)
+# Same wall-clock as v3 (250K × 0.56s = 38.9h) but 32x better gradient quality.
+#
+# Chinchilla-optimal for 350M: ~7B tokens = 53K steps × 131K = 11.1 days.
+# We start with 1B (14% Chinchilla) to validate the fix, then extend.
+
+model:
+  path: "."                                  # From scratch (random init)
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+
+data:
+  train: "data/pretokenized-1024-v3/train/"
+  val: "data/pretokenized-2048/val/"           # Reuse v1 validation set
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4                                  # Chinchilla/LLaMA standard for 350M
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 1                                  # C-TRAINCFG-001: steps_per_epoch=40,625 >> max_steps=7,500
+  grad_clip: 1.0                              # GPU-side fused clip (ALB-078)
+  lr_scheduler: "cosine"                      # ALB-079: now actually applied in CUDA trainer
+  warmup_steps: 375                           # 5% of 7500 steps (larger batch → shorter warmup)
+  gradient_accumulation: 32                   # ALB-080: 4×32×1024 = 131K tokens/step
+  # mixed_precision: disabled — ALB-072 (fp16 loss scaling overflows f32 backward)
+  output_dir: "./checkpoints/albor-base-350m-v4"
+  save_interval: 500                          # Every 500 steps (~4.7h), keep all checkpoints
+  max_steps: 7500                             # ~1B tokens (same token budget as v3)
+
+monitoring:
+  terminal:
+    enabled: false                              # nohup compatibility
+    refresh_rate: 1000
+    metrics: ["loss", "learning_rate", "gradient_norm"]
+    charts:
+      - type: "loss_curve"
+        metric: "loss"
+        window: 100
+        show_eta: true
+
+  tracking:
+    enabled: false                              # nohup compatibility
+    backend: "sqlite"
+    experiment: "albor-pretrain-350m-v4"
+    tags:
+      model: "albor-350m"
+      stage: "pretrain"
+      data: "codeparrot-clean-2M"
+      batch: "131K-tokens"
+
+  system:
+    enabled: false                              # nohup compatibility
+    interval: 5000
+    metrics: ["gpu_utilization", "memory", "temperature"]
+
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded — Andon stop"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion — Andon stop"

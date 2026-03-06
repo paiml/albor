@@ -46,10 +46,11 @@ reverse.
 | **Step time (current, Phase 5b)** | **513 ms** | Same config (steady state) |
 | **MFU (current, Phase 5b)** | **22.2%** | vs FP32 peak (as reported by trainer) |
 | VRAM usage | ~11.6 GB / 24 GB | Same config |
-| Training loss (v3, step 5500) | **6.49** | v3 run (PID 1975811, codeparrot-clean) |
-| Validation loss (v3, step 5000) | **7.13** | val_ppl=1244.0 |
-| Loss trajectory (v3) | 10.40 → 6.49 (step 5500) | v3 run (250K steps target) |
-| Gradient norm (v3, step 1) | 2.19 | v3 run |
+| Training loss (v3, step 26K) | **6.61** | v3 run (PID 1975811, codeparrot-clean) |
+| Validation loss (v3, step 26K) | **6.91** | val_ppl=1000.3 |
+| Loss trajectory (v3) | 10.40 → 6.61 (step 26K) | v3 run (250K steps target) |
+| Gradient norm (v3) | 3.04 → 0.13 (step 1K → 26K) | Monotonic decrease |
+| Tokens processed (v3) | **108M** | 26,400 × 4 × 1024 |
 
 ### 1.2 MFU Analysis
 
@@ -1871,32 +1872,52 @@ production gradient magnitudes) before enabling tensor cores in training.
 | 4000 | 7.85 | 7.10 | 1208.7 | 6,695 | 19.4% | 1.53 | 3.0e-4 |
 | 4500 | 7.28 | — | — | 6,609 | 19.1% | 2.10 | 3.0e-4 |
 | 5000 | 6.98 | 7.13 | 1244.0 | 6,632 | 19.2% | 1.83 | 3.0e-4 |
-| **5500** | **6.49** | — | — | **6,565** | **19.0%** | **1.65** | **3.0e-4** |
+| 5500 | 6.49 | — | — | 6,565 | 19.0% | 1.65 | 3.0e-4 |
+| 6000 | 7.16 | 7.05 | 1157.3 | 6,586 | 19.1% | 2.13 | 3.0e-4 |
+| 7000 | 7.44 | 6.99 | 1084.9 | 6,586 | 19.1% | 1.19 | 3.0e-4 |
+| 8000 | 7.14 | 7.02 | 1117.8 | 6,583 | 19.1% | 2.42 | 3.0e-4 |
+| 9000 | 6.79 | 7.02 | 1114.0 | 6,561 | 19.0% | 0.89 | 3.0e-4 |
+| 10000 | 6.35 | 7.07 | 1180.1 | 6,564 | 19.0% | 1.02 | 3.0e-4 |
+| 12000 | 6.66 | 6.94 | 1036.7 | 6,570 | 19.0% | 0.84 | 3.0e-4 |
+| 14000 | 6.48 | 6.93 | 1026.8 | 6,567 | 19.0% | 0.78 | 3.0e-4 |
+| 16000 | 6.88 | 6.94 | 1036.4 | 6,578 | 19.0% | 0.37 | 3.0e-4 |
+| 18000 | 6.56 | 6.96 | 1051.0 | 6,595 | 19.1% | 0.44 | 3.0e-4 |
+| 20000 | 7.15 | 6.93 | 1023.1 | 6,621 | 19.2% | 0.36 | 3.0e-4 |
+| 22000 | 6.77 | 6.92 | 1012.7 | 6,632 | 19.2% | 0.32 | 3.0e-4 |
+| 24000 | 6.83 | 6.92 | 1010.5 | 6,651 | 19.3% | 0.22 | 3.0e-4 |
+| **26000** | **6.61** | **6.91** | **1000.3** | **6,682** | **19.3%** | **0.15** | **3.0e-4** |
 
 **Steady-state performance** (steps 100-2000 warmup average):
 - **7,600 tok/s** ± 200 (during warmup, steps 100-1000)
 - **22.1% MFU** vs FP32 peak (RTX 4090, 82.6 TFLOP/s)
 - **516 ms/step** (p50, warmup phase)
 
-**Post-warmup performance** (steps 2000-5500, cosine decay):
-- **6,700 tok/s** ± 150 (steady state, slight throughput decrease due to cosine lr)
-- **19.3% MFU** (post-warmup average)
-- **~600 ms/step**
+**Post-warmup performance** (steps 2000-26000, constant lr):
+- **6,630 tok/s** ± 80 (steady state)
+- **19.2% MFU** (post-warmup average)
+- **~560 ms/step** (p50)
 - **VRAM**: 11.4 GB / 24 GB (47% utilization)
-- **0 NaN** in 5500 steps (ALB-077 fix verified)
+- **0 NaN** in 26,400 steps (ALB-077 fix verified)
 
 **Checkpoints** (every 1000 steps, 1520 MB SafeTensors each):
-- step-1000, step-2000, step-3000, step-4000, step-5000 — all verified OK.
+- step-1000 through step-26000 — all verified OK (26 checkpoints total).
 
 **Training dynamics**:
 - Loss converges from 10.4 to ~6.9 in 1000 steps (during warmup)
 - Post-warmup spike at step 2200 (loss=7.63) — lr reached max (3e-4), recovered by step 2500
-- Val loss slowly improving: 7.38 → 7.19 → 7.20 → 7.10 → 7.13 (noisy but trending down)
-- Val PPL: 1608 → 1332 → 1341 → 1209 → 1244 (significant improvement from step 1000)
-- gnorm stable at 1.2-3.2, occasional ZClip spikes (max z=4.4 at step 1, z=3.4 at step 5412)
-- B_noise (gradient noise scale) decreasing: 0.22 → 0.16 (steps 5400-5500)
+- Val loss improving: 7.38 → 7.05 → 6.94 → 6.93 → 6.92 → **6.91** (plateau since step 12K)
+- Val PPL: 1608 → 1157 → 1037 → 1027 → 1013 → **1000** (slow convergence, nearing floor)
+- **Gradient norm collapse**: 3.04 (step 1K) → 1.02 (10K) → 0.15 (26K) — 20x decrease
+  - Expected for well-initialized transformers as loss landscape flattens
+  - ZClip spikes infrequent post-15K (z≤3.4, ema=0.14)
+- B_noise decreasing: 0.22 → 0.08 (gradient signal/noise ratio improving)
 
-**ETA**: 250K steps × 0.60s = **41.7 hours** (~1.7 days from start).
+**Token efficiency**: 108M tokens seen at step 26K. Val PPL=1000 at 108M tokens.
+Reference: codeparrot-small (110M) achieved val_loss ~3.5 after 50B tokens.
+The 350M model is undertrained — 108M tokens is <1% of typical training budget.
+
+**ETA**: 250K steps × 0.56s = **38.9 hours** (~1.6 days from start).
+At step 26K: ~10.4% complete, ~34.5 hours remaining.
 Compare: PTX baseline would be 250K × 4.4s = **12.7 days**.
 
 ### 6.14 Stream Sync Bottleneck Analysis (ALB-078, Five Whys)
@@ -1955,6 +1976,46 @@ This eliminates 26 of 28 syncs/step. The 2 remaining are irreducible:
 
 **Status**: Implemented, compiles, awaiting dogfood on next training restart.
 **Expected impact**: step time 618ms → ~500ms (~20% improvement).
+
+### 6.15 Training Quality Analysis (ALB-079/080, Five Whys)
+
+**Observation**: v3 training at step 26K shows val_loss plateau at 6.92 (val_ppl=1000)
+since step 12K. Gradient norm collapsed from 3.04 (step 1K) to 0.15 (step 26K) — 20x
+decrease while lr is at peak (3e-4).
+
+**Five Whys — Root Cause 1: Missing Cosine LR Decay (ALB-079)**
+
+1. **Why constant lr=3e-4 at all steps?** `CudaTransformerTrainer::current_lr()` only
+   implemented linear warmup; returned `base_lr` after warmup (line 1938)
+2. **Why no cosine?** `TransformerTrainConfig` has no `lr_scheduler` field; YAML config
+   parsed by bridge but not propagated to CUDA path
+3. **Why not caught earlier?** At step 2K-5K, cosine barely differs from constant
+   (lr ≈ 2.99e-4 vs 3.00e-4); plateau only visible after 10K steps
+4. **Fix** (entrenar #241): Cosine decay in `current_lr()` using `warmup_steps` and
+   `max_steps`. CPU embedding optimizer synced via `set_lr()`.
+
+**Five Whys — Root Cause 2: Effective Batch Size 48-128x Too Small (ALB-080)**
+
+1. **Why val_ppl plateau at 1000?** Gradient noise too high to escape loss basin
+2. **Why noisy gradients?** Effective batch = 4 × 1 × 1024 = 4,096 tokens/step
+3. **Why 4,096?** `gradient_accumulation: 1` in config, VRAM limits `batch_size: 4`
+4. **Why so small?** Config was set for debugging; no Chinchilla batch size analysis
+5. **Why does it matter?** Comparable 350M models use 131K-524K tokens/step (32-128x larger)
+
+| Model | Batch Size (tokens/step) |
+|-------|--------------------------|
+| CodeGen-350M-mono | ~500K+ |
+| CodeParrot-small (110M) | 196K |
+| GPT-2 124M (nanoGPT) | ~524K |
+| **Albor v3** | **4,096** |
+| **Albor v4** (planned) | **131,072** |
+
+**Fix**: `pretrain-350m-v4.yaml` with `gradient_accumulation: 32` (131K tokens/step),
+`warmup_steps: 375`, `max_steps: 7500` (~1B tokens). Same wall-clock as v3 (same
+number of forward/backward passes), dramatically better gradient quality.
+
+**Expected impact**: val_ppl should break through 1000 floor and reach <100 by 1B tokens.
+gnorm should stabilize at 0.5-2.0 (not collapse to 0.13).
 
 ## 7. Verification Architecture
 
