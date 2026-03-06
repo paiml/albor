@@ -47,9 +47,9 @@
 - Same hardware (RTX 4090), same data (codeparrot-clean)
 
 ### Good (Phase 5 complete)
-- [ ] Distillation from Qwen2.5-Coder-3B demonstrated (interim); Qwen3-Coder-Next 80B (stretch, ALB-010)
+- [ ] Distillation from Qwen3.5-35B-A3B demonstrated (ALB-010); fallback: Qwen2.5-Coder-3B (dense)
 - [ ] albor-distill-350m outperforms albor-base-350m on all code benchmarks
-- [ ] **HumanEval pass@1 > 15%** (beat CodeGen-350M-mono's 12.8% via distillation)
+- [ ] **HumanEval pass@1 > 15%** (beat CodeGen-350M-mono's 12.8% via distillation from 35B MoE teacher)
 - [ ] **MBPP pass@1 > 12%**
 - [ ] **FIM infill working** (qualitatively: model can complete Python between prefix and suffix)
 - [ ] KD contract at Level 4 (Kani-proved KL non-negativity)
@@ -60,7 +60,7 @@
 - [ ] Benchmark trajectory published showing improvement at each stage
 - [ ] **Submitted to Big Code Models Leaderboard** — first sub-1B model on the board
 - [ ] **Q4 model: <50ms/token on CPU, <10ms/token on GPU** (code completion latency)
-- [x] Critical path gaps (ALB-001, 006, 009, 011, 018) closed with upstream fixes; ALB-010 (Qwen3-Coder-Next) remains OPEN
+- [x] Critical path gaps (ALB-001, 006, 009, 011, 018) closed with upstream fixes; ALB-010 (Qwen3.5-35B-A3B MoE inference) remains OPEN
 - [ ] Models published on HuggingFace as `paiml/albor-python-*`
 - [ ] Q4 quantized model < 100MB, runs on consumer hardware
 - [ ] **All 8 kernel contracts written and verified** (ALB-013–017, ALB-039–040, ALB-060)

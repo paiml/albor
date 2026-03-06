@@ -1,71 +1,126 @@
-# 4. Distillation Teacher: Qwen3-Coder-Next
+# 4. Distillation Teacher: Qwen3.5-35B-A3B
 
 ### 4.1 Teacher Model Profile
 
 | Property | Value |
 |----------|-------|
-| Model | [Qwen3-Coder-Next](https://huggingface.co/Qwen/Qwen3-Coder-Next) |
-| Parameters | 80B total, 3B activated (MoE) |
-| Architecture | Hybrid: DeltaNet + Gated Attention + MoE (512 experts, 10 active) |
-| Hidden dim | 2048 |
-| Context | 256K tokens |
+| Model | [Qwen3.5-35B-A3B](https://huggingface.co/Qwen/Qwen3.5-35B-A3B) |
+| Parameters | 35B total, 3B active per token (MoE) |
+| Architecture | Hybrid: 30 Gated DeltaNet + 10 full GQA layers, MoE FFN (256 experts, top-8 + 1 shared) |
+| Hidden dim | 2048, head_dim=256, 16 Q heads, 2 KV heads |
+| Layers | 40 (pattern: 3 linear + 1 full attention, repeating) |
+| Expert FFN | SwiGLU, intermediate_size=512 per expert |
+| Context | 262K tokens (extensible to ~1M via YaRN) |
 | License | Apache 2.0 |
-| Specialization | Coding, agentic reasoning, tool use |
+| Specialization | Code generation, agentic reasoning |
 
 ### 4.2 Why This Teacher
 
 - **Apache 2.0**: Legally clean for distillation, no license contamination
-- **MoE → Dense distillation**: Compresses 512 experts' collective knowledge
-  into a small dense student. The student benefits from all experts without
-  the MoE routing overhead.
+- **35B knowledge at 3B cost**: MoE activates only 8+1 experts per token.
+  Inference FLOP budget matches a dense 1.8B model, but the 256 experts
+  collectively encode 35B parameters of knowledge. Soft targets are far
+  richer than a dense 3B teacher.
+- **Fits on a single 4090**: At Q4 quantization, weights occupy ~17.5 GB.
+  With activations and KV cache (only 10 full-attention layers need KV
+  cache), total VRAM is ~18.3 GB — leaving 5.7 GB headroom on 24 GB.
 - **Coding focus**: Distilled student inherits strong code capabilities,
   making it competitive on HumanEval/MBPP — benchmarks where tiny models
   normally fail.
+- **realizar already supports most of the architecture**: Gated DeltaNet
+  linear attention (GH-278), SwiGLU FFN, GQA, hybrid `layer_types` config,
+  and MoE routing (CapacityFactorRouter, PowerOfTwoChoicesRouter) all exist.
+  The missing pieces are expert weight loading and dispatch integration.
 - **Novel architecture** (DeltaNet + MoE): Exercising realizar's model
   loading on a non-standard architecture is exactly the kind of gap-finding
   that validates the stack.
 
+### 4.2.1 VRAM Budget (Q4, batch=1, seq=2048)
+
+| Component | Size | Notes |
+|-----------|------|-------|
+| Weights (Q4) | 17.5 GB | 35B params × 0.5 bytes/param |
+| KV cache (10 layers) | 0.08 GB | Only full-attention layers (every 4th) |
+| Activations (40 layers) | 0.67 GB | hidden=2048, single-token inference |
+| Router logits | 0.08 GB | 2048 × 256 experts × f32 |
+| **Total** | **18.3 GB** | **5.7 GB headroom on RTX 4090** |
+
+### 4.2.2 Realizar MoE Readiness Assessment
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| MoE routing (2 strategies) | Exists | `src/moe/mod.rs` |
+| Gated DeltaNet linear attention | Exists (GH-278) | `src/gpu/scheduler/types.rs` |
+| SwiGLU FFN | Exists | `src/gpu/scheduler/forward_block.rs` |
+| GQA attention | Exists | `src/gpu/scheduler/forward_block.rs` |
+| Hybrid `layer_types` config | Exists | `types.rs` `is_linear_layer()` |
+| Safetensors loading | Exists | `src/safetensors/` |
+| **Expert weight struct** | **Missing** | Add `MoeExpertWeights` to `BlockWeights` |
+| **Router gate loading** | **Missing** | Load `mlp.gate.weight` [256, 2048] |
+| **Expert dispatch** | **Missing** | softmax → top-8 → SwiGLU × 8 → weighted sum |
+| **Shared expert** | **Missing** | Always-on SwiGLU, separate gate/up/down |
+| **Fused gate_up_proj** | **Missing** | Unfuse [256, 1024, 2048] tensor |
+
+**Estimated new code**: ~300-400 lines in realizar for full MoE inference.
+
 ### 4.3 Distillation Architecture
 
+**Primary path**: GPU-resident teacher inference on lambda (RTX 4090). The
+35B model at Q4 fits in 18.3 GB VRAM — teacher inference and logit caching
+run on the same machine as student training.
+
 ```
-┌───────────────────────────────┐                          ┌───────────────────────────┐
-│  intel (300 GB RAM)           │    pre-computed logits    │  lambda (RTX 4090)        │
-│                               │    via Parquet shards     │                           │
-│  Qwen3-Coder-Next 80B fp16   │ ────────────────────────► │  Student: albor-350M      │
-│  Running on CPU (32 threads)  │                           │  KD loss + CE loss        │
-│  ~160 GB model in RAM         │                           │  Training on GPU          │
-│  ~140 GB for KV cache         │                           │                           │
-│                               │                           │  entrenar distill         │
-│  realizar inference           │                           │    --teacher-logits       │
-└───────────────────────────────┘                           └───────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│  lambda (RTX 4090, 24 GB)                                              │
+│                                                                         │
+│  Phase 1: Pre-compute teacher logits (GPU, ~18.3 GB)                   │
+│  ┌──────────────────────────┐     Parquet shards      ┌──────────────┐ │
+│  │ Qwen3.5-35B-A3B (Q4)    │ ──────────────────────► │ teacher_logits│ │
+│  │ realizar MoE inference   │    top-k=128 logits     │ ~50-100 GB   │ │
+│  │ 18.3 GB VRAM             │                          └──────────────┘ │
+│  └──────────────────────────┘                                           │
+│                                                                         │
+│  Phase 2: Train student (GPU, ~5 GB)                                   │
+│  ┌──────────────────────────┐     ┌─────────────────────────────────┐  │
+│  │ Student: albor-350M      │ ◄── │ Pre-computed logits + train data │  │
+│  │ KD loss + CE loss        │     │ (loaded from disk at GPU speed)  │  │
+│  │ entrenar distill         │     └─────────────────────────────────┘  │
+│  └──────────────────────────┘                                           │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Fallback path**: If GPU VRAM is tight (teacher + student simultaneously),
+pre-compute logits on CPU. Intel box (300 GB RAM) can run the 35B model at
+Q4 (~18 GB RAM) or Q8 (~35 GB) with ~5-15 tok/s throughput.
 
 ### 4.4 Pre-Computed Logits Strategy
 
-Rather than running teacher inference online during distillation (bottlenecked
-by CPU inference speed), we **pre-compute teacher logits offline**:
+Teacher and student do NOT run simultaneously. We **pre-compute teacher
+logits offline**, then train the student from cached logits at full GPU speed:
 
-1. Intel box runs Qwen3-Coder-Next on all training data batches
+1. Lambda runs Qwen3.5-35B-A3B inference (Q4, GPU) on all training data
 2. Teacher top-k logits (k=128) saved as sharded Parquet via `alimentar`
-3. Lambda loads pre-computed logits during distillation at full GPU speed
-4. No network bottleneck during training — all data is local
+3. Student training loads pre-computed logits from disk — no teacher in VRAM
+4. Sequential phases = no VRAM contention
 
 ```bash
-# Step 0: Plan — check teacher fits in intel RAM, estimate logit disk usage
+# Step 0: Plan — check teacher fits, estimate logit disk usage
 apr distill plan configs/train/distill.yaml
 
-# Step 1: Pre-compute teacher logits on intel (offline, can run for days)
+# Step 1: Pre-compute teacher logits on lambda GPU (Q4, ~18.3 GB)
 apr distill apply configs/train/distill.yaml --stage precompute
 
-# Step 2: Train student on lambda using pre-computed logits
+# Step 2: Train student on lambda using pre-computed logits (~5 GB)
 apr distill apply configs/train/distill.yaml --stage train --seed 42
 ```
 
-**Estimated teacher throughput on CPU (Xeon 32T, 80B fp16)**:
-- ~2-5 tok/s for full 80B in fp16
-- For 10B tokens of training data: ~23-58 days at full precision
-- At Q8 (~80GB, faster): ~5-15 tok/s → ~8-23 days
-- Strategy: pre-compute on a representative subset (~1-2B tokens), not full corpus
+**Estimated teacher throughput (Qwen3.5-35B-A3B)**:
+
+| Device | Quantization | VRAM/RAM | Throughput | 500M tokens |
+|--------|-------------|----------|------------|-------------|
+| RTX 4090 (GPU) | Q4 | 18.3 GB | ~50-100 tok/s | ~1.5-3 days |
+| Xeon 48T (CPU) | Q4 | ~18 GB | ~5-15 tok/s | ~10-30 days |
+| Xeon 48T (CPU) | Q8 | ~35 GB | ~3-8 tok/s | ~18-48 days |
 
 ### 4.5 Distillation Data Budget
 
@@ -82,30 +137,59 @@ quality data and benefit most from teacher knowledge. Scale to 2B with broader
 StarCoder data if benchmarks justify the compute. Python-only focus means all
 teacher compute goes toward the language we care about.
 
-### 4.6 Interim Teacher: Qwen2.5-Coder-3B (Unblocking Distillation)
+### 4.6 Fallback Teacher: Qwen2.5-Coder-3B
 
-ALB-010 (Qwen3-Coder-Next 80B MoE support in realizar) is a 3-4 week blocker
-requiring DeltaNet attention + MoE routing implementation. To unblock
-distillation NOW, we use **Qwen2.5-Coder-3B** as an interim teacher:
+If ALB-010 (MoE inference in realizar) proves harder than estimated, we fall
+back to **Qwen2.5-Coder-3B** as a dense teacher:
 
 | Property | Value |
 |----------|-------|
 | Model | [Qwen2.5-Coder-3B](https://huggingface.co/Qwen/Qwen2.5-Coder-3B) |
 | Parameters | 3B (dense) |
 | Architecture | Qwen2 (standard transformer — already supported by realizar) |
-| Compression ratio | 8.6× (3B → 350M) — within recommended 5-20× range |
+| Compression ratio | 8.6x (3B → 350M) — within recommended 5-20x range |
 | CPU inference | ~12 GB RAM, ~2 tok/s on 48 cores |
 | License | Apache 2.0 |
 
-**Why this works**:
+**Why this is the fallback, not the primary**:
+- Dense 3B has ~10x less knowledge capacity than 35B MoE
+- Weaker code capabilities → lower distillation quality ceiling
+- Soft targets less informative for the student
+
+**Why it's still viable**:
 - Already supported by realizar's Qwen2 architecture loader (no MoE/DeltaNet)
 - `apr distill --stage precompute` verified working with 3B teacher (2026-03-03)
-- Sharded SafeTensors handled by RosettaStone in apr (not by realizar directly)
 - CPU precompute feasible on lambda box (~12 GB RAM)
+- 8.6x compression ratio is in the sweet spot for KD
 
 **Config**: `configs/train/distill-qwen3b.yaml` — teacher: Qwen2.5-Coder-3B,
 student: albor-base-350m, temperature=4.0, alpha=0.5, LoRA rank 16.
 
-**Limitation**: 3B teacher has weaker code capabilities than 80B. Distillation
-quality ceiling is lower. ALB-010 (80B teacher) remains the stretch goal for
-maximum HumanEval improvement.
+### 4.7 ALB-010 Implementation Plan: MoE Inference in Realizar
+
+realizar already has 80% of the infrastructure. The remaining work is
+~300-400 lines across 4 steps:
+
+**Step 1: Expert weight types + loading** (~80 lines)
+- Add `MoeExpertWeights` struct to `gpu/scheduler/types.rs`
+- Fields: `gate_weight` [256, 2048], `expert_gate_up` [256, 1024, 2048],
+  `expert_down` [256, 2048, 512], `shared_expert_{gate,up,down}`
+- Safetensors name mapping: `model.language_model.layers.{N}.mlp.experts.*`
+
+**Step 2: Router forward** (~50 lines)
+- Linear projection: `hidden_states @ gate_weight.T` → [seq, 256]
+- Softmax over 256 experts (reuse existing softmax)
+- Top-8 selection (reuse `top_k_indices` from `moe/mod.rs`)
+- Renormalize selected weights
+
+**Step 3: Expert dispatch** (~100 lines)
+- For each token: run 8 selected SwiGLU experts + 1 shared expert
+- Unfuse `gate_up_proj`: split [1024] → gate [512] + up [512]
+- Per-expert: `down(SiLU(gate(x)) * up(x))`
+- Weighted sum of routed outputs + shared output
+
+**Step 4: Integration** (~80 lines)
+- In `forward_block_refcell`: if `moe_experts.is_some()`, use MoE dispatch
+  instead of dense FFN
+- Wire expert weights into safetensors loading pipeline
+- Add `num_experts`, `num_experts_per_tok` to `GpuModelConfig`
