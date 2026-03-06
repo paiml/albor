@@ -86,8 +86,7 @@ proof_obligations:
   - type: invariant
     property: "AllReduce output is mean of inputs"
     formal: "avg_grad = (1/N) * sum(local_grads)"
-    tolerance: "1e-6 relative (f32 summation order)"
-    applies_to: per_block_gradient_averaging
+    tolerance: 1.0e-6
 
   - type: bound
     property: "Gradient buffer size matches block parameters"
@@ -104,20 +103,24 @@ proof_obligations:
   - type: bound
     property: "DDP overhead < 5% of step time on localhost"
     formal: "allreduce_time / step_time < 0.05"
-    tolerance: "0.02 (varies with network)"
-    applies_to: communication_overlap
+    tolerance: 0.02
 
 kernel_structure:
   phases:
     - name: init
+      description: "Broadcast weights from rank 0 to all workers"
       invariant: "All workers have identical initial weights (broadcast from rank 0)"
     - name: forward
+      description: "Each worker runs forward pass on its disjoint data shard"
       invariant: "Each worker runs forward on disjoint data shard"
     - name: backward_allreduce
+      description: "Per-block backward, gradient accumulation, AllReduce, optimizer step"
       invariant: "Per-block: accumulate → AllReduce → optimizer (reverse order)"
     - name: non_block_allreduce
+      description: "AllReduce and apply non-block gradients (LM head, norm, embeddings)"
       invariant: "LM head, final norm, embedding gradients AllReduced and applied"
     - name: consistency_check
+      description: "Periodic weight hash comparison across all workers"
       invariant: "Periodic BLAKE3 weight hash comparison across workers"
 
 falsification_tests:

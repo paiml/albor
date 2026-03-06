@@ -95,8 +95,7 @@ proof_obligations:
   - type: invariant
     property: "AllReduce output equals mean of inputs"
     formal: "forall i in [0, D): result[i] == (1/N) * sum_{w=0}^{N-1} x_w[i]"
-    tolerance: "1e-6 relative (f32 addition commutativity)"
-    applies_to: averaging
+    tolerance: 1.0e-6
 
   - type: invariant
     property: "All workers produce identical output"
@@ -107,8 +106,6 @@ proof_obligations:
   - type: bound
     property: "Bandwidth usage is optimal"
     formal: "bytes_per_worker == 2 * (N-1)/N * D * 4"
-    tolerance: "D % N padding (at most N-1 extra elements per chunk)"
-    applies_to: bandwidth_optimality
 
   - type: invariant
     property: "No deadlock under TCP"
@@ -119,8 +116,7 @@ proof_obligations:
   - type: bound
     property: "Latency for pretraining block gradients"
     formal: "allreduce_time < 10ms for D=700K, N=2 on localhost"
-    tolerance: "5ms (network jitter)"
-    applies_to: two_worker_degeneration
+    tolerance: 5.0e-3
 
 falsification_tests:
   - id: FALSIFY-RING-001

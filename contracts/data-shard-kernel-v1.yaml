@@ -103,8 +103,7 @@ proof_obligations:
   - type: bound
     property: "Shard balance for albor data"
     formal: "For F=22 files, N=2 workers: imbalance < 1.2"
-    tolerance: "0.1 (depends on actual file sizes)"
-    applies_to: shard_balance
+    tolerance: 0.1
 
   - type: invariant
     property: "Deterministic sharding"

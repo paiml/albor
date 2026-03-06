@@ -3,75 +3,61 @@
 # Ensures the CUDA trainer applies cosine decay after warmup.
 # Written because ALB-079 identified constant lr in CUDA path.
 
-contract: cosine-lr-schedule-v1
-version: 1
-component: entrenar::train::transformer_trainer::CudaTransformerTrainer
+metadata:
+  version: "1.0.0"
+  description: "Cosine LR schedule — warmup then cosine decay to zero"
+  references:
+    - "ALB-079"
+    - "Loshchilov & Hutter (2017) SGDR: Stochastic Gradient Descent with Warm Restarts"
 
 equations:
   warmup_lr:
-    description: "Linear warmup from 0 to lr_max"
     formula: "lr(step) = lr_max * (step / warmup_steps)"
     domain: "0 <= step < warmup_steps"
+    invariants:
+      - "LR is monotonically increasing during warmup"
+      - "lr(0) = 0"
 
   cosine_decay_lr:
-    description: "Cosine decay from lr_max to 0"
     formula: "lr(step) = 0.5 * lr_max * (1 + cos(pi * (step - warmup_steps) / (max_steps - warmup_steps)))"
     domain: "warmup_steps <= step < max_steps"
+    invariants:
+      - "LR is always in [0, lr_max]"
+      - "LR is continuous at warmup boundary"
+      - "lr(max_steps) = 0"
 
-  end_lr:
-    description: "At max_steps, lr = 0"
-    formula: "lr(max_steps) = 0"
-
-invariants:
-  lr_monotonic_warmup:
-    description: "LR is monotonically increasing during warmup"
-    formula: "for all s1 < s2 < warmup_steps: lr(s1) < lr(s2)"
-
-  lr_bounded:
-    description: "LR is always in [0, lr_max]"
-    formula: "for all step: 0 <= lr(step) <= lr_max"
-
-  lr_continuous:
-    description: "LR is continuous at warmup boundary"
-    formula: "lr(warmup_steps - 1) approximately equals lr(warmup_steps)"
-
-  lr_propagated:
-    description: "GPU AdamW kernel receives same lr as current_lr()"
-    formula: "adamw_step_cuda.lr == current_lr()"
-
-  embed_lr_synced:
-    description: "CPU embedding optimizer lr matches current_lr()"
-    formula: "embed_optimizer.lr == current_lr() at each step"
+  lr_propagation:
+    formula: "adamw_kernel.lr == embed_optimizer.lr == current_lr(step)"
+    domain: "Every training step"
+    invariants:
+      - "GPU AdamW kernel receives same lr as current_lr()"
+      - "CPU embedding optimizer lr matches current_lr() at each step"
 
 proof_obligations:
-  - id: C-COSINE-001
-    description: "current_lr() returns cosine-decayed lr after warmup"
-    binding: "CudaTransformerTrainer::current_lr()"
-    level: 3
+  - type: invariant
+    property: "current_lr() returns cosine-decayed lr after warmup"
+    formal: "For step >= warmup_steps: lr = 0.5 * lr_max * (1 + cos(pi * progress))"
 
-  - id: C-COSINE-002
-    description: "lr at step 0 is 0 (or near 0)"
-    binding: "CudaTransformerTrainer::current_lr() at step 0"
-    level: 2
+  - type: bound
+    property: "lr at step 0 is 0 (or near 0)"
+    formal: "current_lr(0) < 1e-10"
 
-  - id: C-COSINE-003
-    description: "lr at warmup_steps equals lr_max"
-    binding: "CudaTransformerTrainer::current_lr() at warmup_steps"
-    level: 2
+  - type: invariant
+    property: "lr at warmup_steps equals lr_max"
+    formal: "abs(current_lr(warmup_steps) - lr_max) < 1e-10"
 
-  - id: C-COSINE-004
-    description: "lr at max_steps is 0"
-    binding: "CudaTransformerTrainer::current_lr() at max_steps"
-    level: 2
+  - type: bound
+    property: "lr at max_steps is 0"
+    formal: "current_lr(max_steps) < 1e-10"
 
-  - id: C-COSINE-005
-    description: "CPU embedding optimizer receives updated lr before each step"
-    binding: "CudaTransformerTrainer::optimizer_step()"
-    level: 3
+  - type: invariant
+    property: "CPU embedding optimizer receives updated lr before each step"
+    formal: "embed_optimizer.lr == current_lr(step) at every optimizer_step()"
 
 falsification_tests:
   - id: FALSIFY-COSINE-001
-    description: "Verify lr at midpoint of cosine decay equals 0.5 * lr_max"
+    rule: "lr at midpoint of cosine decay equals 0.5 * lr_max"
+    prediction: "At step 550 (midpoint), lr = 1.5e-4 for lr_max=3e-4"
     test: |
       Given: warmup_steps=100, max_steps=1000, lr_max=3e-4
       At step 550 (midpoint of decay phase):
@@ -80,27 +66,34 @@ falsification_tests:
                     = 0.5 * 3e-4 * 1.0
                     = 1.5e-4
       Assert: abs(current_lr() - 1.5e-4) < 1e-8
+    if_fails: "Cosine decay formula is incorrect"
 
   - id: FALSIFY-COSINE-002
-    description: "Verify lr is NOT constant after warmup"
+    rule: "lr is NOT constant after warmup"
+    prediction: "lr at step 200 > lr at step 800"
     test: |
       Given: warmup_steps=100, max_steps=1000, lr_max=3e-4
       At step 200: lr1 = current_lr()
       At step 800: lr2 = current_lr()
       Assert: lr1 != lr2
       Assert: lr1 > lr2 (cosine decay is monotonically decreasing)
+    if_fails: "Regression to constant lr after warmup (ALB-079 recurrence)"
 
   - id: FALSIFY-COSINE-003
-    description: "Verify no regression to constant lr"
+    rule: "lr forms decreasing sequence after warmup through max_steps"
+    prediction: "lr(999) < 0.01 * lr_max"
     test: |
       Given: warmup_steps=100, max_steps=1000, lr_max=3e-4
       Run 1000 steps. Collect all lr values.
       Assert: lr values form decreasing sequence after step 100
       Assert: lr(999) < 0.01 * lr_max
+    if_fails: "Cosine decay not monotonically decreasing"
 
   - id: FALSIFY-COSINE-004
-    description: "Verify fallback to constant lr when max_steps is None"
+    rule: "Fallback to constant lr when max_steps is None"
+    prediction: "Without max_steps, lr stays at lr_max after warmup"
     test: |
       Given: warmup_steps=100, max_steps=None, lr_max=3e-4
       At step 200: Assert current_lr() == 3e-4
       At step 1000: Assert current_lr() == 3e-4
+    if_fails: "Missing fallback for unset max_steps"

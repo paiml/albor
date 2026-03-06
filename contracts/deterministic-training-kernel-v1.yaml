@@ -1,78 +1,74 @@
 # Contract: Bitwise Deterministic Training (C-DETERM-001)
-# Ticket: entrenar #139 (R-084)
-# Survey practice: #84
+#
+# When deterministic mode is enabled, two training runs with identical
+# configuration and seed produce bitwise-identical outputs at every step.
+# Ticket: entrenar #139 (R-084), Survey practice: #84
 
-contract: C-DETERM-001
-version: 1
-title: Bitwise Deterministic Training Mode
-domain: reproducibility
-
-description: |
-  When deterministic mode is enabled, two training runs with identical
-  configuration and seed produce bitwise-identical outputs at every step.
-  This requires controlling all sources of non-determinism: CUDA kernels,
-  cuDNN algorithms, memory allocation order, and PRNG state.
+metadata:
+  version: "1.0.0"
+  description: "Bitwise deterministic training — identical config+seed produces identical outputs"
+  references:
+    - "entrenar #139 (R-084)"
+    - "Survey practice #84"
 
 equations:
-  - id: E-DET-001
-    name: Output determinism
-    latex: "\\forall \\text{step} \\in [0, N]: \\text{loss}(\\text{run}_1, \\text{step}) = \\text{loss}(\\text{run}_2, \\text{step})"
-    description: |
-      Given identical config, seed, and data, loss values are bitwise equal
-      across two independent runs.
+  output_determinism:
+    formula: "forall step in [0, N]: loss(run_1, step) == loss(run_2, step)"
+    domain: "Two runs with identical config, seed, and data"
+    invariants:
+      - "Loss values are bitwise equal across two independent runs"
 
-  - id: E-DET-002
-    name: Weight determinism
-    latex: "W_{\\text{run}_1}^{(t)} = W_{\\text{run}_2}^{(t)} \\quad \\forall t"
-    description: |
-      After any step t, all model weights are bitwise identical across runs.
+  weight_determinism:
+    formula: "W_run1(t) == W_run2(t) for all t"
+    domain: "After any step t, all model weights"
+    invariants:
+      - "Weights are bitwise identical across runs at every step"
 
-  - id: E-DET-003
-    name: PRNG chain
-    latex: "\\text{RNG}_{t+1} = f(\\text{RNG}_t, \\text{seed})"
-    description: |
-      PRNG state evolves deterministically from the seed. No external entropy.
-
-invariants:
-  - id: I-DET-001
-    description: "CUBLAS_WORKSPACE_CONFIG is set to ':4096:8' before any cuBLAS call"
-  - id: I-DET-002
-    description: "CUDNN_DETERMINISTIC=1 when deterministic mode is active"
-  - id: I-DET-003
-    description: "CUDNN_BENCHMARK=0 when deterministic mode is active (prevents algorithm search)"
-  - id: I-DET-004
-    description: "Data shuffle uses deterministic LCG PRNG seeded from config seed + epoch"
-  - id: I-DET-005
-    description: "Weight initialization uses deterministic PRNG seeded from config seed"
+  prng_chain:
+    formula: "RNG(t+1) = f(RNG(t), seed)"
+    domain: "PRNG state evolution"
+    invariants:
+      - "PRNG state evolves deterministically from seed — no external entropy"
+      - "CUBLAS_WORKSPACE_CONFIG is set to ':4096:8' before any cuBLAS call"
+      - "CUDNN_DETERMINISTIC=1 when deterministic mode is active"
+      - "CUDNN_BENCHMARK=0 when deterministic mode is active"
+      - "Data shuffle uses deterministic LCG PRNG seeded from config seed + epoch"
+      - "Weight initialization uses deterministic PRNG seeded from config seed"
 
 proof_obligations:
-  - id: O-DET-001
-    description: "ReproducibilityConfig::apply() sets all required CUDA environment variables"
-    method: unit_test
-    test: test_deterministic_env_vars_set
+  - type: invariant
+    property: "ReproducibilityConfig::apply() sets all required CUDA environment variables"
+    formal: "After apply(): CUBLAS_WORKSPACE_CONFIG == ':4096:8' AND CUDNN_DETERMINISTIC == '1' AND CUDNN_BENCHMARK == '0'"
 
-  - id: O-DET-002
-    description: "TransformerTrainConfig propagates deterministic flag from YAML"
-    method: unit_test
-    test: test_deterministic_config_propagation
+  - type: invariant
+    property: "TransformerTrainConfig propagates deterministic flag from YAML"
+    formal: "config.deterministic == true implies ReproducibilityConfig::apply() is called"
 
-  - id: O-DET-003
-    description: "Data shuffling with same seed + epoch produces identical ordering"
-    method: unit_test
-    test: test_shuffle_files_deterministic
+  - type: invariant
+    property: "Data shuffling with same seed + epoch produces identical ordering"
+    formal: "shuffle(files, seed=S, epoch=E) == shuffle(files, seed=S, epoch=E) across runs"
 
-falsification:
-  - id: F-DET-001
-    prediction: "Two runs with deterministic=true and same seed produce identical loss at step 10"
-    test: "Train 10 steps twice with same config/data/seed, compare loss vectors"
+falsification_tests:
+  - id: FALSIFY-DETERM-001
+    rule: "Two deterministic runs produce identical loss"
+    prediction: "loss vectors are bitwise equal at step 10"
+    test: |
+      Train 10 steps twice with same config/data/seed, compare loss vectors.
+      Assert: loss_run1 == loss_run2 at every step.
     if_fails: "Non-deterministic operation in forward or backward pass"
 
-  - id: F-DET-002
-    prediction: "deterministic=false with different seeds produces different loss sequences"
-    test: "Train 10 steps with seed=42 and seed=123, verify different losses"
+  - id: FALSIFY-DETERM-002
+    rule: "Different seeds produce different loss sequences"
+    prediction: "seed=42 and seed=123 yield different losses"
+    test: |
+      Train 10 steps with seed=42 and seed=123, verify different losses.
+      Assert: loss_seed42 != loss_seed123 at step > 0.
     if_fails: "Seed not actually used in computation"
 
-  - id: F-DET-003
-    prediction: "CUBLAS_WORKSPACE_CONFIG env var is ':4096:8' after apply()"
-    test: "Call apply(), read env var, assert value"
-    if_fails: "apply() broken or not called"
+  - id: FALSIFY-DETERM-003
+    rule: "CUBLAS_WORKSPACE_CONFIG env var is set after apply()"
+    prediction: "Value is ':4096:8'"
+    test: |
+      Call ReproducibilityConfig::apply(), read env var.
+      Assert: CUBLAS_WORKSPACE_CONFIG == ':4096:8'
+    if_fails: "apply() broken or not called before cuBLAS operations"
