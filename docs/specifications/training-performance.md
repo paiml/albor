@@ -2330,9 +2330,12 @@ tokens to the same expert is key to throughput (expert parallelism).
 | Curated hard examples (500M) | 500M | 60-80h | Good — recommended |
 | Full corpus (2B) | 2B | 250-330h | Best — if benchmarks justify |
 
-**Critical path**: ALB-010 (MoE inference in realizar) must be implemented
-before Phase 1 can begin. The 4-step implementation plan (~300-400 lines)
-is documented in §4.7 of the spec. Provable contracts are written and
+**Critical path**: ALB-010 (MoE inference in realizar) — core dispatch
+MERGED to realizar main ([PR #133](https://github.com/paiml/realizar/pull/133)).
+Steps 1-5b complete: types, router, expert dispatch, forward integration (5
+variants), shared expert gate, architecture registration, tensor name mapping.
+6 contract tests + 15,053 total tests pass. Remaining: packed expert weight
+loading from safetensors (blocked on 72 GB model download). Provable contracts
 validated (`pv validate` PASS on both MoE contracts).
 
 ## 7. Verification Architecture
