@@ -2322,7 +2322,37 @@ Read:   MappedFile::open → AprV2ReaderRef::from_bytes(mmap.as_slice())
         → zero-copy tensor index parsing → on-demand tensor access
 ```
 
-### 6.21 Stage 2: Distillation Pipeline Performance Plan
+### 6.21 Model Format Policy: APR as Canonical Format
+
+**Policy**: All albor models MUST be stored and distributed in `.apr` (APR v2)
+format. SafeTensors and GGUF are import sources, not canonical storage.
+
+**Rationale**:
+1. **Convert once, use forever**: `apr import` converts SafeTensors/GGUF to .apr.
+   All downstream operations (training, inference, quantization, distillation)
+   read .apr natively.
+2. **Streaming I/O**: `AprV2StreamingWriter` for import, `MappedFile` +
+   `AprV2ReaderRef` for reading. Constant memory regardless of model size.
+3. **Self-describing**: APR v2 header + metadata JSON encodes architecture,
+   dtype, quantization, and provenance. No external `config.json` needed.
+4. **Integrity**: CRC32 footer, 64-byte tensor alignment, sorted tensor index.
+5. **Sovereign**: No Python dependency, no HuggingFace runtime dependency.
+
+**Workflow**:
+```
+External model → apr import → model.apr (canonical, BF16/F32)
+                                  ↓
+                    apr quantize → model-q4k.apr (quantized)
+                    apr train    → reads .apr checkpoints
+                    apr eval     → reads .apr model
+                    apr distill  → reads teacher .apr
+```
+
+**Teacher models for distillation** (§6.22): Import once from HuggingFace
+SafeTensors to .apr. The .apr file is the single source of truth. Do NOT
+re-download or re-convert.
+
+### 6.22 Stage 2: Distillation Pipeline Performance Plan
 
 Stage 1 (base pretraining, §6.16–6.18) produces `albor-base-350m`. Stage 2
 distills knowledge from Qwen3.5-35B-A3B (§4, spec chapter 04-distillation)
