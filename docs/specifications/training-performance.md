@@ -8,7 +8,51 @@ contract (`pv validate`) that defines equations, invariants, proof obligations,
 and falsification tests. Code is written to satisfy the contract — never the
 reverse.
 
-**Verification stack** (sovereign, no external dependencies):
+### 0.1 Sovereign Format: APR v2
+
+All models are stored and distributed in `.apr` (APR v2) format. SafeTensors
+and GGUF are import sources, not canonical storage. Convert once at the
+boundary, use `.apr` everywhere inside the pipeline.
+
+**Why**: No Python dependency, no HuggingFace runtime. Self-describing
+metadata (architecture, dtype, provenance). CRC32 integrity. 64-byte aligned
+tensors for zero-copy mmap. Streaming I/O for any model size.
+
+### 0.2 Resource Budget Discipline
+
+**No component may be introduced that explodes compute, memory, or storage.**
+
+Every new operation must declare its resource budget BEFORE implementation.
+If measured cost exceeds the budget by >2x, the component is rejected (Jidoka)
+until the root cause is fixed.
+
+| Resource | Budget Rule | Measurement |
+|----------|------------|-------------|
+| **Heap RAM** | Peak RSS < model_size / 10 for read-only ops, < model_size for write ops | `/usr/bin/time -v` VmRSS |
+| **VRAM** | Total < 24 GB (RTX 4090) with ≥2 GB headroom | `nvidia-smi` |
+| **Storage** | Output ≤ input × dtype_ratio + 1% overhead | `ls -l` before/after |
+| **Step time** | New component < 5% of total step time, or replaces existing | StepProfiler |
+| **Throughput** | tok/s must not regress >5% from previous baseline | Training log |
+
+**Falsification protocol** for every new component:
+
+1. **Before**: Declare expected resource usage in contract
+2. **During**: Measure actual usage with `/usr/bin/time -v`, `nvidia-smi`, StepProfiler
+3. **After**: Compare measured vs declared. If >2x budget → Jidoka stop → fix root cause
+4. **Regression**: Run on same hardware, same data, same config. Compare to baseline.
+
+**Historical violations that motivated this discipline**:
+
+| Component | Expected | Actual | Root Cause | Fix |
+|-----------|----------|--------|-----------|-----|
+| `apr import` (67GB) | ~5 GB RAM | 134 GB | No streaming writer | AprV2StreamingWriter (ALB-081) |
+| `apr tensors` (67GB) | ~100 MB RAM | 89 GB | `read_to_end()` | MappedFile + AprV2ReaderRef (ALB-081) |
+| `rms_norm_forward` | ~1% step time | 97.1% | Per-row kernel launch | Batched kernel (ALB-076) |
+| `grad_clip` | ~1% step time | 20%+ | 864 D2H syncs/step | Fused GPU clip (ALB-078) |
+
+### 0.3 Verification Stack
+
+Sovereign, no external dependencies:
 
 | Layer | Tool | Role |
 |-------|------|------|
@@ -17,21 +61,24 @@ reverse.
 | Profiling | `probador` (probar) | Brick budgets, per-component SLA enforcement, Jidoka gates |
 | Tracing | `renacer` (BrickTracer) | Per-kernel/per-block/per-transfer spans, OTLP export, anomaly escalation |
 | Measurement | `renacer` (metrics) | Counter/Gauge/Histogram with SIMD acceleration (trueno) |
+| Resources | `/usr/bin/time -v`, `nvidia-smi` | Peak RSS, VRAM, wall clock — measured at EVERY step |
 
 **Workflow for every optimization phase:**
 
 ```
-1. pv validate contracts/cublas-gemm-v1.yaml          # Contract first
-2. pv scaffold contracts/cublas-gemm-v1.yaml           # Generate test stubs
-3. make bench-gemm-raw                                 # Establish ceiling
-4. Implement against contract
-5. make bench-gemm-compare                             # Three-tier benchmark
-6. probador brick budgets verify per-component SLAs    # Brick profiling
-7. renacer --trace-compute traces per-kernel timing    # Layer tracing
-8. pv audit contracts/cublas-gemm-v1.yaml              # Binding coverage
-9. Dogfood on 350M training run
-10. make bench-gemm-regression                         # No regressions
-11. Close gap in §11
+ 1. Write resource budget (RAM, VRAM, storage, step time)
+ 2. pv validate contracts/<name>.yaml                   # Contract first
+ 3. pv scaffold contracts/<name>.yaml                   # Generate test stubs
+ 4. make bench-<component>                              # Establish ceiling
+ 5. Implement against contract
+ 6. /usr/bin/time -v <command>                           # Measure peak RSS
+ 7. make bench-<component>-compare                      # Three-tier benchmark
+ 8. probador brick budgets verify per-component SLAs    # Brick profiling
+ 9. renacer --trace-compute traces per-kernel timing    # Layer tracing
+10. pv audit contracts/<name>.yaml                      # Binding coverage
+11. Dogfood on 350M training run
+12. Verify: no resource regression vs baseline          # tok/s, RSS, VRAM
+13. Close gap in §11
 ```
 
 ## 1. Current Performance Baseline
@@ -2327,7 +2374,7 @@ Read:   MappedFile::open → AprV2ReaderRef::from_bytes(mmap.as_slice())
 **Policy**: All albor models MUST be stored and distributed in `.apr` (APR v2)
 format. SafeTensors and GGUF are import sources, not canonical storage.
 
-**Rationale**:
+**Rationale** (see also §0.1):
 1. **Convert once, use forever**: `apr import` converts SafeTensors/GGUF to .apr.
    All downstream operations (training, inference, quantization, distillation)
    read .apr natively.
@@ -2347,6 +2394,25 @@ External model → apr import → model.apr (canonical, BF16/F32)
                     apr eval     → reads .apr model
                     apr distill  → reads teacher .apr
 ```
+
+**Resource budgets for format operations** (§0.2 discipline):
+
+| Operation | Input | Output | Peak RAM | Wall Clock |
+|-----------|-------|--------|----------|------------|
+| `apr import` (streaming) | 67 GB SafeTensors | 67 GB .apr | < 6 GB | < 10 min |
+| `apr tensors` (mmap) | 67 GB .apr | terminal | < 50 MB | < 1 sec |
+| `apr quantize` (future) | 67 GB BF16 .apr | ~18 GB Q4K .apr | < 6 GB | TBD |
+| `apr train` checkpoint | ~1.5 GB F32 .apr | ~1.5 GB F32 .apr | in-band | < 5 sec |
+
+**Falsification tests**:
+
+| Test | Condition | Threshold | If Fails |
+|------|-----------|-----------|----------|
+| FORMAT-001 | `apr import` peak RSS | < input_size / 10 | Streaming writer broken |
+| FORMAT-002 | `apr tensors` peak RSS | < 50 MB for any file | mmap path broken |
+| FORMAT-003 | Output .apr size | ≤ input size + 1% | Alignment padding excessive |
+| FORMAT-004 | CRC32 on output | Matches streaming_crc32 | Corruption in finalize |
+| FORMAT-005 | No SafeTensors/GGUF in training pipeline | grep -r ".safetensors\|.gguf" configs/ = 0 | Format policy violated |
 
 **Teacher models for distillation** (§6.22): Import once from HuggingFace
 SafeTensors to .apr. The .apr file is the single source of truth. Do NOT
@@ -2466,6 +2532,15 @@ Layer 4: LAYER TRACING (renacer BrickTracer)
     - Backward: block_N_backward_gemm, block_N_backward_elementwise
     - Transfer: pcie_h2d_embed, pcie_d2h_logits, pcie_h2d_grad
     - Optimizer: block_N_optimizer_d2h, block_N_adamw, block_N_optimizer_h2d
+
+Layer 5: RESOURCE BUDGETS (§0.2 Resource Budget Discipline)
+  What: Peak RAM, VRAM, storage, step time for every operation
+  When: BEFORE (declare budget), AFTER (measure actual), ALWAYS (regression)
+  How:  /usr/bin/time -v, nvidia-smi, ls -l, StepProfiler
+  Pattern: Every new component declares budget in contract. Measured vs
+    declared. >2x violation → Jidoka stop. Historical violations become
+    permanent contract obligations.
+  Trigger: Any new import, export, kernel, optimizer, or data pipeline op
 ```
 
 ### 7.2 Escalation Chain
@@ -2521,6 +2596,8 @@ pv audit contracts/training-step-budget-v1.yaml \
 
 ## 8. Risks
 
+### 8.1 Performance Risks
+
 | Risk | Mitigation | Contract Obligation |
 |------|------------|---------------------|
 | cuBLAS FP16 numerical divergence | Keep FP32 master weights, compare loss curves | FALSIFY-CUBLAS-002 |
@@ -2531,6 +2608,21 @@ pv audit contracts/training-step-budget-v1.yaml \
 | FP16 weight precision loss | Standard practice; master weights remain FP32 on CPU | FALSIFY-CUBLAS-002 |
 | Silent regression after optimization | Brick budgets + Jidoka gates detect immediately | FALSIFY-BUDGET-003 |
 | Unaccounted overhead hiding bottleneck | Brick coverage >= 95% of step time enforced | FALSIFY-BUDGET-001 |
+
+### 8.2 Resource Explosion Risks (§0.2 Discipline)
+
+| Risk | Symptom | Mitigation | Historical Example |
+|------|---------|------------|-------------------|
+| Full-file-in-RAM read | RSS ≈ file_size | mmap + zero-copy reader | ALB-081: 89 GB RSS for `apr tensors` |
+| Full-model-in-RAM import | RSS ≈ 2× model_size | Streaming writer (temp file) | ALB-081: 134 GB RSS for `apr import` |
+| Per-element kernel launch | 97%+ GPU time in dispatch | Batched kernel (single launch) | ALB-076: 100K launches/step |
+| Per-block D2H sync | O(blocks × buffers) syncs/step | Fused GPU pipeline (zero sync) | ALB-078: 864 D2H transfers/step |
+| Unnecessary loss scaling | f32 overflow after N layers | Remove GradScaler for f32 backward | ALB-072: 65536× scaling → NaN |
+| Config field not consumed | Feature silently absent | grep for field in actual loop | ALB-079: cosine decay parsed but unused |
+
+**Enforcement**: Every new component undergoes the §0.2 resource measurement
+protocol. Any >2× budget violation triggers Jidoka stop. The historical
+examples above are NEVER repeated — each became a permanent contract obligation.
 
 ## 9. Dependencies
 
@@ -2548,12 +2640,15 @@ pv audit contracts/training-step-budget-v1.yaml \
 
 | Contract File | Status | Validates |
 |---------------|--------|-----------|
-| `contracts/cublas-gemm-v1.yaml` | **NEW** (write before Phase 1) | cuBLAS correctness, buffer safety, MFU improvement |
-| `contracts/training-step-budget-v1.yaml` | **NEW** (write before Phase 0) | Brick-level performance SLAs, Jidoka enforcement |
+| `contracts/cublas-gemm-v1.yaml` | VERIFIED | cuBLAS correctness, buffer safety, MFU improvement |
+| `contracts/training-step-budget-v1.yaml` | EXISTING | Brick-level performance SLAs, Jidoka enforcement |
 | `contracts/training-gpu-kernel-v1.yaml` | EXISTING | Parent contract — PCIe transfers, stability, gradient flow |
 | `contracts/training-memory-kernel-v1.yaml` | EXISTING | VRAM budget (must update for FP16 weight storage) |
 | `contracts/training-config-kernel-v1.yaml` | EXISTING | Epoch/step/LR algebraic consistency |
-| `contracts/fused-kernels-v1.yaml` | **NEW** (write before Phase 4) | Fused CE, RMS norm reuse, SwiGLU in-place, fused attention |
+| `contracts/cosine-lr-schedule-v1.yaml` | VERIFIED | Cosine decay lr schedule correctness (ALB-079) |
+| `contracts/batch-size-scaling-v1.yaml` | VERIFIED | Effective batch size ≥64K tokens (ALB-080) |
+| `contracts/streaming-reader-v1.yaml` | VERIFIED | Mmap APR reading, no full-file-in-RAM (ALB-081) |
+| `contracts/fused-kernels-v1.yaml` | EXISTING | Fused CE, RMS norm reuse, SwiGLU in-place, fused attention |
 | `contracts/gpu-optimizer-v1.yaml` | FUTURE (Phase 4) | GPU-resident AdamW correctness |
 | `contracts/gpu-embedding-v1.yaml` | FUTURE (Phase 5) | GPU embedding lookup + scatter-add |
 | `contracts/async-pipeline-v1.yaml` | FUTURE (Phase 6) | Compute/transfer overlap safety |

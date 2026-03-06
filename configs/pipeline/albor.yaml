@@ -156,7 +156,7 @@ resources:
       apr train plan configs/train/pretrain-50m.yaml &&
       apr train apply configs/train/pretrain-50m.yaml --seed 42
     output_artifacts: ["./checkpoints/albor-base-50m/"]
-    completion_check: "test -f ./checkpoints/albor-base-50m/checkpoint-best.safetensors"
+    completion_check: "test -f ./checkpoints/albor-base-50m/checkpoint-best.apr"
     depends_on: [tokenize, cuda-driver]
 
   train-350m:
@@ -166,7 +166,7 @@ resources:
       apr train plan configs/train/pretrain-350m.yaml &&
       apr train apply configs/train/pretrain-350m.yaml --seed 42
     output_artifacts: ["./checkpoints/albor-base-350m/"]
-    completion_check: "test -f ./checkpoints/albor-base-350m/checkpoint-best.safetensors"
+    completion_check: "test -f ./checkpoints/albor-base-350m/checkpoint-best.apr"
     depends_on: [train-50m]
 
   # ═══════════════════════════════════════════════════════════
@@ -189,7 +189,7 @@ resources:
     command: >
       apr distill apply configs/train/distill.yaml --stage train --seed 42
     output_artifacts: ["./checkpoints/albor-distill/"]
-    completion_check: "test -f ./checkpoints/albor-distill/checkpoint-best.safetensors"
+    completion_check: "test -f ./checkpoints/albor-distill/checkpoint-best.apr"
     depends_on: [distill-logits]
 
   # ═══════════════════════════════════════════════════════════

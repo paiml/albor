@@ -21,7 +21,7 @@ teacher:
   max_seq_len: 2048                        # Match student context length
 
 student:
-  checkpoint: "./checkpoints/albor-base-350m/checkpoint-best.safetensors"
+  checkpoint: "./checkpoints/albor-base-350m/checkpoint-best.apr"
   config: "configs/train/pretrain-350m.yaml"
 
 distillation:

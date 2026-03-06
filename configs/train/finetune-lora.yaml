@@ -7,7 +7,7 @@
 # VRAM overhead: minimal — only adapter gradients + optimizer states.
 
 base_model:
-  checkpoint: "./checkpoints/albor-distill/checkpoint-best.safetensors"
+  checkpoint: "./checkpoints/albor-distill/checkpoint-best.apr"
   config: "configs/train/pretrain-350m.yaml"
   freeze: true                             # Base weights frozen
 
