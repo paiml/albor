@@ -2175,10 +2175,10 @@ equals the random baseline ln(32768) = 10.40.
 | GPU memory | 11,463 / 24,081 MB |
 | NaN steps | 0 |
 
-### 6.18 v4 Resume Extended Training (step 165, LIVE)
+### 6.18 v4 Resume Extended Training (step 284, LIVE)
 
 **Status**: Training continued past the initial 53-step observation window.
-Full data through step 165 (21.6M resume tokens, cumulative 87.1M tokens).
+Full data through step 284 (37.2M resume tokens, cumulative 102.7M tokens).
 
 **Extended loss curve** (measured, cumulative step = resume_step + 500):
 
@@ -2213,22 +2213,24 @@ Full data through step 165 (21.6M resume tokens, cumulative 87.1M tokens).
 | 259 | 759 | 5.98 | 0.08 | 2.99e-4 | 99.5M |
 | 262 | 762 | **5.69** | 0.09 | 2.99e-4 | 99.7M |
 | 271 | 771 | 6.24 | 0.14 | 2.99e-4 | 100.9M |
+| 275 | 775 | 6.66 | 0.08 | 2.99e-4 | 101.4M |
+| 278 | 778 | 6.43 | 0.09 | 2.99e-4 | 101.8M |
+| 281 | 781 | 6.65 | 0.07 | 2.99e-4 | 102.2M |
+| 284 | 784 | 6.27 | 0.08 | 2.99e-4 | 102.7M |
 
-**Key observations** (updated at step 271):
+**Key observations** (updated at step 284):
 
-1. **New best loss: 5.69 at step 262** (cumulative step 762, ~99.7M tokens).
-   First sub-5.7 reading. Also 5.98 at step 259. The model is making
-   clear progress — consecutive sub-6.0 readings suggest the low
-   values are not statistical noise.
+1. **Best loss: 5.69 at step 262** (cumulative step 762, ~99.7M tokens).
+   Also 5.98 at step 259, 5.99 at step 112. Consecutive sub-6.0
+   readings confirm these are not noise.
 
-2. **100M token milestone passed**: At step 271 (cum. 771), the model
-   has seen ~101M tokens. Loss oscillation band narrowing: 5.69–6.94
-   (step 250-271) vs 6.04–7.50 (step 181-228). The floor is dropping
-   faster than the ceiling.
+2. **103M tokens processed**: At step 284 (cum. 784), the model
+   has seen ~102.7M tokens. Loss oscillation band: 5.69–6.94
+   (step 250-284). The floor is dropping while the ceiling holds.
 
-3. **gnorm healthy and low** (0.05–0.12): No gradient explosions. ZClip
-   triggered occasionally (z=2.1–3.9) on individual sub-steps but the
-   clipping is working correctly — optimizer-level gnorm stays under 0.12.
+3. **gnorm healthy and stable** (0.05–0.17): No gradient explosions.
+   ZClip triggered frequently (z=2.0–4.0) on individual sub-steps but
+   clipping is working — optimizer-level gnorm stays under 0.17.
 
 4. **Cosine decay starting**: lr dropped from 3.00e-4 to 2.99e-4 at step
    184 (2.6% through schedule). Decay becomes meaningful around step 500
@@ -2238,8 +2240,8 @@ Full data through step 165 (21.6M resume tokens, cumulative 87.1M tokens).
    window). This low noise scale confirms the 131K token batch is large
    enough — gradient signal dominates noise.
 
-6. **Throughput steady**: 3,557–3,564 tok/s (10.3% MFU) throughout.
-   VRAM stable at 14.3 GB / 24 GB.
+6. **Throughput steady**: 3,546–3,558 tok/s (10.3% MFU) throughout.
+   VRAM: 14.3–16.2 GB / 24 GB.
 
 **Comparison with v3 at equivalent token count**:
 
@@ -2257,7 +2259,7 @@ collapse that plagued v3 (3.0→0.13 over 28K steps) is absent — v4's gnorm
 is naturally low from the start due to the 32x larger batch size.
 
 **Projection to 1B tokens** (~step 7600 cumulative):
-- At 3,555 tok/s: ~66 hours remaining from step 271
+- At 3,550 tok/s: ~64 hours remaining from step 284
 - Target: val_ppl < 100 (current est. ~300 based on best loss 5.69)
 - Noise scale B_noise ≈ 0.13 confirms batch size is optimal
 - Cosine decay engaging — expect loss acceleration from step 500 onward

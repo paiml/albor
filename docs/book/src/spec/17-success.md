@@ -42,11 +42,11 @@
 - Fixes: cosine LR decay (entrenar PR #241) + gradient_accumulation=32 (131K tokens/step)
 - Original run: 500 steps, val_ppl=1032.7 (matched v3 at 57% token budget)
 - System reboot at step 553; resumed from step-500 checkpoint
-- Extended resume: step 271 (cum. step 771), **best loss=5.69** at step 262
-- 100M tokens milestone passed; loss floor dropping (5.69-6.94 range)
-- ZClip catching gradient spikes (z=2.2–3.9), gnorm healthy 0.05–0.17
-- Throughput: 3,555 tok/s steady, 10.3% MFU, 14-16 GB / 24 GB VRAM
-- Target: val_ppl < 100 by 1B tokens (~66 hours remaining)
+- Extended resume: step 284 (cum. step 784), **best loss=5.69** at step 262
+- 103M tokens processed; loss oscillation band 5.69-6.94
+- ZClip catching gradient spikes (z=2.0–4.0), gnorm healthy 0.05–0.17
+- Throughput: 3,546–3,558 tok/s steady, 10.3% MFU, 14-16 GB / 24 GB VRAM
+- Target: val_ppl < 100 by 1B tokens (~64 hours remaining)
 - Same hardware (RTX 4090), same data (codeparrot-clean)
 
 ### Good (Phase 5 complete)
@@ -63,7 +63,7 @@
 - [ ] Benchmark trajectory published showing improvement at each stage
 - [ ] **Submitted to Big Code Models Leaderboard** — first sub-1B model on the board
 - [ ] **Q4 model: <50ms/token on CPU, <10ms/token on GPU** (code completion latency)
-- [x] Critical path gaps (ALB-001, 006, 009, 011, 018) closed with upstream fixes; ALB-010 (Qwen3.5-35B-A3B MoE inference) remains OPEN
+- [x] Critical path gaps (ALB-001, 006, 009, 011, 018) closed with upstream fixes; ALB-010 (Qwen3.5-35B-A3B MoE inference) PR #133 MERGED, weight loading remaining
 - [ ] Models published on HuggingFace as `paiml/albor-python-*`
 - [ ] Q4 quantized model < 100MB, runs on consumer hardware
 - [ ] **All 8 kernel contracts written and verified** (ALB-013–017, ALB-039–040, ALB-060)

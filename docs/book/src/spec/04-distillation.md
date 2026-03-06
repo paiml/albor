@@ -167,7 +167,7 @@ student: albor-base-350m, temperature=4.0, alpha=0.5, LoRA rank 16.
 
 ### 4.7 ALB-010 Implementation Status: MoE Inference in Realizar
 
-**Status: DOGFOODING** — Steps 1-4 complete ([PR #133](https://github.com/paiml/realizar/pull/133)).
+**Status: MERGED** — Steps 1-5b merged to main ([PR #133](https://github.com/paiml/realizar/pull/133), squash-merged).
 
 **Step 1: Expert weight types + loading** — DONE
 - `MoeExpertWeights` struct in `gpu/scheduler/types.rs` (45 files updated)
