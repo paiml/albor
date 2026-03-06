@@ -125,5 +125,11 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-079 | entrenar [#241](https://github.com/paiml/entrenar/issues/241) | entrenar | CUDA trainer ignores lr_scheduler — constant lr after warmup | Critical | **FIXED** | `CudaTransformerTrainer::current_lr()` only had linear warmup; returned constant `base_lr` after warmup. YAML `lr_scheduler: "cosine"` parsed but never applied. Five Whys: val_loss plateau at 6.92 + gnorm collapse 3.0→0.13 at constant lr. Fix: cosine decay using `max_steps` + `set_lr()` for CPU embed optimizer (`entrenar@297308d`, PR #241). v4 training launched with cosine decay active. |
 | ALB-080 | albor [#61](https://github.com/paiml/albor/issues/61) | albor config | Effective batch size 48-128x too small for 350M training | Critical | **FIXED** | 4,096 tokens/step vs comparable runs: CodeParrot-small 196K, GPT-2 524K. Root cause: `gradient_accumulation: 1` in v3 config. Fix: v4 config with `gradient_accumulation: 32` → 131K tokens/step. Same wall-clock, 32x better gradient quality. Target: val_ppl < 100 by 1B tokens. v3 stopped at step 28K (val_ppl=1018, plateau); v4 launched with both fixes. |
 
+### 11.7 Data Pipeline Gaps
+
+| ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
+|----|-------|-----------|-----|----------|--------|---------------------|
+| ALB-081 | [aprender#418](https://github.com/paiml/aprender/pull/418), [realizar#136](https://github.com/paiml/realizar/issues/136) | aprender | Streaming APR import + mmap reader — eliminate OOM on large models | Critical | **FIXED** | `apr import` loaded entire 67GB model into RAM (134GB as F32) → swap storm. `apr tensors` loaded entire .apr into `Vec<u8>` → 89GB RSS. Five Whys: no streaming write path, no mmap read path. Fix: `AprV2StreamingWriter` (temp file, peak RAM ~5GB), `MappedFile` + `AprV2ReaderRef` for reading (10.9MB RSS on 67GB file). Contract: `streaming-reader-v1.yaml`, FALSIFY-MMAP-001 verified. |
+
 *Gaps are added as they are discovered during implementation and dogfooding.*
 
