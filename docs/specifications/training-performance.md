@@ -98,9 +98,12 @@ Sovereign, no external dependencies:
 | Loss trajectory (v3) | 10.40 → 6.61 (step 28K) | v3 run, stopped (ALB-079/080) |
 | Gradient norm (v3) | 3.04 → 0.13 (step 1K → 28K) | Collapsed (constant lr, no decay) |
 | Tokens processed (v3) | **115M** | 28,000 × 4 × 1024 |
-| **Training loss (v4, step 12)** | **10.39** | v4 launch (cosine decay + grad_accum=32) |
-| **Throughput (v4)** | **3,780 tok/s** | 131K tokens/optimizer step, ~34s/opt step |
-| **MFU (v4)** | **10.9%** | Same hardware, 32x micro-batch accumulation |
+| **Training loss (v4, step 703)** | **6.04–6.83** | v4: cosine decay + grad_accum=32 |
+| **Throughput (v4)** | **3,587 tok/s** | 131K tokens/optimizer step, ~34s/opt step |
+| **MFU (v4)** | **10.4%** | Same hardware, 32x micro-batch accumulation |
+| **Tokens processed (v4, step 703)** | **~92M** | 703 × 131,072 |
+| **Gradient norm (v4)** | 0.07–0.30 | Healthy, no collapse |
+| **B_noise (v4)** | 0.41 | Gradient noise scale — healthy |
 
 ### 1.2 MFU Analysis
 
@@ -134,9 +137,12 @@ MFU (vs FP32 peak):    2.07 / 82.6 = 2.5%
 | LLaMA (Meta) | 65B | A100 80GB | 36% | Touvron et al. 2023 |
 | Chinchilla (DeepMind) | 70B | TPU v3/v4 | ~40% | Hoffmann et al. 2022 |
 | Typical single-GPU PyTorch | 350M | RTX 4090 | 25-35% | Community benchmarks |
-| **Albor (current)** | **370M** | **RTX 4090** | **2.5%** | **Measured** |
+| **Albor v4 (current)** | **370M** | **RTX 4090** | **10.4%** | **Measured (step 703)** |
+| **Albor Phase 5b peak** | **370M** | **RTX 4090** | **22.2%** | **Measured (seq=1024, batch=4, no GA)** |
 
-The gap is **10-15x** vs what the hardware can deliver for this model size.
+The gap is **2.5-3.5x** vs what the hardware can deliver for this model size.
+v4 MFU is lower than Phase 5b peak because gradient accumulation (32 micro-batches)
+adds per-sequence overhead without increasing parallelism.
 
 ### 1.4 Baseline Profiling Protocol (renacer + probador)
 
@@ -2623,6 +2629,93 @@ pv audit contracts/training-step-budget-v1.yaml \
 **Enforcement**: Every new component undergoes the §0.2 resource measurement
 protocol. Any >2× budget violation triggers Jidoka stop. The historical
 examples above are NEVER repeated — each became a permanent contract obligation.
+
+### 8.3 Honest Assessment: What Is and Isn't Done (2026-03-06)
+
+**Pretraining infrastructure is solid. The model hasn't proven anything yet.**
+
+#### What's done (reliability + efficiency)
+
+43 gaps fixed through systematic dogfooding. The training pipeline doesn't
+crash, doesn't produce NaN, doesn't lose work, and converges with correct
+hyperparameters. Every fix is backed by a contract, a root cause analysis,
+and a regression-preventing falsification test.
+
+| Category | Bugs Fixed | Key Fixes |
+|----------|-----------|-----------|
+| **Reliability** (training doesn't crash) | 10 | ALB-038 (missing backward), ALB-043 (buffer overflow), ALB-044 (unclipped grads), ALB-059 (GEMM arg swap), ALB-065 (stream sync race) |
+| **Performance** (throughput) | 4 | ALB-075 (cuBLAS 5.9x), ALB-076 (batched RMSNorm 24.8x), ALB-077 (tensor core NaN), ALB-078 (fused grad clip) |
+| **Convergence** (training quality) | 2 | ALB-079 (cosine LR decay), ALB-080 (batch size 48-128x too small) |
+| **Infrastructure** (don't lose work) | 14 | Checkpointing, crash supervisor, observability stack, experiment tracking |
+| **Data pipeline** | 1 | ALB-081 (streaming APR import, mmap reader — 6,100x memory reduction) |
+
+Combined: 890 tok/s → 3,587 tok/s (4x), 2.6% MFU → 10.4% MFU (4x).
+
+#### What's NOT done
+
+| Gap | Current | World Class | Factor |
+|-----|---------|-------------|--------|
+| **MFU** | 10.4% | 40-60% | 4-6x below |
+| **tok/s** (RTX 4090) | 3,587 | 15,000-30,000 | 4-8x below |
+| **val_ppl** | 1,018 (v3), TBD (v4) | <100 at 1B tokens | unproven |
+| **Eval benchmarks** | none run | HumanEval, MBPP, DS-1000 | zero signal |
+| **Distributed training** | single GPU | multi-node AllReduce | not started |
+| **Post-training pipeline** | not started | distill → finetune → merge → prune → quantize | 0/5 stages |
+
+#### MFU gap: root causes and known fixes
+
+10.4% MFU means 89.6% of GPU compute is wasted. The remaining bottlenecks
+have known solutions — none are research problems:
+
+| Bottleneck | Impact | Fix | Contract |
+|-----------|--------|-----|----------|
+| No fused QKV projection | 3 GEMMs where 1 suffices (3x overhead for Q,K,V) | Concatenate Q/K/V weights, single GEMM, split output | fused-kernels-v1 |
+| No CUDA Graphs | Kernel launch overhead dominates at small batch | Record kernel sequence once, replay per step | FUTURE |
+| No flash attention | Quadratic attention memory, separate score/mask/softmax/value kernels | Flash Attention v2 (tiling, online softmax) | fused-kernels-v1 |
+| Gradient accumulation overhead | 32 sequential micro-batches, no pipeline overlap | Overlap forward(i+1) with backward(i) | async-pipeline-v1 |
+| CPU embedding | Scatter-gather on CPU, 2 PCIe transfers/step | GPU embedding lookup kernel | gpu-embedding-v1 |
+| CPU optimizer states | AdamW runs on CPU per-block | GPU-resident AdamW (zero PCIe for optimizer) | gpu-optimizer-v1 |
+
+Each fix has a FUTURE or EXISTING contract entry in §10.
+
+#### Model quality: unproven
+
+v4 is at step 703 / 7,500 (~92M of ~1B tokens). We don't know:
+
+1. **Will v4 break v3's val_ppl=1018 plateau?** Expected by step ~2,000
+   (~260M tokens) if cosine decay + larger batch actually helps. If val_ppl
+   doesn't improve by step 2,000, something else is wrong (data quality,
+   model architecture, tokenizer).
+
+2. **Will perplexity translate to benchmark performance?** Low perplexity
+   on our training data doesn't guarantee HumanEval pass@1. The model may
+   memorize patterns without learning generalizable code completion.
+
+3. **Is 350M enough for the target task?** Comparable models (CodeParrot-small
+   110M, phi-1 1.3B) suggest 350M is marginal for code completion. We may
+   need the full distillation pipeline (Qwen3-Coder-Next teacher) to be
+   competitive.
+
+**Decision gate**: At step 2,000 (ETA ~5 days), evaluate val_ppl. If val_ppl
+< 500, continue to 7,500 steps. If val_ppl > 800 (no meaningful improvement
+over v3), stop and diagnose — likely data quality or architecture issue, not
+training infrastructure.
+
+#### Pipeline completion: 20%
+
+The full pipeline in `configs/pipeline/albor.yaml` has 18 resources across
+5 stages. Current status:
+
+| Stage | Resources | Status |
+|-------|-----------|--------|
+| 1. Data pipeline | ingest, mix, tokenize | Done (pre-tokenized data in place) |
+| 2. Pretraining | train-50m, train-350m | In progress (v4 running) |
+| 3. Distillation | distill-logits, distill | Blocked on ALB-010 (teacher inference) |
+| 4. Post-training | finetune, merge, prune, quantize | Not started |
+| 5. Eval + Release | eval-code, eval-general, export, publish | Not started |
+
+**Bottom line**: We built a foundation that works. The building — a model
+that actually completes Python code well — hasn't been built yet.
 
 ## 9. Dependencies
 
