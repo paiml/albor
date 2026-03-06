@@ -38,6 +38,8 @@
 - ETA: ~1.7 days total (was 12.7 days with PTX — 5.9x speedup from cuBLAS SIMD)
 - No NaN in 5500 steps (ALB-077: tensor cores disabled, CUBLAS_DEFAULT_MATH)
 - ALB-078 fused grad clip implemented in trueno/entrenar, awaiting dogfood on restart
+- ALB-079 cosine LR decay fixed (was constant lr after warmup)
+- ALB-080 batch size fix: v4 config with ga=32 (131K tokens/step vs v3's 4K)
 
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen2.5-Coder-3B demonstrated (interim); Qwen3-Coder-Next 80B (stretch, ALB-010)

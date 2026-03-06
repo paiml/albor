@@ -1416,7 +1416,7 @@ CPU optimizer become the dominant bottlenecks** (~400ms + ~300ms = ~700ms of
 | **Phase 4** | **+ cuBLAS attention GEMMs** | **1,347 ms** | **1,520** | **2.0%** | **cublas-attention-v1 (MEASURED)** |
 | ~~Phase 5a~~ | ~~+ TF32 tensor cores~~ | ~~257 ms~~ | ~~7,966~~ | ~~10.7%~~ | ~~**REVERTED** (ALB-076 NaN, §6.12)~~ |
 | **Phase 5b** | **+ Batched RMSNorm** | **444 ms** | **9,216** | **26.7%** | **batched-rmsnorm-v1 (MEASURED)** |
-| Phase 6 | + Fused GPU grad clip (ALB-078, §6.14) | ~500 ms | ~8.2K | ~24% | fused-grad-clip-v1 (planned) |
+| **Phase 6** | **+ Fused GPU grad clip (ALB-078, §6.14)** | **~500 ms** | **~8.2K** | **~24%** | **fused-grad-clip-v1 (IMPLEMENTED)** |
 | Phase 7 | + CUDA Graphs (eliminate remaining dispatch) | ~200 ms | ~20K | ~58% | cuda-graphs-v1 (future) |
 | Phase 8 | + Flash Attention (fuse softmax+scale) | ~130 ms | ~31K | ~79% | flash-attn-v1 (future) |
 
