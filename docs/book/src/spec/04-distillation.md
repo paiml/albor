@@ -165,34 +165,35 @@ back to **Qwen2.5-Coder-3B** as a dense teacher:
 **Config**: `configs/train/distill-qwen3b.yaml` — teacher: Qwen2.5-Coder-3B,
 student: albor-base-350m, temperature=4.0, alpha=0.5, LoRA rank 16.
 
-### 4.7 ALB-010 Implementation Plan: MoE Inference in Realizar
+### 4.7 ALB-010 Implementation Status: MoE Inference in Realizar
 
-realizar already has 80% of the infrastructure. The remaining work is
-~300-400 lines across 4 steps:
+**Status: DOGFOODING** — Steps 1-4 complete ([PR #133](https://github.com/paiml/realizar/pull/133)).
 
-**Step 1: Expert weight types + loading** (~80 lines)
-- Add `MoeExpertWeights` struct to `gpu/scheduler/types.rs`
-- Fields: `gate_weight` [256, 2048], `expert_gate_up` [256, 1024, 2048],
-  `expert_down` [256, 2048, 512], `shared_expert_{gate,up,down}`
-- Safetensors name mapping: `model.language_model.layers.{N}.mlp.experts.*`
+**Step 1: Expert weight types + loading** — DONE
+- `MoeExpertWeights` struct in `gpu/scheduler/types.rs` (45 files updated)
+- Fields: `gate_weight`, `expert_gate_up`, `expert_down`, `shared_{gate,up,down}`
+- `GpuModelConfig` extended with `num_experts`, `num_experts_per_tok`, `expert_intermediate_size`
 
-**Step 2: Router forward** (~50 lines)
-- Linear projection: `hidden_states @ gate_weight.T` → [seq, 256]
-- Softmax over 256 experts (reuse existing softmax)
-- Top-8 selection (reuse `top_k_indices` from `moe/mod.rs`)
-- Renormalize selected weights
+**Step 2: Router forward** — DONE (`moe_dispatch.rs`)
+- `moe_route()`: softmax (max-subtracted) → top-k selection → renormalize
+- 3 contract-derived tests pass: stability, uniform routing, order preservation
 
-**Step 3: Expert dispatch** (~100 lines)
-- For each token: run 8 selected SwiGLU experts + 1 shared expert
-- Unfuse `gate_up_proj`: split [1024] → gate [512] + up [512]
-- Per-expert: `down(SiLU(gate(x)) * up(x))`
-- Weighted sum of routed outputs + shared output
+**Step 3: Expert dispatch** — DONE (`moe_dispatch.rs`)
+- `expert_swiglu()`: per-expert `down(SiLU(gate(x)) * up(x))`
+- `moe_forward_token()`: routes to k experts + shared expert, weighted sum
+- 2 contract-derived tests pass: shared expert always active, uniform routing averages
 
-**Step 4: Integration** (~80 lines)
-- In `forward_block_refcell`: if `moe_experts.is_some()`, use MoE dispatch
-  instead of dense FFN
-- Wire expert weights into safetensors loading pipeline
-- Add `num_experts`, `num_experts_per_tok` to `GpuModelConfig`
+**Step 4: Integration into forward pass** — DONE
+- All 5 forward block variants integrated: `forward_block_refcell`, `forward_block_single`,
+  `forward_block_incremental`, `forward_block_incremental_optimized`, `forward_block_idx`
+- MoE path activates when `block.moe_experts.is_some()`
+- Multi-token `forward_block_idx` loops per token (MoE routes independently per token)
+- 15,053 total tests pass (0 failures)
+
+**Remaining: Safetensors weight loading**
+- Map HuggingFace tensor names (`model.layers.{N}.mlp.experts.*`) to `MoeExpertWeights`
+- Fuse individual expert gate/up projections into `expert_gate_up` tensor
+- Blocked on: model download (Qwen3.5-35B-A3B, ~70 GB)
 
 ### 4.8 Provable Contracts for MoE Inference
 

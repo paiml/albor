@@ -2204,20 +2204,25 @@ Full data through step 165 (21.6M resume tokens, cumulative 87.1M tokens).
 | 190 | 690 | 6.42 | 0.05 | 2.99e-4 | 90.4M |
 | 200 | 700 | 6.57 | 0.07 | 2.99e-4 | 91.7M |
 | 206 | 706 | 6.46 | 0.07 | 2.99e-4 | 92.5M |
+| 212 | 712 | 6.75 | 0.09 | 2.99e-4 | 93.3M |
+| 218 | 718 | 7.27 | 0.08 | 2.99e-4 | 94.1M |
+| 225 | 725 | 7.50 | 0.06 | 2.99e-4 | 95.0M |
+| 228 | 728 | 6.74 | 0.06 | 2.99e-4 | 95.4M |
 
-**Key observations** (updated at step 206):
+**Key observations** (updated at step 228):
 
 1. **Best loss: 6.04 at step 181** (cumulative step 681, ~89.2M tokens).
    Second sub-6.1 reading (after 5.99 at step 112). Loss continues to
-   oscillate around ~6.4 mean with occasional dips below 6.1.
+   oscillate around ~6.5 mean with occasional dips below 6.1.
 
-2. **Loss oscillation 6.04–7.08** from step 94 onward. The model fluctuates
-   around ~6.45 mean with high variance. Steps 187 and 193 spike to 7.0+,
-   likely from particularly novel/hard batches. With only 93M tokens seen
-   (1.3% of Chinchilla-optimal), this noise is expected.
+2. **Loss spike at step 225 (7.50)**: Highest loss since warmup. ZClip
+   caught gradient spikes at steps 222-227 (z=2.4–3.9). These are
+   isolated hard batches, not divergence — loss recovered to 6.74 by
+   step 228. With only 95M tokens seen (1.4% of Chinchilla-optimal),
+   batch-to-batch variance remains high.
 
 3. **gnorm healthy and low** (0.05–0.12): No gradient explosions. ZClip
-   triggered occasionally (z=2.1–3.4) on individual sub-steps but the
+   triggered occasionally (z=2.1–3.9) on individual sub-steps but the
    clipping is working correctly — optimizer-level gnorm stays under 0.12.
 
 4. **Cosine decay starting**: lr dropped from 3.00e-4 to 2.99e-4 at step
@@ -2228,9 +2233,8 @@ Full data through step 165 (21.6M resume tokens, cumulative 87.1M tokens).
    window). This low noise scale confirms the 131K token batch is large
    enough — gradient signal dominates noise.
 
-6. **Throughput steady**: 3,549–3,561 tok/s (10.3% MFU) throughout.
-   VRAM stable at 14.3 GB / 24 GB (slight increase from earlier 11.6 GB
-   — likely due to memory allocator fragmentation over 200 steps).
+6. **Throughput steady**: 3,557–3,564 tok/s (10.3% MFU) throughout.
+   VRAM stable at 14.3 GB / 24 GB.
 
 **Comparison with v3 at equivalent token count**:
 
@@ -2248,8 +2252,8 @@ collapse that plagued v3 (3.0→0.13 over 28K steps) is absent — v4's gnorm
 is naturally low from the start due to the 32x larger batch size.
 
 **Projection to 1B tokens** (~step 7600 cumulative):
-- At 3,560 tok/s: ~70 hours remaining from step 206
-- Target: val_ppl < 100 (currently estimated ~600 based on loss ~6.4)
+- At 3,560 tok/s: ~68 hours remaining from step 228
+- Target: val_ppl < 100 (currently estimated ~600 based on loss ~6.5)
 - Noise scale B_noise ≈ 0.13 confirms batch size is optimal
 - Cosine decay engaging — expect loss acceleration from step 500 onward
 
