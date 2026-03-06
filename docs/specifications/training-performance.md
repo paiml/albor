@@ -2252,6 +2252,77 @@ of unique data per second, compared to v3's 6.7K, but each v4 step represents
 - Extrapolation from loss curve: loss should reach ~5.0 by 500M tokens if
   cosine decay engages properly, corresponding to val_ppl ~150
 
+### 6.19 Stage 2: Distillation Pipeline Performance Plan
+
+Stage 1 (base pretraining, §6.16–6.18) produces `albor-base-350m`. Stage 2
+distills knowledge from Qwen3.5-35B-A3B (§4, spec chapter 04-distillation)
+into this base model. This section covers the performance characteristics
+of the distillation pipeline.
+
+**Teacher model**: Qwen3.5-35B-A3B — 35B total params, 3B active per token
+(256 experts, top-8 routed + 1 shared, SwiGLU FFN). Apache 2.0 license.
+
+**Architecture**: Offline logit pre-computation (no simultaneous teacher+student):
+
+```
+Phase 1: Teacher inference (GPU, ~18.3 GB VRAM)
+  Qwen3.5-35B-A3B (Q4) → top-128 logits → Parquet shards (~50-100 GB)
+
+Phase 2: Student training (GPU, ~5 GB VRAM)
+  albor-base-350m + pre-computed logits → KD loss + CE loss → albor-distill-350m
+```
+
+**Teacher throughput estimates** (Qwen3.5-35B-A3B):
+
+| Device | Quant | VRAM/RAM | tok/s | 500M tokens |
+|--------|-------|----------|-------|-------------|
+| RTX 4090 (GPU) | Q4 | 18.3 GB | 50–100 | 1.5–3 days |
+| Xeon 48T (CPU) | Q4 | 18 GB | 5–15 | 10–30 days |
+| Xeon 48T (CPU) | Q8 | 35 GB | 3–8 | 18–48 days |
+
+**FLOP budget for teacher inference** (per token):
+- Active params: 3B (8 experts × 512 intermediate + 1 shared + attention)
+- FLOPs/token ≈ 2 × 3B = 6 GFLOP (forward only, no backward)
+- Router overhead: 256 × 2048 matmul + softmax + top-8 = negligible vs expert FFN
+- RTX 4090 FP16 peak: 330 TFLOP/s → theoretical max: 55K tok/s
+- Q4 bottleneck: weight dequantization + memory bandwidth, not compute
+
+**MoE inference performance characteristics** (ALB-010):
+
+The router + dispatch is the critical path. Contracts define correctness:
+- `moe-router-v1.yaml`: softmax → top-8 → renormalize (5 falsification tests)
+- `moe-expert-dispatch-v1.yaml`: SwiGLU × 8 + shared → weighted sum (7 falsification tests)
+
+Per-token MoE forward:
+1. Router: `x @ gate.T` → [256] logits, softmax, top-8 → **1 GEMM + O(256)**
+2. 8× Expert SwiGLU: `down(SiLU(gate(x)) * up(x))` → **24 GEMMs** (3 per expert × 8)
+3. Shared expert: same as one expert → **3 GEMMs**
+4. Weighted sum: 8 expert outputs × weights → **O(8 × hidden_dim)**
+
+Total: 28 GEMMs per token per MoE layer (vs 3 for dense FFN). Expert GEMMs are
+tiny ([2048, 512] and [512, 2048]) — memory-bandwidth bound at batch=1. Batching
+tokens to the same expert is key to throughput (expert parallelism).
+
+**Student distillation training performance**:
+- Same hardware as Stage 1 (RTX 4090)
+- Additional per-step cost: load teacher logits from Parquet (disk I/O)
+- KL divergence computation: O(vocab_size × batch × seq) = O(32K × 4 × 1024) ≈ 134M ops
+- Expected overhead vs base training: ~10-15% (logit loading + KD loss)
+- Estimated throughput: ~3,000 tok/s (vs 3,600 for base training)
+
+**Data budget for distillation**:
+
+| Approach | Teacher Tokens | GPU-hours | Quality |
+|----------|---------------|-----------|---------|
+| Ground truth first (50-100M) | 50-100M | 8-16h | Highest density |
+| Curated hard examples (500M) | 500M | 60-80h | Good — recommended |
+| Full corpus (2B) | 2B | 250-330h | Best — if benchmarks justify |
+
+**Critical path**: ALB-010 (MoE inference in realizar) must be implemented
+before Phase 1 can begin. The 4-step implementation plan (~300-400 lines)
+is documented in §4.7 of the spec. Provable contracts are written and
+validated (`pv validate` PASS on both MoE contracts).
+
 ## 7. Verification Architecture
 
 ### 7.1 Four-Layer Verification
