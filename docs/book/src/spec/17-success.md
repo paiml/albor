@@ -42,8 +42,10 @@
 - Fixes: cosine LR decay (entrenar PR #241) + gradient_accumulation=32 (131K tokens/step)
 - Original run: 500 steps, val_ppl=1032.7 (matched v3 at 57% token budget)
 - System reboot at step 553; resumed from step-500 checkpoint
-- Resume convergence: loss 10.40→6.31 in 37 steps (8x faster from warm start)
-- Target: val_ppl < 100 by 1B tokens
+- Extended resume: step 165 (cum. step 665), best loss=5.99 at step 112
+- Loss oscillates 5.99–6.78 around mean ~6.3 (1.5 points below v3 at same tokens)
+- gnorm healthy: 0.05–0.14 (no collapse), 3,600 tok/s steady, 10.6% MFU
+- Target: val_ppl < 100 by 1B tokens (~72 hours remaining)
 - Same hardware (RTX 4090), same data (codeparrot-clean)
 
 ### Good (Phase 5 complete)

@@ -193,3 +193,26 @@ realizar already has 80% of the infrastructure. The remaining work is
   instead of dense FFN
 - Wire expert weights into safetensors loading pipeline
 - Add `num_experts`, `num_experts_per_tok` to `GpuModelConfig`
+
+### 4.8 Provable Contracts for MoE Inference
+
+Two design-by-contract YAMLs written and validated (`pv validate` PASS) before
+implementation begins, per engineering discipline Rule #6:
+
+**`contracts/moe-router-v1.yaml`** (Router forward):
+- 4 equations: router_logits, softmax_normalization, topk_selection, weight_renormalization
+- 6 invariants: softmax_valid, topk_ordered, renorm_sum_one, expert_count, index_bounds, deterministic
+- 5 falsification tests: softmax stability with large logits, top-8 correctness, renorm ordering, zero gate weight, shape mismatch rejection
+- 1 Kani harness (stub_float strategy for symbolic f32)
+
+**`contracts/moe-expert-dispatch-v1.yaml`** (Expert dispatch):
+- 5 equations: expert_swiglu, routed_output, shared_expert, moe_output, fused_gate_up_unfuse
+- 6 invariants: expert_output_shape, weighted_sum_preserves_shape, shared_expert_always_active, expert_independence, unfuse_covers_all, numerical_stability
+- 7 falsification tests: single-expert routing, uniform routing, unfuse round-trip, shared expert unconditional, bounds check, finite outputs, dense FFN equivalence
+- 2 Kani harnesses (bounded_int strategy)
+
+**Performance characteristics** (from `docs/specifications/training-performance.md` §6.19):
+- 28 GEMMs per token per MoE layer (vs 3 for dense FFN)
+- Expert GEMMs are tiny ([2048, 512]) — memory-bandwidth bound at batch=1
+- Router overhead negligible vs expert computation
+- Estimated teacher throughput: 50-100 tok/s on RTX 4090 at Q4
