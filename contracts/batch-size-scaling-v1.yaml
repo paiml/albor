@@ -1,0 +1,62 @@
+# Contract: Batch Size Scaling (ALB-080)
+#
+# Ensures effective batch size is appropriate for model scale.
+# Written because ALB-080 identified 48-128x undersized batch.
+
+contract: batch-size-scaling-v1
+version: 1
+component: albor::configs::train
+
+equations:
+  effective_batch_tokens:
+    description: "Total tokens per optimizer step"
+    formula: "B_eff = batch_size * gradient_accumulation * seq_len"
+
+  chinchilla_optimal_tokens:
+    description: "Chinchilla-optimal training budget"
+    formula: "T_opt = 20 * N_params"
+
+  min_effective_batch:
+    description: "Minimum effective batch for model scale"
+    formula: "B_min = 64 * 1024 (65,536 tokens) for N >= 100M params"
+
+invariants:
+  batch_sufficient:
+    description: "Effective batch size meets minimum for model scale"
+    formula: "B_eff >= B_min"
+
+  warmup_fraction:
+    description: "Warmup is 1-10% of total steps"
+    formula: "0.01 <= warmup_steps / max_steps <= 0.10"
+
+  optimizer_steps_sufficient:
+    description: "Enough optimizer steps for convergence"
+    formula: "max_steps >= 1000"
+
+proof_obligations:
+  - id: C-BATCH-001
+    description: "Effective batch >= 64K tokens for 350M model"
+    binding: "pretrain-350m-*.yaml config validation"
+    level: 3
+
+  - id: C-BATCH-002
+    description: "Training config includes C-TRAINCFG-001 pre-flight comment"
+    binding: "YAML header comments"
+    level: 2
+
+falsification_tests:
+  - id: FALSIFY-BATCH-001
+    description: "Reject batch_size=4, grad_accum=1, seq_len=1024 for 350M model"
+    test: |
+      Given: batch_size=4, gradient_accumulation=1, seq_len=1024
+      B_eff = 4 * 1 * 1024 = 4,096
+      Assert: B_eff < B_min (4,096 < 65,536)
+      This config MUST be flagged as undersized.
+
+  - id: FALSIFY-BATCH-002
+    description: "Accept batch_size=4, grad_accum=32, seq_len=1024 for 350M model"
+    test: |
+      Given: batch_size=4, gradient_accumulation=32, seq_len=1024
+      B_eff = 4 * 32 * 1024 = 131,072
+      Assert: B_eff >= B_min (131,072 >= 65,536)
+      This config is acceptable.
