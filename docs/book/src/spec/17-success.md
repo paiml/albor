@@ -42,11 +42,11 @@
 - Fixes: cosine LR decay (entrenar PR #241) + gradient_accumulation=32 (131K tokens/step)
 - Original run: 500 steps, val_ppl=1032.7 (matched v3 at 57% token budget)
 - System reboot at step 553; resumed from step-500 checkpoint
-- Extended resume: step 228 (cum. step 728), best loss=6.04 at step 181
-- Loss oscillates 6.04–7.50 around mean ~6.5; step 225 spike recovered by 228
-- ZClip catching gradient spikes (z=2.4–3.9), gnorm healthy 0.05–0.12
-- Throughput: 3,560 tok/s steady, 10.3% MFU, 14.3 GB / 24 GB VRAM
-- Target: val_ppl < 100 by 1B tokens (~68 hours remaining)
+- Extended resume: step 271 (cum. step 771), **best loss=5.69** at step 262
+- 100M tokens milestone passed; loss floor dropping (5.69-6.94 range)
+- ZClip catching gradient spikes (z=2.2–3.9), gnorm healthy 0.05–0.17
+- Throughput: 3,555 tok/s steady, 10.3% MFU, 14-16 GB / 24 GB VRAM
+- Target: val_ppl < 100 by 1B tokens (~66 hours remaining)
 - Same hardware (RTX 4090), same data (codeparrot-clean)
 
 ### Good (Phase 5 complete)

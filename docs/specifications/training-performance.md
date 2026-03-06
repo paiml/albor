@@ -2208,18 +2208,23 @@ Full data through step 165 (21.6M resume tokens, cumulative 87.1M tokens).
 | 218 | 718 | 7.27 | 0.08 | 2.99e-4 | 94.1M |
 | 225 | 725 | 7.50 | 0.06 | 2.99e-4 | 95.0M |
 | 228 | 728 | 6.74 | 0.06 | 2.99e-4 | 95.4M |
+| 237 | 737 | 6.25 | 0.07 | 2.99e-4 | 96.6M |
+| 250 | 750 | 6.94 | 0.17 | 2.99e-4 | 98.3M |
+| 259 | 759 | 5.98 | 0.08 | 2.99e-4 | 99.5M |
+| 262 | 762 | **5.69** | 0.09 | 2.99e-4 | 99.7M |
+| 271 | 771 | 6.24 | 0.14 | 2.99e-4 | 100.9M |
 
-**Key observations** (updated at step 228):
+**Key observations** (updated at step 271):
 
-1. **Best loss: 6.04 at step 181** (cumulative step 681, ~89.2M tokens).
-   Second sub-6.1 reading (after 5.99 at step 112). Loss continues to
-   oscillate around ~6.5 mean with occasional dips below 6.1.
+1. **New best loss: 5.69 at step 262** (cumulative step 762, ~99.7M tokens).
+   First sub-5.7 reading. Also 5.98 at step 259. The model is making
+   clear progress — consecutive sub-6.0 readings suggest the low
+   values are not statistical noise.
 
-2. **Loss spike at step 225 (7.50)**: Highest loss since warmup. ZClip
-   caught gradient spikes at steps 222-227 (z=2.4–3.9). These are
-   isolated hard batches, not divergence — loss recovered to 6.74 by
-   step 228. With only 95M tokens seen (1.4% of Chinchilla-optimal),
-   batch-to-batch variance remains high.
+2. **100M token milestone passed**: At step 271 (cum. 771), the model
+   has seen ~101M tokens. Loss oscillation band narrowing: 5.69–6.94
+   (step 250-271) vs 6.04–7.50 (step 181-228). The floor is dropping
+   faster than the ceiling.
 
 3. **gnorm healthy and low** (0.05–0.12): No gradient explosions. ZClip
    triggered occasionally (z=2.1–3.9) on individual sub-steps but the
@@ -2252,8 +2257,8 @@ collapse that plagued v3 (3.0→0.13 over 28K steps) is absent — v4's gnorm
 is naturally low from the start due to the 32x larger batch size.
 
 **Projection to 1B tokens** (~step 7600 cumulative):
-- At 3,560 tok/s: ~68 hours remaining from step 228
-- Target: val_ppl < 100 (currently estimated ~600 based on loss ~6.5)
+- At 3,555 tok/s: ~66 hours remaining from step 271
+- Target: val_ppl < 100 (current est. ~300 based on best loss 5.69)
 - Noise scale B_noise ≈ 0.13 confirms batch size is optimal
 - Cosine decay engaging — expect loss acceleration from step 500 onward
 

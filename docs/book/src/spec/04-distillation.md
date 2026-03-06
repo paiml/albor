@@ -217,3 +217,30 @@ implementation begins, per engineering discipline Rule #6:
 - Expert GEMMs are tiny ([2048, 512]) — memory-bandwidth bound at batch=1
 - Router overhead negligible vs expert computation
 - Estimated teacher throughput: 50-100 tok/s on RTX 4090 at Q4
+
+### 4.9 Qwen3.5-35B-A3B Tensor Name Mapping
+
+Architecture class: `Qwen3_5MoeForConditionalGeneration` (model_type: `qwen3_5_moe`).
+All layer tensors use `model.language_model.layers.{L}` prefix (multimodal wrapper).
+
+**MoE Expert Tensors** (packed per-layer, not per-expert):
+
+| Tensor Name | Shape | Description |
+|------------|-------|-------------|
+| `...layers.{L}.mlp.gate.weight` | [256, 2048] | Router: nn.Parameter (not nn.Linear) |
+| `...layers.{L}.mlp.experts.gate_up_proj` | [256, 1024, 2048] | All 256 experts' fused gate+up |
+| `...layers.{L}.mlp.experts.down_proj` | [256, 2048, 512] | All 256 experts' down projection |
+| `...layers.{L}.mlp.shared_expert.gate_proj.weight` | [512, 2048] | Shared expert gate (SwiGLU) |
+| `...layers.{L}.mlp.shared_expert.up_proj.weight` | [512, 2048] | Shared expert up |
+| `...layers.{L}.mlp.shared_expert.down_proj.weight` | [2048, 512] | Shared expert down |
+| `...layers.{L}.mlp.shared_expert_gate.weight` | [1, 2048] | Sigmoid gate scaling shared expert |
+
+**Key architectural detail**: The shared expert output is scaled by
+`sigmoid(shared_expert_gate(x))` before adding to the routed expert sum.
+This was discovered from the HuggingFace source (`Qwen3_5MoeSparseMoeBlock`)
+and added to `MoeExpertWeights.shared_expert_gate_weight` in realizar.
+
+**Expert weights are packed**: Unlike per-expert indexing (`experts.{E}.gate_proj`),
+the main model stores all 256 experts in bulk tensors (`experts.gate_up_proj`).
+The MTP (multi-token prediction) head uses per-expert indexing. Realizar handles
+the packed format directly in `MoeExpertWeights.expert_gate_up`.
