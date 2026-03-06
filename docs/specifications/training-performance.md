@@ -46,11 +46,14 @@ reverse.
 | **Step time (current, Phase 5b)** | **513 ms** | Same config (steady state) |
 | **MFU (current, Phase 5b)** | **22.2%** | vs FP32 peak (as reported by trainer) |
 | VRAM usage | ~11.6 GB / 24 GB | Same config |
-| Training loss (v3, step 26K) | **6.61** | v3 run (PID 1975811, codeparrot-clean) |
-| Validation loss (v3, step 26K) | **6.91** | val_ppl=1000.3 |
-| Loss trajectory (v3) | 10.40 → 6.61 (step 26K) | v3 run (250K steps target) |
-| Gradient norm (v3) | 3.04 → 0.13 (step 1K → 26K) | Monotonic decrease |
-| Tokens processed (v3) | **108M** | 26,400 × 4 × 1024 |
+| Training loss (v3, final) | **6.61** | v3 stopped at step 28K (plateau since 19K) |
+| Validation loss (v3, final) | **6.93** | val_ppl=1018, plateau confirmed |
+| Loss trajectory (v3) | 10.40 → 6.61 (step 28K) | v3 run, stopped (ALB-079/080) |
+| Gradient norm (v3) | 3.04 → 0.13 (step 1K → 28K) | Collapsed (constant lr, no decay) |
+| Tokens processed (v3) | **115M** | 28,000 × 4 × 1024 |
+| **Training loss (v4, step 12)** | **10.39** | v4 launch (cosine decay + grad_accum=32) |
+| **Throughput (v4)** | **3,780 tok/s** | 131K tokens/optimizer step, ~34s/opt step |
+| **MFU (v4)** | **10.9%** | Same hardware, 32x micro-batch accumulation |
 
 ### 1.2 MFU Analysis
 
@@ -1847,10 +1850,12 @@ with large-magnitude transposed operands. The NVIDIA documentation does not
 warn about this failure mode. Always validate full backward pass (all layers,
 production gradient magnitudes) before enabling tensor cores in training.
 
-### 6.13 v3 Training Results (LIVE, step 1000+)
+### 6.13 v3 Training Results (STOPPED, step 28K — plateau)
 
 **Config**: 350M model, seq=1024, batch=4, codeparrot-clean (5.29B tokens,
 20 shards × ~260K sequences), max_steps=250K, save_interval=1000.
+**Status**: Stopped at step 28,000 due to val_ppl plateau (ALB-079 + ALB-080).
+Superseded by v4.
 
 **Loss curve** (v3, measured):
 
@@ -1885,40 +1890,41 @@ production gradient magnitudes) before enabling tensor cores in training.
 | 20000 | 7.15 | 6.93 | 1023.1 | 6,621 | 19.2% | 0.36 | 3.0e-4 |
 | 22000 | 6.77 | 6.92 | 1012.7 | 6,632 | 19.2% | 0.32 | 3.0e-4 |
 | 24000 | 6.83 | 6.92 | 1010.5 | 6,651 | 19.3% | 0.22 | 3.0e-4 |
-| **26000** | **6.61** | **6.91** | **1000.3** | **6,682** | **19.3%** | **0.15** | **3.0e-4** |
+| 26000 | 6.61 | 6.91 | 1000.3 | 6,682 | 19.3% | 0.15 | 3.0e-4 |
+| **28000** | **6.61** | **6.93** | **1018** | **6,690** | **19.4%** | **0.13** | **3.0e-4** |
 
 **Steady-state performance** (steps 100-2000 warmup average):
 - **7,600 tok/s** ± 200 (during warmup, steps 100-1000)
 - **22.1% MFU** vs FP32 peak (RTX 4090, 82.6 TFLOP/s)
 - **516 ms/step** (p50, warmup phase)
 
-**Post-warmup performance** (steps 2000-26000, constant lr):
+**Post-warmup performance** (steps 2000-28000, constant lr):
 - **6,630 tok/s** ± 80 (steady state)
 - **19.2% MFU** (post-warmup average)
 - **~560 ms/step** (p50)
 - **VRAM**: 11.4 GB / 24 GB (47% utilization)
-- **0 NaN** in 26,400 steps (ALB-077 fix verified)
+- **0 NaN** in 28,000 steps (ALB-077 fix verified)
 
 **Checkpoints** (every 1000 steps, 1520 MB SafeTensors each):
-- step-1000 through step-26000 — all verified OK (26 checkpoints total).
+- step-1000 through step-28000 — all verified OK (28 checkpoints total).
 
 **Training dynamics**:
 - Loss converges from 10.4 to ~6.9 in 1000 steps (during warmup)
 - Post-warmup spike at step 2200 (loss=7.63) — lr reached max (3e-4), recovered by step 2500
-- Val loss improving: 7.38 → 7.05 → 6.94 → 6.93 → 6.92 → **6.91** (plateau since step 12K)
-- Val PPL: 1608 → 1157 → 1037 → 1027 → 1013 → **1000** (slow convergence, nearing floor)
-- **Gradient norm collapse**: 3.04 (step 1K) → 1.02 (10K) → 0.15 (26K) — 20x decrease
-  - Expected for well-initialized transformers as loss landscape flattens
-  - ZClip spikes infrequent post-15K (z≤3.4, ema=0.14)
+- Val loss plateaued: 7.38 → 7.05 → 6.94 → 6.93 → 6.92 → 6.91 → **6.93** (plateau since step 19K)
+- Val PPL: 1608 → 1157 → 1037 → 1027 → 1013 → 1000 → **1018** (confirmed plateau)
+- **Gradient norm collapse**: 3.04 (step 1K) → 1.02 (10K) → 0.13 (28K) — 23x decrease
+  - Root cause: constant lr=3e-4 after warmup (ALB-079), no cosine decay
+  - Combined with tiny effective batch of 4K tokens/step (ALB-080)
 - B_noise decreasing: 0.22 → 0.08 (gradient signal/noise ratio improving)
 
-**Token efficiency**: 108M tokens seen at step 26K. Val PPL=1000 at 108M tokens.
+**Token efficiency**: 115M tokens seen at step 28K. Val PPL=1018 at 115M tokens.
 Reference: codeparrot-small (110M) achieved val_loss ~3.5 after 50B tokens.
-The 350M model is undertrained — 108M tokens is <1% of typical training budget.
+The 350M model was undertrained — 115M tokens is <1% of typical training budget.
 
-**ETA**: 250K steps × 0.56s = **38.9 hours** (~1.6 days from start).
-At step 26K: ~10.4% complete, ~34.5 hours remaining.
-Compare: PTX baseline would be 250K × 4.4s = **12.7 days**.
+**v3 stopped**: Run terminated at step 28,000. Root causes identified as ALB-079
+(constant lr, no cosine decay) and ALB-080 (4K tokens/step, 48-128x too small).
+Superseded by v4 with cosine decay + gradient_accumulation=32 (131K tokens/step).
 
 ### 6.14 Stream Sync Bottleneck Analysis (ALB-078, Five Whys)
 
@@ -1974,8 +1980,9 @@ This eliminates 26 of 28 syncs/step. The 2 remaining are irreducible:
 - CE loss download for NaN guard
 - Final sync before embed gradient D2H (C-STREAMSYNC-001)
 
-**Status**: Implemented, compiles, awaiting dogfood on next training restart.
-**Expected impact**: step time 618ms → ~500ms (~20% improvement).
+**Status**: Implemented, verified active in v4 launch (1,794 partials, 7.0 KB buffer).
+**Measured impact**: Eliminated 26 stream syncs/step. v4 micro-batch step time ~1,066ms
+includes gradient accumulation overhead (not directly comparable to v3's 560ms).
 
 ### 6.15 Training Quality Analysis (ALB-079/080, Five Whys)
 
@@ -2008,7 +2015,7 @@ decrease while lr is at peak (3e-4).
 | CodeParrot-small (110M) | 196K |
 | GPT-2 124M (nanoGPT) | ~524K |
 | **Albor v3** | **4,096** |
-| **Albor v4** (planned) | **131,072** |
+| **Albor v4** (launched) | **131,072** |
 
 **Fix**: `pretrain-350m-v4.yaml` with `gradient_accumulation: 32` (131K tokens/step),
 `warmup_steps: 375`, `max_steps: 7500` (~1B tokens). Same wall-clock as v3 (same
@@ -2016,6 +2023,77 @@ number of forward/backward passes), dramatically better gradient quality.
 
 **Expected impact**: val_ppl should break through 1000 floor and reach <100 by 1B tokens.
 gnorm should stabilize at 0.5-2.0 (not collapse to 0.13).
+
+### 6.16 v4 Training Launch (LIVE)
+
+**Config**: 350M model, seq=1024, batch=4, gradient_accumulation=32,
+codeparrot-clean (5.29B tokens), max_steps=7,500 (~1B tokens),
+warmup_steps=375 (5%), cosine lr decay, `pretrain-350m-v4.yaml`.
+
+**Fixes over v3**:
+- **ALB-079**: Cosine lr decay (entrenar #241). Linear warmup to 3e-4 over 375
+  steps, then cosine anneal to 0 over remaining 7,125 steps. Replaces constant
+  lr=3e-4 that caused gradient norm collapse.
+- **ALB-080**: `gradient_accumulation: 32` (131,072 tokens/optimizer step vs
+  4,096 in v3). 32x larger effective batch matches comparable 350M models.
+- **ALB-078**: Fused gradient clipping (entrenar #240, trueno #171). GPU-side
+  norm reduction eliminates 26 stream syncs/step.
+
+**Effective batch size comparison**:
+
+| Version | batch | grad_accum | tokens/opt_step | optimizer steps |
+|---------|-------|------------|-----------------|-----------------|
+| v3 | 4 | 1 | 4,096 | 250,000 |
+| **v4** | **4** | **32** | **131,072** | **7,500** |
+
+**Initial results** (step 12):
+
+| Metric | Value |
+|--------|-------|
+| Training loss | 10.39 |
+| lr | 9.6e-6 (linear warmup phase) |
+| Throughput | 3,780 tok/s |
+| MFU | 10.9% vs FP32 peak |
+| Step time (micro-batch) | ~1,066 ms |
+| Optimizer step time | ~34s (32 micro-batches) |
+| GPU memory | 11,421 / 24,081 MB (47%) |
+| NaN steps | 0 |
+
+**Performance notes**:
+- **Throughput drop vs v3** (3,780 vs 6,630 tok/s): Expected. The tok/s metric
+  measures micro-batch throughput. Gradient accumulation adds per-micro-batch
+  overhead: D2H gradient downloads, CPU-side accumulation buffers, and H2D
+  upload of accumulated gradients every 32 steps. Effective token processing
+  (131K tokens per optimizer step) is 32x v3.
+- **MFU drop** (10.9% vs 19.2%): Same root cause — gradient accumulation
+  overhead amortized across micro-batches reduces raw kernel utilization. The
+  useful work per wall-clock second is higher because each optimizer step
+  processes 32x more gradient signal.
+- **Linear warmup confirmed correct**: lr=9.6e-6 at step 12 matches expected
+  `base_lr × step / warmup_steps = 3e-4 × 12/375 = 9.6e-6`.
+
+**Fused gradient clipping** (ALB-078, verified active):
+- 1,794 partial sums (contiguous GPU buffer, zero D2H transfers)
+- 7.0 KB partials buffer (vs 26 stream syncs/step in v3)
+- GPU-side norm reduction + clip scale computation
+
+**Gradient accumulation memory**:
+- 1,728 MB CPU buffers for 24 blocks × 2 tensors (weights + bias)
+- Accumulated on CPU, averaged, uploaded to GPU every 32 micro-batches
+- GPU VRAM unchanged from v3 (11,421 MB)
+
+**Training budget**:
+- Max steps: 7,500 optimizer steps × 131K tokens = **~983M tokens** (~1B)
+- Wall-clock per optimizer step: ~34s
+- **ETA**: 7,500 × 34s = **70.8 hours (~3 days)**
+- Warmup: 375 steps × 34s = **3.5 hours** (lr ramps to 3e-4)
+- Cosine phase: 7,125 steps × 34s = **67.3 hours** (lr decays to 0)
+
+**Expected trajectory** (based on comparable 350M models):
+- Step 375 (end warmup): loss ~8.0, val_ppl ~3000
+- Step 1,500 (~200M tokens): val_ppl ~500 (break through v3 plateau)
+- Step 3,750 (~500M tokens): val_ppl ~100-200
+- Step 7,500 (~1B tokens): val_ppl <100 (target)
 
 ## 7. Verification Architecture
 

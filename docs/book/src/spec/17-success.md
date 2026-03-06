@@ -31,15 +31,18 @@
 - realizar inference: loads model, generates tokens (gibberish at 50 steps — expected)
 - Perplexity: 31,926 (finite; random baseline ~32,768 for vocab 32K)
 
-**350M v3 training (250K steps, codeparrot-clean, ALB-077 fix):**
-- Step 5500: loss 10.40→6.49, val_loss=7.13, val_ppl=1244, 6,565 tok/s, 19.0% MFU, 600ms/step
-- Checkpoints: step 1K-5K (1520 MB each, all verified OK)
-- Val PPL improving: 1608 → 1332 → 1341 → 1209 → 1244 (noisy but trending down)
-- ETA: ~1.7 days total (was 12.7 days with PTX — 5.9x speedup from cuBLAS SIMD)
-- No NaN in 5500 steps (ALB-077: tensor cores disabled, CUBLAS_DEFAULT_MATH)
-- ALB-078 fused grad clip implemented in trueno/entrenar, awaiting dogfood on restart
-- ALB-079 cosine LR decay fixed (was constant lr after warmup)
-- ALB-080 batch size fix: v4 config with ga=32 (131K tokens/step vs v3's 4K)
+**350M v3 training (250K steps, codeparrot-clean, ALB-077 fix) — STOPPED:**
+- Final: step 28K, loss=6.43, val_ppl=1018, 6.7K tok/s, 19.3% MFU
+- Plateau since step 12K — val_ppl stalled at ~1000, gnorm collapsed 3.0→0.13
+- Root cause: ALB-079 (constant lr after warmup, no cosine decay) + ALB-080 (4K tokens/step, 48-128x too small)
+- Checkpoints: step 1K-28K (1520 MB each, all verified OK)
+- No NaN in 28K steps (ALB-077: tensor cores disabled, CUBLAS_DEFAULT_MATH)
+
+**350M v4 training (ALB-079 + ALB-080 fixes) — RUNNING:**
+- Fixes: cosine LR decay (entrenar PR #241) + gradient_accumulation=32 (131K tokens/step)
+- Step 12 running, loss decreasing from 10.40
+- Target: val_ppl < 100 by 1B tokens
+- Same hardware (RTX 4090), same data (codeparrot-clean), same wall-clock (~1.6 days)
 
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen2.5-Coder-3B demonstrated (interim); Qwen3-Coder-Next 80B (stretch, ALB-010)

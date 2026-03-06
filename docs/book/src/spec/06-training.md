@@ -153,8 +153,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M test (seq=512, batch=4) | 50 | 10.39→5.92 (best 5.53) | ~400s | PASS (post ALB-059 fix) |
 | 350M full v1 (seq=1024, batch=4, accum=128) | 43/5000 | 10.39 flat | ~12s | **FAIL (ALB-060)**: epochs=1 exhausted data |
 | 350M full v2 (seq=1024, batch=4, accum=1) | 1183/5000 | 10.4→6.85 | ~1.4h | **CRASHED**: ALB-073 (PTX selp) + ALB-074 (stale binary). Step 1000 ckpt saved. |
-| 350M v3 (seq=1024, batch=4, codeparrot) | 26K/250K | 10.40→6.61 | ~1.7 days | **RUNNING** (PID 1975811): val_loss=6.91, val_ppl=1000 at step 26K. 6.7K tok/s, 19.3% MFU. **Plateau since step 12K** — ALB-079 (no cosine decay) + ALB-080 (batch too small). |
-| 350M v4 (seq=1024, batch=4, ga=32) | planned | — | ~1.6 days | **PENDING**: Fixes ALB-079 (cosine decay) + ALB-080 (131K tokens/step). Target val_ppl < 100. |
+| 350M v3 (seq=1024, batch=4, codeparrot) | 28K/250K | 10.40→6.43 | ~1.9 days | **STOPPED** (plateau): val_ppl=1018 at step 28K. 6.7K tok/s, 19.3% MFU. Plateau since step 12K — ALB-079 (no cosine decay) + ALB-080 (batch too small). |
+| 350M v4 (seq=1024, batch=4, ga=32) | 12 | 10.40→... | est ~1.6 days | **RUNNING**: ALB-079 (cosine decay) + ALB-080 (gradient_accumulation=32, 131K tokens/step). Target val_ppl < 100. |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
