@@ -40,11 +40,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: Update training-performance.md with v4 + MoE distillation plan
-  status: inprogress
+  status: completed
   priority: high
   assigned_to: null
   created: 2026-03-06T10:36:20Z
-  updated: 2026-03-06T10:36:24.891534997+00:00
+  updated: 2026-03-06T10:44:11.623913948+00:00
   spec: null
   acceptance_criteria:
   - Sync training-performance.md with v4 progress, add MoE teacher section, deploy mdBook.
