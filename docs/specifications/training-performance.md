@@ -2046,7 +2046,20 @@ warmup_steps=375 (5%), cosine lr decay, `pretrain-350m-v4.yaml`.
 | v3 | 4 | 1 | 4,096 | 250,000 |
 | **v4** | **4** | **32** | **131,072** | **7,500** |
 
-**Initial results** (step 12):
+**Loss curve** (v4, measured):
+
+| Step | Loss | lr | gnorm | Tokens Seen |
+|------|------|----|-------|-------------|
+| 1 | 10.40 | 0 | 0.07 | 131K |
+| 50 | 10.24 | 4.0e-5 | 0.09 | 6.6M |
+| 100 | 7.37 | 8.0e-5 | 0.13 | 13.1M |
+| 150 | 6.70 | 1.2e-4 | 0.08 | 19.7M |
+| 200 | 6.48 | 1.6e-4 | 0.06 | 26.2M |
+| 262 | **5.76** | 2.1e-4 | 0.09 | 34.3M |
+| 300 | 7.17 | 2.4e-4 | 0.12 | 39.3M |
+| 331 | 7.90 | 2.7e-4 | 0.06 | 43.4M |
+
+**Initial system metrics** (step 12):
 
 | Metric | Value |
 |--------|-------|
@@ -2054,10 +2067,10 @@ warmup_steps=375 (5%), cosine lr decay, `pretrain-350m-v4.yaml`.
 | lr | 9.6e-6 (linear warmup phase) |
 | Throughput | 3,780 tok/s |
 | MFU | 10.9% vs FP32 peak |
-| Step time (micro-batch) | ~1,066 ms |
+| Step time (micro-batch) | ~1,050 ms |
 | Optimizer step time | ~34s (32 micro-batches) |
 | GPU memory | 11,421 / 24,081 MB (47%) |
-| NaN steps | 0 |
+| NaN steps | 0 (through step 331) |
 
 **Performance notes**:
 - **Throughput drop vs v3** (3,780 vs 6,630 tok/s): Expected. The tok/s metric
@@ -2089,10 +2102,11 @@ warmup_steps=375 (5%), cosine lr decay, `pretrain-350m-v4.yaml`.
 - Warmup: 375 steps × 34s = **3.5 hours** (lr ramps to 3e-4)
 - Cosine phase: 7,125 steps × 34s = **67.3 hours** (lr decays to 0)
 
-**Expected trajectory** (based on comparable 350M models):
-- Step 375 (end warmup): loss ~8.0, val_ppl ~3000
-- Step 1,500 (~200M tokens): val_ppl ~500 (break through v3 plateau)
-- Step 3,750 (~500M tokens): val_ppl ~100-200
+**Expected trajectory** (revised with measured data):
+- Step 375 (end warmup): loss ~6.5-7.0 (measured 5.76 at step 262 — ahead of estimate)
+- Step 500 (first eval): val_ppl estimate ~600-800 (already below v3's plateau of 1018)
+- Step 1,500 (~200M tokens): val_ppl ~200-400 (break through v3 plateau)
+- Step 3,750 (~500M tokens): val_ppl ~50-150
 - Step 7,500 (~1B tokens): val_ppl <100 (target)
 
 ## 7. Verification Architecture
