@@ -2715,46 +2715,47 @@ will NOT solve this. The model is learning at a rate of ~0.05 nats per
 e-folding of data — reaching useful perplexity (<200) would require more
 tokens than exist on the internet.
 
-**Root cause analysis (Five Whys)**:
+**Root cause analysis (Five Whys)** — CORRECTED 2026-03-07:
 
-1. **Why is val_ppl stuck above 900?** The loss barely decreases with more data.
-2. **Why doesn't more data help?** The learning rate per token is near zero
-   (0.0477 nats per ln(D) — essentially flat).
-3. **Why is the learning rate per token so low?** Most likely: the model has
-   already extracted all learnable signal from the training distribution.
-4. **Why can't it extract more signal?** Three candidates:
-   - **Data poverty**: 22K pre-tokenized sequences (~45M unique tokens) is
-     tiny. The model sees the same data ~6x per epoch. After a few epochs,
-     it has memorized the training set but can't generalize — val_ppl plateaus.
-   - **Tokenizer inefficiency**: ByteLevel BPE v2 with 32K vocab may split
-     Python tokens suboptimally, inflating per-token entropy.
-   - **Model capacity**: 370M params may be too small for the vocabulary
-     and sequence length, but this is unlikely to be the primary cause at
-     only 45M unique tokens.
-5. **Why is the dataset so small?** The data pipeline (§pipeline stage 1)
-   only ingested local repos. The external data sources (StarCoder, FineWeb)
-   in `configs/pipeline/albor.yaml` have not been ingested yet.
+The original analysis (above) assumed v4 trained on 45M unique tokens
+(pretokenized-2048, 22K sequences). This was **wrong**. v4 actually used
+`pretokenized-1024-v3` which has **5.3B unique tokens** (5.16M sequences
+× 1024 tokens from codeparrot-clean-2M).
 
-**Diagnosis**: The bottleneck is almost certainly **data poverty**, not
-training infrastructure, hyperparameters, or model architecture. 45M unique
-tokens is 100-1000x smaller than comparable pretraining runs.
+1. **Why is val_ppl stuck above 900?** v4 only trained for 2,425 steps
+   (~318M tokens) out of 5.3B available — 6% data coverage.
+2. **Why so few steps?** v4 was stopped for analysis after manual inspection
+   suggested a plateau. The scaling law fit on 4 early data points (65M-262M)
+   gave a misleadingly flat slope (b=0.0477).
+3. **Why was the slope so flat?** The first 4 eval points (steps 500-2000)
+   are deep in the warmup/early-training regime. The model was still
+   absorbing embedding/attention structure — val_loss hadn't entered the
+   power-law decay phase yet.
+4. **Why didn't we notice?** No automated scaling law predictor existed.
+   Manual analysis at step 2,425 used log-linear extrapolation on insufficient
+   data (4 points in a non-stationary regime).
+5. **What's the actual bottleneck?** Insufficient training steps, not data.
+   5.3B unique tokens at 131K tokens/step = 40,330 steps for one epoch.
+   v4 only completed 6% of one epoch.
 
-**Action items** (ordered by expected impact):
+**Corrected diagnosis**: v4's val_ppl plateau was **premature stopping**, not
+data poverty. The 5.3B-token dataset is adequate for a 350M model (15x
+tokens-to-params ratio). The model needs 40K+ steps to see all data once.
 
-1. **Ingest external data**: Run `alimentar import hf bigcode/starcoderdata
-   --lang python` to get ~50B Python tokens. This is the single highest-impact
-   change possible.
-2. **Expand local data**: Add more ground-truth corpora beyond depyler/hf-gtc/
-   jax-gtc/vllm-gtc.
-3. **De-duplicate**: Ensure the mixed dataset has minimal repetition across
-   epochs.
-4. **Continue v4 to step 7,500**: Even if val_ppl only reaches ~876, the
-   checkpoint is useful as a baseline for distillation (stage 3) and as a
-   data point to confirm the scaling law prediction.
+**Action items** (updated):
 
-**Decision**: Do NOT stop v4 training. Let it run to completion as a baseline.
-In parallel, build the data pipeline to produce a 10-100x larger dataset for
-v5.
+1. **Launch v5 with full epoch**: 40,000 steps on pretokenized-1024-v3
+   (5.3B tokens, ~3.4 hours at 3.5K tok/s).
+2. **Scaling law predictor (ALB-082)**: Now implemented in entrenar #247.
+   Will automatically fit L(D) = a - b × ln(D) at each eval checkpoint and
+   warn if predicted improvement < 10%.
+3. **Supplementary data**: CodeSearchNet Python (133M tokens) tokenized and
+   merged for future v6. Also prepared pretokenize_parquet.py script.
+4. **Evaluate at 1B, 2.5B, 5B tokens**: Track val_ppl trajectory to confirm
+   power-law decay with adequate data coverage.
+
+**Decision**: Train v5 for a full epoch (40K steps). The scaling law predictor
+will automatically flag if the model is genuinely plateauing vs still learning.
 
 #### Pipeline completion: 20%
 
@@ -2796,6 +2797,7 @@ that actually completes Python code well — hasn't been built yet.
 | `contracts/cosine-lr-schedule-v1.yaml` | VERIFIED | Cosine decay lr schedule correctness (ALB-079) |
 | `contracts/batch-size-scaling-v1.yaml` | VERIFIED | Effective batch size ≥64K tokens (ALB-080) |
 | `contracts/streaming-reader-v1.yaml` | VERIFIED | Mmap APR reading, no full-file-in-RAM (ALB-081) |
+| `contracts/scaling-law-prediction-v1.yaml` | VERIFIED | Kaplan scaling law OLS fit + convergence warning (ALB-082) |
 | `contracts/fused-kernels-v1.yaml` | EXISTING | Fused CE, RMS norm reuse, SwiGLU in-place, fused attention |
 | `contracts/gpu-optimizer-v1.yaml` | FUTURE (Phase 4) | GPU-resident AdamW correctness |
 | `contracts/gpu-embedding-v1.yaml` | FUTURE (Phase 5) | GPU embedding lookup + scatter-add |

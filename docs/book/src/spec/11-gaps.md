@@ -131,5 +131,12 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 |----|-------|-----------|-----|----------|--------|---------------------|
 | ALB-081 | [aprender#418](https://github.com/paiml/aprender/pull/418), [realizar#136](https://github.com/paiml/realizar/issues/136) | aprender | Streaming APR import + mmap reader — eliminate OOM on large models | Critical | **FIXED** | `apr import` loaded entire 67GB model into RAM (134GB as F32) → swap storm. `apr tensors` loaded entire .apr into `Vec<u8>` → 89GB RSS. Five Whys: no streaming write path, no mmap read path. Fix: `AprV2StreamingWriter` (temp file, peak RAM ~5GB), `MappedFile` + `AprV2ReaderRef` for reading (10.9MB RSS on 67GB file). Contract: `streaming-reader-v1.yaml`, FALSIFY-MMAP-001 verified. |
 
+### 11.8 Observability Gaps
+
+| ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
+|----|-------|-----------|-----|----------|--------|---------------------|
+| ALB-082 | [entrenar#246](https://github.com/paiml/entrenar/issues/246) | entrenar | Scaling law predictor — early convergence ceiling detection | High | **FIXED** | Fits Kaplan scaling law `L(D) = a - b × ln(D)` to eval checkpoints via OLS after 3+ data points. Predicts val_ppl at max_steps and warns if improvement < 10%. Would have flagged v4 plateau 20 GPU-hours earlier. Contract: `scaling-law-prediction-v1.yaml`. Implementation: entrenar PR #247 merged. |
+| ALB-083 | [albor#63](https://github.com/paiml/albor/issues/63) | albor | Data pipeline expansion — ingest CodeSearchNet Python | Medium | **IN PROGRESS** | CodeSearchNet Python downloaded (455K functions, 133M tokens). Pretokenized to 2048-length sequences (65K seqs). Merged with original data → 180M tokens total. v4 actually used pretokenized-1024-v3 (5.3B tokens from codeparrot-clean-2M), so data wasn't the bottleneck — insufficient training steps was. |
+
 *Gaps are added as they are discovered during implementation and dogfooding.*
 
