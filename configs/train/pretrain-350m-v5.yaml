@@ -52,6 +52,8 @@ training:
   gradient_accumulation: 8                     # 32K tokens/step (GPU-resident accum, ALB-091 fixed)
   output_dir: "./checkpoints/albor-base-350m-v5"
   save_interval: 500
+  eval_interval: 250                          # ALB-087: Eval 2x per save interval
+  patience: 10                                # ALB-087: Early stop after 10 evals (2500 steps) without improvement
   max_steps: 20000                            # 20K × 32K = 655M tokens ≈ full epoch
 
 monitoring:
