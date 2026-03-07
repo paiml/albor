@@ -1,0 +1,23 @@
+[GH-189] Loaded tokenizer from /home/noah/src/albor/checkpoints/albor-base-350m-v4/tokenizer.json: 7 special tokens
+{
+  "benchmark": "humaneval",
+  "elapsed_secs": 2929.78955078125,
+  "mode": "inference",
+  "model": "/home/noah/src/albor/checkpoints/albor-base-350m-v4/model.safetensors",
+  "pass_at_k": [
+    {
+      "k": 1,
+      "rate": 0.0
+    },
+    {
+      "k": 10,
+      "rate": 0.0
+    },
+    {
+      "k": 100,
+      "rate": 0.0
+    }
+  ],
+  "passed": 0,
+  "problems": 164
+}
