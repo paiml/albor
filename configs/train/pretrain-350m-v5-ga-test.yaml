@@ -1,0 +1,58 @@
+# configs/train/pretrain-350m-v5-ga-test.yaml — ALB-091 dogfood test
+#
+# Tests GPU-resident gradient accumulation: batch=4, ga=4 → 16K tokens/step.
+# Should match ga=1/batch=16 throughput (~7.5K tok/s) if ALB-091 fix works.
+# Previous CPU-side ga: 2.9K tok/s (2.6x regression).
+#
+# Short run: 50 steps only, no checkpointing.
+
+model:
+  path: "./checkpoints/albor-base-350m-v5-ga-test/"
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+
+data:
+  train: "data/pretokenized-1024-v3/train/"
+  val: "data/pretokenized-2048/val/"
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 500
+  gradient_accumulation: 4                     # 4K × 4 = 16K tokens/step (GPU-resident accum)
+  output_dir: "./checkpoints/albor-base-350m-v5-ga-test"
+  save_interval: 9999
+  max_steps: 50
+
+monitoring:
+  terminal:
+    enabled: false
+  tracking:
+    enabled: false
+  system:
+    enabled: false
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded — Andon stop"

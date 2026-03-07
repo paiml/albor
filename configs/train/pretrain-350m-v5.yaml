@@ -6,9 +6,12 @@
 #
 # Architecture: Same 350M LLaMA-style model as v3/v4.
 #
-# Token budget: 1 epoch × 5.16M sequences ÷ (batch=4 × ga=32) = 40,330 steps
-# Total tokens: 40,330 × 131,072 = 5.29B tokens (full coverage)
-# Estimated time: 40,330 steps × ~0.3s/step = ~3.4 hours
+# ALB-091 FIXED: GPU-resident gradient accumulation eliminates D2H bottleneck.
+# batch=4, ga=8 → 32K tokens/step at 7.7K tok/s (22% MFU) — zero throughput loss.
+# Previous CPU-side ga: 2.9K tok/s (2.6x regression), now eliminated.
+#
+# Token budget: 20,000 steps × 32,768 tokens/step = 655M tokens
+# ETA: ~24 hours at 7.7K tok/s
 #
 # Scaling law prediction (ALB-082) will run automatically at eval checkpoints.
 
@@ -45,11 +48,11 @@ training:
   epochs: 1
   grad_clip: 1.0
   lr_scheduler: "cosine"
-  warmup_steps: 2000
-  gradient_accumulation: 32                   # 131K tokens/step
+  warmup_steps: 500
+  gradient_accumulation: 8                     # 32K tokens/step (GPU-resident accum, ALB-091 fixed)
   output_dir: "./checkpoints/albor-base-350m-v5"
   save_interval: 500
-  max_steps: 40000                            # ~full epoch of 5.3B tokens
+  max_steps: 20000                            # 20K × 32K = 655M tokens ≈ full epoch
 
 monitoring:
   terminal:
@@ -63,7 +66,7 @@ monitoring:
       model: "albor-350m"
       stage: "pretrain"
       data: "codeparrot-clean-5.3B"
-      batch: "131K-tokens"
+      batch: "32K-tokens"
 
   system:
     enabled: false

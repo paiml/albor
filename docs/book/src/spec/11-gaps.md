@@ -149,5 +149,11 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-088 | [albor#68](https://github.com/paiml/albor/issues/68) | apr (aprender) | Multi-sample pass@k evaluation (n samples per problem) | High | OPEN | `--samples 200 --temperature 0.8` for proper pass@k. Currently n=1 makes pass@10/100 meaningless. Prerequisite: ALB-089 (GPU inference) for practical runtime. |
 | ALB-089 | [albor#69](https://github.com/paiml/albor/issues/69) | entrenar/apr | GPU-accelerated inference for eval (CUDA forward pass) | High | OPEN | `--device cuda` for 10-20x speedup. CPU: 50min/164 problems. GPU target: <5min. Makes multi-sample (ALB-088) practical. |
 
+### 11.10 Training Infrastructure Gaps
+
+| ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
+|----|-------|-----------|-----|----------|--------|---------------------|
+| ALB-091 | — | entrenar | GPU-resident gradient accumulation — D2H bottleneck kills ga>1 throughput | Critical | **FIXED** | `GpuGradientAccumulator` accumulates gradients in GPU memory via `inplace_add_gpu()` (ResidualAddKernel). Zero D2H during micro-batch loop, ONE stream sync per optimizer step. Dogfooded: ga=8, batch=4 → 8.2K tok/s (23.7% MFU) vs previous CPU-side ga: 2.9K tok/s. VRAM cost: 1,520 MB for 350M model. |
+
 *Gaps are added as they are discovered during implementation and dogfooding.*
 
