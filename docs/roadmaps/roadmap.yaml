@@ -6,11 +6,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'ALB-010: MoE inference in realizar for Qwen3.5-35B-A3B'
-  status: planned
+  status: inprogress
   priority: critical
   assigned_to: null
   created: 2026-03-06T10:36:14Z
-  updated: 2026-03-06T10:36:14Z
+  updated: 2026-03-06T10:44:19.847417215+00:00
   spec: null
   acceptance_criteria:
   - 'Implement MoE expert dispatch. Contracts: moe-router-v1, moe-expert-dispatch-v1. 4 steps: expert weight types, router forward, expert dispatch, integration.'
@@ -48,6 +48,48 @@ roadmap:
   spec: null
   acceptance_criteria:
   - Sync training-performance.md with v4 progress, add MoE teacher section, deploy mdBook.
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: GH-62
+  github_issue: 62
+  item_type: task
+  title: 'ALB-082: Scaling law loss prediction during training eval'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-03-07T09:06:37.201882645+00:00
+  updated: 2026-03-07T09:06:37.201882645+00:00
+  spec: null
+  acceptance_criteria:
+  - After 3+ eval checkpoints, log predicted final val_ppl
+  - Warning emitted if predicted improvement < 10%
+  - Prediction logged to JSONL with fit parameters
+  - No new dependencies (pure math, no scipy)
+  - 'Contract: `scaling-law-prediction-v1.yaml` passes `pv validate`'
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: GH-63
+  github_issue: 63
+  item_type: task
+  title: 'ALB-083: Data pipeline expansion — ingest StarCoder Python for v5 training'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-03-07T09:06:43.968299597+00:00
+  updated: 2026-03-07T09:06:43.968299597+00:00
+  spec: null
+  acceptance_criteria:
+  - ≥1B tokens of pre-tokenized Python training data
+  - Data provenance documented in `data/PROVENANCE.md`
+  - Tokenized with albor-tokenizer-v2, seq_len=2048
+  - v5 config created with updated data paths
+  - alimentar import hf gap filed upstream
   phases: []
   subtasks: []
   estimated_effort: null
