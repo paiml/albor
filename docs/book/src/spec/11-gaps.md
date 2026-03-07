@@ -138,5 +138,13 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-082 | [entrenar#246](https://github.com/paiml/entrenar/issues/246) | entrenar | Scaling law predictor — early convergence ceiling detection | High | **FIXED** | Fits Kaplan scaling law `L(D) = a - b × ln(D)` to eval checkpoints via OLS after 3+ data points. Predicts val_ppl at max_steps and warns if improvement < 10%. Would have flagged v4 plateau 20 GPU-hours earlier. Contract: `scaling-law-prediction-v1.yaml`. Implementation: entrenar PR #247 merged. |
 | ALB-083 | [albor#63](https://github.com/paiml/albor/issues/63) | albor | Data pipeline expansion — ingest CodeSearchNet Python | Medium | **IN PROGRESS** | CodeSearchNet Python downloaded (455K functions, 133M tokens). Pretokenized to 2048-length sequences (65K seqs). Merged with original data → 180M tokens total. v4 actually used pretokenized-1024-v3 (5.3B tokens from codeparrot-clean-2M), so data wasn't the bottleneck — insufficient training steps was. |
 
+### 11.9 Evaluation Gaps
+
+| ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
+|----|-------|-----------|-----|----------|--------|---------------------|
+| ALB-084 | [albor#64](https://github.com/paiml/albor/issues/64) | apr (aprender) | HumanEval pass@k evaluation — wire inference into apr eval | Critical | **IN PROGRESS** | `apr eval --task humaneval --data humaneval.jsonl` loads SafeTensors model via realizar, generates completions with `forward_with_cache`, truncates at function boundary, executes Python tests with timeout, reports pass@k. Contract: `eval-humaneval-v1.yaml`. Implementation: [aprender PR #429](https://github.com/paiml/aprender/pull/429). Verified end-to-end: v4 model loads, generates, executes tests (0% pass@1 — expected for undertrained model). |
+| ALB-085 | [albor#65](https://github.com/paiml/albor/issues/65) | apr (aprender) | MBPP benchmark evaluation | High | OPEN | Second code benchmark. Same inference bridge as ALB-084. 974 problems (Python). |
+| ALB-086 | [albor#66](https://github.com/paiml/albor/issues/66) | apr (aprender) | SafeTensors checkpoint → realizar inference bridge validation | Medium | OPEN | Verify that entrenar-saved checkpoints load correctly in realizar for inference. config.json + tokenizer.json required in checkpoint dir. |
+
 *Gaps are added as they are discovered during implementation and dogfooding.*
 
