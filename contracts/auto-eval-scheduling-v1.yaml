@@ -101,3 +101,13 @@ kani_harnesses:
     bound: 16
     strategy: exhaustive
     harness: verify_patience_zero_disabled
+
+qa_gate:
+  id: F-AUTOEVAL-001
+  name: "Auto Eval Scheduling and Best-Model Tracking"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "best_model_saved_on_every_improvement"
+    - "early_stopping_triggers_at_patience_boundary"
+    - "patience_zero_disables_early_stopping"

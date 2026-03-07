@@ -90,3 +90,13 @@ kani_harnesses:
     bound: 10
     strategy: exhaustive
     harness: verify_pass_at_k_monotone
+
+qa_gate:
+  id: F-PASSK-001
+  name: "Multi-Sample pass@k Evaluation"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "unbiased_estimator_matches_known_values"
+    - "multi_sample_pass_at_k_greater_than_single"
+    - "temperature_zero_is_deterministic"

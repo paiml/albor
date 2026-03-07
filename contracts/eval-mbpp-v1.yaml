@@ -104,3 +104,40 @@ falsification_tests:
       text="Write a function...", completion="", test_list=["assert f(1)==2"]
       Assert: passed == false
     if_fails: "Empty completions incorrectly marked as passing"
+
+  - id: FALSIFY-MBPP-005
+    rule: "JSON output contains all required fields"
+    prediction: "Output JSON has benchmark, model, problems, passed, pass_at_k, per_problem_results, elapsed_secs"
+    test: |
+      Run MBPP eval on a small subset (10 problems).
+      Parse output JSON.
+      Assert: all required fields present (benchmark, model, problems, passed, pass_at_k, per_problem_results, elapsed_secs).
+      Assert: problems == 10, pass_at_k is a valid float in [0, 1].
+    if_fails: "JSON output schema is incomplete or field names changed"
+
+kani_harnesses:
+  - id: KANI-MBPP-001
+    obligation: pass_at_k
+    property: "pass@k unbiased estimator matches Chen et al. for all valid n, c, k"
+    bound: 10
+    strategy: exhaustive
+    harness: verify_mbpp_pass_at_k
+
+  - id: KANI-MBPP-002
+    obligation: completion_pipeline
+    property: "Test assembly concatenates completion + test_setup_code + test_list correctly"
+    bound: 4
+    strategy: bounded_int
+    harness: verify_test_assembly_format
+
+qa_gate:
+  id: F-MBPP-001
+  name: "MBPP Code Evaluation Contract"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "mbpp_jsonl_parse_all"
+    - "test_assembly_runnable"
+    - "random_model_near_zero"
+    - "empty_completion_fails"
+    - "json_output_schema"

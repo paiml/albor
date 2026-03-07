@@ -72,3 +72,28 @@ falsification_tests:
       Call ReproducibilityConfig::apply(), read env var.
       Assert: CUBLAS_WORKSPACE_CONFIG == ':4096:8'
     if_fails: "apply() broken or not called before cuBLAS operations"
+
+kani_harnesses:
+  - id: KANI-DETERM-001
+    obligation: output_determinism
+    property: "Identical config and seed produce identical loss at bounded steps"
+    bound: 8
+    strategy: stub_float
+    harness: verify_deterministic_loss
+
+  - id: KANI-DETERM-002
+    obligation: prng_chain
+    property: "PRNG state evolves deterministically from seed with no external entropy"
+    bound: 16
+    strategy: exhaustive
+    harness: verify_prng_determinism
+
+qa_gate:
+  id: F-DETERM-001
+  name: "Bitwise Deterministic Training"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "two_runs_identical_loss"
+    - "different_seeds_different_loss"
+    - "cublas_workspace_config_set"

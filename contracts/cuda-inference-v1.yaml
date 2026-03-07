@@ -94,3 +94,38 @@ falsification_tests:
       Load same model on CPU and GPU.
       Generate 10 tokens greedy. Assert: identical sequences.
     if_fails: "GPU forward path produces wrong logits"
+
+  - id: FALSIFY-CUDA-INF-004
+    rule: "Weights loaded from SafeTensors checkpoint"
+    prediction: "CudaInferenceEngine loads config.json, model.safetensors, tokenizer.json"
+    test: |
+      Point CudaInferenceEngine at a valid checkpoint directory.
+      Assert: weights loaded match SafeTensors file contents.
+      Remove config.json and assert constructor returns error.
+    if_fails: "Checkpoint loading is incomplete or does not validate required files"
+
+kani_harnesses:
+  - id: KANI-CUDA-INF-001
+    obligation: forward_pass
+    property: "Forward pass produces finite logits for all valid input token sequences"
+    bound: 8
+    strategy: bounded_int
+    harness: verify_forward_logits_finite
+
+  - id: KANI-CUDA-INF-002
+    obligation: vram_budget
+    property: "Inference VRAM allocation does not include optimizer state or grad workspace"
+    bound: 4
+    strategy: exhaustive
+    harness: verify_no_training_state_allocated
+
+qa_gate:
+  id: F-CUDA-INF-001
+  name: "CUDA Inference Engine Contract"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "gpu_cpu_logit_equivalence"
+    - "vram_inference_only"
+    - "greedy_generation_deterministic"
+    - "checkpoint_loading_validation"

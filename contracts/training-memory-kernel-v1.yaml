@@ -129,6 +129,27 @@ falsification_tests:
     test: "Run 10-step training, measure peak GPU memory, compare to estimate"
     if_fails: "Missing memory component or CUDA overhead underestimated"
 
+  - id: FALSIFY-MEM-004
+    rule: "Weight memory is exact"
+    prediction: "M_weights = P_total * sizeof(dtype) matches actual weight allocation"
+    test: |
+      Build TransformerConfig for 350M model (H=1024, L=24, V=32000).
+      Compute P_total from parameter_count formula.
+      Compute M_weights = P_total * 4 (f32).
+      Sum actual byte sizes of all weight tensors in the model.
+      Assert formula result == actual byte size (exact, zero tolerance).
+    if_fails: "Parameter count formula misses a weight tensor or sizeof(dtype) assumption is wrong"
+
+  - id: FALSIFY-MEM-005
+    rule: "Optimizer memory is exact for AdamW"
+    prediction: "M_opt = P_total * 8 matches actual AdamW state allocation"
+    test: |
+      Build AdamW optimizer for 350M model.
+      Compute M_opt = P_total * 8 (two f32 state tensors: m and v).
+      Measure actual memory allocated for optimizer state (first moment + second moment).
+      Assert formula result == actual allocation (exact, zero tolerance).
+    if_fails: "AdamW stores additional state (e.g., step counter per param, amsgrad buffer) not accounted for"
+
 kani_harnesses:
   - id: KANI-MEM-001
     obligation: MEM-EXACT-001

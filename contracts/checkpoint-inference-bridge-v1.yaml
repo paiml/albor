@@ -129,3 +129,13 @@ kani_harnesses:
     bound: 8
     strategy: stub_float
     harness: verify_shape_consistency
+
+qa_gate:
+  id: F-BRIDGE-001
+  name: "Checkpoint to Inference Bridge Validation"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "checkpoint_directory_complete"
+    - "all_tensor_keys_present"
+    - "tensor_shapes_match_config"

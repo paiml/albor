@@ -105,6 +105,28 @@ falsification_tests:
       T_gemm / T_step must be in [0.50, 0.65].
     if_fails: "Estimated breakdown is wrong; re-derive all phase projections"
 
+kani_harnesses:
+  - id: KANI-BUDGET-001
+    obligation: step_time_budget
+    property: "Brick budgets sum to >= 95% of total step time"
+    bound: 8
+    strategy: bounded_int
+    harness: verify_brick_coverage
+
+  - id: KANI-BUDGET-002
+    obligation: gemm_throughput
+    property: "GEMM TFLOP computation is correct for all valid matrix shapes"
+    bound: 16
+    strategy: exhaustive
+    harness: verify_gemm_tflop_computation
+
+  - id: KANI-BUDGET-003
+    obligation: mfu_definition
+    property: "MFU ratio is in [0, 1] for all valid step times and model sizes"
+    bound: 8
+    strategy: bounded_int
+    harness: verify_mfu_bounded
+
 qa_gate:
   id: F-BUDGET-001
   name: "Training Step Performance Budget Contract"

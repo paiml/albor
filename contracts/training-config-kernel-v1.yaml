@@ -234,6 +234,41 @@ falsification_tests:
       Assert lr at step 50 > 1e-5 (warmup is progressing).
     if_fails: "Training loop has additional bugs beyond config (check ALB-042)"
 
+  - id: FALSIFY-CFG-006
+    rule: "Warmup fraction bounded at 10%"
+    prediction: "warmup_steps / actual_total_steps <= 0.10 for valid configs"
+    test: |
+      Config: warmup_steps=500, max_steps=5000, epochs=117, steps_per_epoch=43.
+      actual_total_steps = min(5000, 117*43) = 5000.
+      warmup_fraction = 500 / 5000 = 0.10.
+      Assert warmup_fraction <= 0.10.
+      Config: warmup_steps=2000, max_steps=5000. warmup_fraction = 0.40.
+      Assert validation REJECTS this config (warmup > 10% of training).
+    if_fails: "No upper bound check on warmup fraction — excessive warmup wastes training budget"
+
+  - id: FALSIFY-CFG-007
+    rule: "Peak learning rate is reached"
+    prediction: "LR schedule reaches lr_peak at exactly step warmup_steps"
+    test: |
+      Config: lr_peak=3e-4, warmup_steps=500, max_steps=5000.
+      Compute lr(500) using warmup formula: lr = 3e-4 * (500/500) = 3e-4.
+      Assert lr(500) == lr_peak within 1e-8.
+      Assert lr(499) < lr_peak (still in warmup).
+      Assert lr(501) <= lr_peak (cosine decay has begun).
+    if_fails: "Warmup formula has off-by-one or cosine schedule starts at wrong step"
+
+  - id: FALSIFY-CFG-008
+    rule: "Steps per epoch is positive"
+    prediction: "steps_per_epoch >= 1 for any valid config"
+    test: |
+      Config: num_sequences=1, batch_size=1, grad_accum=1.
+      steps_per_epoch = floor(1 / 1 / 1) = 1.
+      Assert steps_per_epoch >= 1.
+      Config: num_sequences=3, batch_size=4, grad_accum=1.
+      steps_per_epoch = floor(3 / 4) = 0.
+      Assert validation REJECTS this config (zero steps per epoch means no training).
+    if_fails: "Config allows zero steps per epoch — training loop runs with no optimizer updates"
+
 kani_harnesses:
   - id: KANI-CFG-001
     obligation: CFG-INV-001

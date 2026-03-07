@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-nextest
+      - uses: taiki-e/install-action@cargo-nextest
       - run: cargo nextest run
 
   cargo-bench:

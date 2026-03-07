@@ -154,3 +154,46 @@ falsification_tests:
       N=2: steps_per_epoch = floor(22079/(2*4)) = 2759
       Assert N=2 steps is approximately half of N=1 steps
     if_fails: "Steps calculation ignores world_size"
+
+  - id: FALSIFY-SHARD-005
+    rule: "Shard balance for albor data"
+    prediction: "For F=22 files, N=2 workers: imbalance ratio < 1.2"
+    test: |
+      Load 22 Parquet files with known sequence counts.
+      Assign files to 2 workers via modular sharding.
+      Compute imbalance = max_worker_seqs / min_worker_seqs.
+      Assert imbalance < 1.2 (within 10% tolerance).
+    if_fails: "File size variance too high or sharding algorithm does not distribute evenly"
+
+kani_harnesses:
+  - id: KANI-SHARD-001
+    obligation: file_level_sharding
+    property: "Shard disjointness — no file assigned to two workers"
+    bound: 8
+    strategy: exhaustive
+    harness: verify_shard_disjointness
+
+  - id: KANI-SHARD-002
+    obligation: file_level_sharding
+    property: "Shard completeness — union of all shards equals full file set"
+    bound: 8
+    strategy: exhaustive
+    harness: verify_shard_completeness
+
+  - id: KANI-SHARD-003
+    obligation: min_files_for_sharding
+    property: "F < N returns error, never silent empty shard"
+    bound: 4
+    strategy: exhaustive
+    harness: verify_insufficient_files_error
+
+qa_gate:
+  id: F-SHARD-001
+  name: "Data Shard Disjointness and Completeness"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "shard_disjointness_for_all_worker_pairs"
+    - "shard_completeness_union_equals_full_set"
+    - "insufficient_files_returns_error"
+    - "epoch_shuffle_preserves_assignment"

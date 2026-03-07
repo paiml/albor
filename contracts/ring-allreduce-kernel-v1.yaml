@@ -163,3 +163,48 @@ falsification_tests:
       naive_result = (w0 + w1) / 2
       Assert max_abs_diff < 1e-6
     if_fails: "Two-worker special case is incorrectly optimized"
+
+  - id: FALSIFY-RING-005
+    rule: "No deadlock under TCP with simultaneous send+recv"
+    prediction: "Ring AllReduce completes within timeout for N=4 workers on localhost"
+    test: |
+      Spawn N=4 workers connected via TCP on localhost.
+      Each worker holds a D=10000 f32 vector.
+      Run ring AllReduce with a 10-second timeout.
+      Assert all workers complete within the timeout.
+      Assert results are correct (equal to mean of inputs).
+      Repeat 100 times to detect intermittent deadlocks.
+    if_fails: "Circular wait in TCP send/recv — workers block waiting on each other in the ring"
+
+kani_harnesses:
+  - id: KANI-RING-001
+    obligation: scatter_reduce
+    property: "Scatter-reduce produces correct partial sums for bounded N and D"
+    bound: 4
+    strategy: stub_float
+    harness: verify_scatter_reduce_correctness
+
+  - id: KANI-RING-002
+    obligation: all_gather
+    property: "All workers hold identical output after all-gather"
+    bound: 4
+    strategy: stub_float
+    harness: verify_all_gather_identical_output
+
+  - id: KANI-RING-003
+    obligation: averaging
+    property: "Final output equals arithmetic mean of all inputs"
+    bound: 4
+    strategy: stub_float
+    harness: verify_allreduce_mean
+
+qa_gate:
+  id: F-RING-001
+  name: "Ring AllReduce Correctness"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "allreduce_identical_vectors_returns_input"
+    - "allreduce_distinct_vectors_returns_mean"
+    - "allreduce_non_divisible_vector_length"
+    - "two_worker_degeneration_matches_naive"

@@ -97,3 +97,40 @@ falsification_tests:
       At step 200: Assert current_lr() == 3e-4
       At step 1000: Assert current_lr() == 3e-4
     if_fails: "Missing fallback for unset max_steps"
+
+  - id: FALSIFY-COSINE-005
+    rule: "CPU embedding optimizer lr matches current_lr at every step"
+    prediction: "embed_optimizer.lr == current_lr(step) for all steps 0..1000"
+    test: |
+      Given: warmup_steps=100, max_steps=1000, lr_max=3e-4
+      Run 1000 steps. At each step, verify:
+        embed_optimizer.lr == current_lr(step)
+      Assert: all 1000 checks pass with no mismatch.
+    if_fails: "Embedding optimizer lr not updated — ALB-079 regression in CPU path"
+
+kani_harnesses:
+  - id: KANI-COSINE-001
+    obligation: warmup_lr
+    property: "Warmup lr is monotonically increasing and lr(0) = 0"
+    bound: 8
+    strategy: exhaustive
+    harness: verify_warmup_lr_monotonic
+
+  - id: KANI-COSINE-002
+    obligation: cosine_decay_lr
+    property: "Cosine decay lr stays in [0, lr_max] for all valid step values"
+    bound: 16
+    strategy: bounded_int
+    harness: verify_cosine_lr_bounded
+
+qa_gate:
+  id: F-COSINE-001
+  name: "Cosine Learning Rate Schedule Contract"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "cosine_midpoint_value"
+    - "lr_not_constant_after_warmup"
+    - "lr_decreasing_sequence"
+    - "constant_lr_fallback"
+    - "embedding_optimizer_lr_sync"

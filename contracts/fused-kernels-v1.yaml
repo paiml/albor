@@ -269,6 +269,35 @@ falsification_tests:
       loss.is_finite() at every step. max(gnorm) < 100.
     if_fails: "Fused kernels introduce numerical instability — bisect to identify which fusion"
 
+kani_harnesses:
+  - id: KANI-FUSED-001
+    obligation: fused_cross_entropy
+    property: "Fused CE loss matches separate softmax + nll_loss within tolerance"
+    bound: 8
+    strategy: stub_float
+    harness: verify_fused_ce_equivalence
+
+  - id: KANI-FUSED-002
+    obligation: rmsnorm_activation_reuse
+    property: "RMS norm recompute from cached X and inv_var is bit-exact"
+    bound: 4
+    strategy: stub_float
+    harness: verify_rmsnorm_recompute_exact
+
+  - id: KANI-FUSED-003
+    obligation: swiglu_inplace_backward
+    property: "In-place SwiGLU backward reads gate/up before overwrite"
+    bound: 4
+    strategy: exhaustive
+    harness: verify_swiglu_inplace_order
+
+  - id: KANI-FUSED-004
+    obligation: fused_tiled_attention
+    property: "Online softmax produces correct output for bounded tile sizes"
+    bound: 4
+    strategy: stub_float
+    harness: verify_fused_attention_softmax
+
 qa_gate:
   id: F-FUSED-001
   name: "Fused Kernel Optimizations Contract"

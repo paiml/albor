@@ -106,6 +106,25 @@ falsification_tests:
     test: "Inject gradient > max_norm in one micro-batch, verify single clip"
     if_fails: "Clipping applied per micro-batch instead of on accumulated total"
 
+  - id: FALSIFY-GA-005
+    rule: "Mixed precision accumulation in fp32"
+    prediction: "Accumulation buffer dtype is fp32 even when forward pass uses fp16"
+    test: |
+      Configure mixed-precision training with fp16 forward pass.
+      Run N=4 micro-batches of gradient accumulation.
+      Inspect accumulation buffer dtype — assert it is f32, not f16.
+      Verify no precision loss by comparing accumulated result to f32 reference.
+    if_fails: "Accumulation buffer uses fp16, causing catastrophic cancellation in gradient sums"
+
+  - id: FALSIFY-GA-006
+    rule: "Loss scaling correctness"
+    prediction: "Total loss equals mean of micro-batch losses, not sum"
+    test: |
+      Run N=4 micro-batches with known per-micro-batch losses [1.0, 2.0, 3.0, 4.0].
+      Assert reported total loss = mean(1.0, 2.0, 3.0, 4.0) = 2.5.
+      Assert total loss != sum (10.0) — if sum, scaling factor 1/N was not applied.
+    if_fails: "Loss not divided by N, causing gradient magnitudes to scale with accumulation steps"
+
 kani_harnesses:
   - id: KANI-GA-001
     obligation: GA-EQ-001

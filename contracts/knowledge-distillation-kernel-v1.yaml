@@ -175,6 +175,16 @@ falsification_tests:
     test: "Run full eval suite on both, paired t-test p < 0.05"
     if_fails: "Teacher logits corrupted, T too high/low, or alpha miscalibrated"
 
+  - id: FALSIFY-KD-006
+    rule: "SIMD matches scalar within ULP"
+    prediction: "SIMD KD loss computation matches scalar reference within 8 ULP"
+    test: |
+      Compute KD loss using scalar reference implementation for 1000 random
+      (z_t, z_s, y) inputs with T=2.0, alpha=0.5.
+      Compute KD loss using SIMD-accelerated implementation on same inputs.
+      Assert max ULP difference <= 8 across all outputs.
+    if_fails: "SIMD vectorization reorders floating-point operations, causing divergence beyond acceptable ULP tolerance"
+
 kani_harnesses:
   - id: KANI-KD-001
     obligation: KD-INV-001

@@ -89,3 +89,28 @@ falsification_tests:
       Initialize CudaTransformerTrainer with GPU accum for 350M model.
       Check nvidia-smi. Assert: VRAM < 20 GB.
     if_fails: "Buffer allocation is larger than expected"
+
+kani_harnesses:
+  - id: KANI-GPUACCUM-001
+    obligation: accumulation_pipeline
+    property: "GPU accum buffers zeroed before each optimizer step and divided by ga"
+    bound: 4
+    strategy: exhaustive
+    harness: verify_accum_zero_and_divide
+
+  - id: KANI-GPUACCUM-002
+    obligation: vram_budget
+    property: "Accum buffer allocation does not exceed per-block weight buffer size"
+    bound: 8
+    strategy: bounded_int
+    harness: verify_accum_vram_bounded
+
+qa_gate:
+  id: F-GPUACCUM-001
+  name: "GPU-Resident Gradient Accumulation Contract"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "gpu_cpu_accum_equivalence"
+    - "throughput_recovery_ga16"
+    - "vram_within_budget"

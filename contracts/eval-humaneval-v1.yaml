@@ -106,3 +106,30 @@ falsification_tests:
       Run eval on fresh random-init checkpoint (no training).
       Assert: pass@1 < 0.01 (less than 1%)
     if_fails: "Eval is measuring something other than model quality"
+
+kani_harnesses:
+  - id: KANI-EVAL-001
+    obligation: pass_at_k
+    property: "pass@k formula satisfies boundary conditions: c=0 yields 0, c>=k yields 1"
+    bound: 10
+    strategy: exhaustive
+    harness: verify_pass_at_k_boundaries
+
+  - id: KANI-EVAL-002
+    obligation: completion_pipeline
+    property: "Completion pipeline never uses canonical_solution as output"
+    bound: 4
+    strategy: bounded_int
+    harness: verify_completion_from_model
+
+qa_gate:
+  id: F-EVAL-001
+  name: "HumanEval Code Evaluation Contract"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "pass_at_k_known_values"
+    - "trivial_program_passes"
+    - "infinite_loop_timeout"
+    - "empty_completion_fails"
+    - "random_model_near_zero"

@@ -132,3 +132,48 @@ falsification_tests:
       Predicted improvement at 160M >> 10%.
       Assert: no warning emitted.
     if_fails: "Warning fires on healthy training curves"
+
+  - id: FALSIFY-SCALING-006
+    rule: "Prediction logged to JSONL with fit parameters"
+    prediction: "After fit, JSONL entry contains predicted_final_ppl, scaling_slope, target_steps"
+    test: |
+      Feed 4 data points, call predict().
+      Capture JSONL output.
+      Assert: entry contains predicted_final_ppl (float > 0),
+              scaling_slope (float > 0), target_steps (int > 0).
+    if_fails: "JSONL logging is missing or fields renamed"
+
+kani_harnesses:
+  - id: KANI-SCALING-001
+    obligation: ols_fit
+    property: "OLS fit denominator is non-zero for distinct D values"
+    bound: 8
+    strategy: exhaustive
+    harness: verify_ols_denominator_nonzero
+
+  - id: KANI-SCALING-002
+    obligation: predicted_ppl
+    property: "Predicted ppl is always positive (exp is always positive)"
+    bound: 8
+    strategy: stub_float
+    harness: verify_predicted_ppl_positive
+
+  - id: KANI-SCALING-003
+    obligation: improvement_ratio
+    property: "Improvement ratio is in [0, 1] when predicted_ppl < current_ppl"
+    bound: 4
+    strategy: bounded_int
+    harness: verify_improvement_ratio_bounded
+
+qa_gate:
+  id: F-SCALING-001
+  name: "Scaling Law Loss Prediction Contract"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "fit_known_analytical"
+    - "prediction_matches_v4"
+    - "warning_fires_plateau"
+    - "returns_none_insufficient_points"
+    - "no_warning_healthy_curve"
+    - "jsonl_logging_fields"

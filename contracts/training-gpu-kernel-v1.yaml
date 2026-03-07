@@ -231,6 +231,49 @@ falsification_tests:
       every step, and no CUDA errors in dmesg/nvidia-smi Xid log.
     if_fails: "Missing stream.synchronize() or new async race condition (ALB-065 regression)"
 
+  - id: FALSIFY-GPU-009
+    rule: "Exactly 3 PCIe transfers per training step"
+    prediction: "Each train_step_single() call issues exactly 3 PCIe transfers (1 H2D + 1 D2H + 1 H2D)"
+    test: |
+      Instrument CudaTransformerTrainer with transfer counters.
+      Run 10 training steps on a tiny model.
+      Assert h2d_count == 20 (2 H2D per step * 10 steps).
+      Assert d2h_count == 10 (1 D2H per step * 10 steps).
+      Assert total transfers == 30 (3 per step * 10 steps).
+    if_fails: "Extra transfers from debug logging, redundant syncs, or missing transfer coalescing"
+
+  - id: FALSIFY-GPU-010
+    rule: "Weight sync preserves values exactly"
+    prediction: "sync_weights_to_cpu() produces CPU weights bitwise identical to GPU weights"
+    test: |
+      Train 5 steps on GPU. Call sync_weights_to_cpu().
+      Read GPU weights via cuMemcpyDtoH into reference buffer.
+      Compare reference buffer to CPU weight tensors element-wise.
+      Assert max absolute difference == 0.0 (exact, not approximate).
+    if_fails: "Weight sync has dtype conversion, truncation, or partial copy bug"
+
+kani_harnesses:
+  - id: KANI-GPU-001
+    obligation: pcie_transfers_per_step
+    property: "Exactly 3 PCIe transfers per training step"
+    bound: 4
+    strategy: exhaustive
+    harness: verify_three_pcie_transfers
+
+  - id: KANI-GPU-002
+    obligation: activation_gradient_clipping
+    property: "Clipped gradient L2 norm never exceeds max_grad_norm"
+    bound: 8
+    strategy: stub_float
+    harness: verify_activation_grad_clipped
+
+  - id: KANI-GPU-003
+    obligation: hyperparameter_propagation
+    property: "All optimizers receive config hyperparameters, not defaults"
+    bound: 4
+    strategy: exhaustive
+    harness: verify_hyperparams_propagated
+
 qa_gate:
   id: F-GPU-001
   name: "GPU-Resident Pretraining Contract"

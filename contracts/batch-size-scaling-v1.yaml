@@ -56,3 +56,27 @@ falsification_tests:
       Assert: B_eff >= B_min (131,072 >= 65,536)
       This config is acceptable.
     if_fails: "Config validation rejects valid batch sizes"
+
+kani_harnesses:
+  - id: KANI-BATCH-001
+    obligation: effective_batch_tokens
+    property: "Effective batch computation is correct for all valid hyperparameter ranges"
+    bound: 8
+    strategy: exhaustive
+    harness: verify_effective_batch_computation
+
+  - id: KANI-BATCH-002
+    obligation: min_effective_batch
+    property: "Config loader rejects B_eff < B_min for models >= 100M params"
+    bound: 4
+    strategy: bounded_int
+    harness: verify_batch_size_validation
+
+qa_gate:
+  id: F-BATCH-001
+  name: "Batch Size Scaling Contract"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "undersized_batch_rejected"
+    - "valid_batch_accepted"

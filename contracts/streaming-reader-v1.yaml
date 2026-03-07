@@ -85,3 +85,29 @@ falsification_tests:
       When: list_tensors(path, { compute_stats: true })
       Then: mean=2.5, std≈1.118, min=1.0, max=4.0
     if_fails: "AprV2ReaderRef::get_tensor_as_f32 not wired to stats"
+
+kani_harnesses:
+  - id: KANI-MMAP-001
+    obligation: mmap_peak_memory
+    property: "Mmap path heap allocation bounded by header + index size, not file size"
+    bound: 4
+    strategy: bounded_int
+    harness: verify_mmap_heap_bounded
+
+  - id: KANI-MMAP-002
+    obligation: roundtrip_equivalence
+    property: "Mmap path returns identical results to read_to_end path"
+    bound: 8
+    strategy: exhaustive
+    harness: verify_mmap_read_equivalence
+
+qa_gate:
+  id: F-MMAP-001
+  name: "Streaming APR Reader Contract"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "large_file_low_rss"
+    - "small_file_correct"
+    - "v1_backward_compat"
+    - "tensor_stats_via_mmap"

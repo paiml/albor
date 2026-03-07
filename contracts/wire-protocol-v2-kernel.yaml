@@ -153,3 +153,36 @@ falsification_tests:
       After round-trip: NaN is still NaN, Inf still Inf, etc.
       (NaN bit pattern may differ — check is_nan(), not bit equality)
     if_fails: "f32 special values are incorrectly handled"
+
+kani_harnesses:
+  - id: KANI-WIRE-001
+    obligation: roundtrip_fidelity
+    property: "Round-trip fidelity for BlockGradientPayload with bounded components"
+    bound: 4
+    strategy: exhaustive
+    harness: verify_block_gradient_roundtrip
+
+  - id: KANI-WIRE-002
+    obligation: component_encoding
+    property: "Gradient element count equals sum of component_sizes"
+    bound: 9
+    strategy: exhaustive
+    harness: verify_component_sizes_sum
+
+  - id: KANI-WIRE-003
+    obligation: message_format
+    property: "Unknown tag returns error, does not panic"
+    bound: 256
+    strategy: exhaustive
+    harness: verify_unknown_tag_returns_error
+
+qa_gate:
+  id: F-WIRE-001
+  name: "Wire Protocol v2 Round-Trip Fidelity"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "block_gradient_payload_roundtrip"
+    - "unknown_tag_returns_error"
+    - "truncated_payload_returns_error"
+    - "nan_inf_f32_survive_roundtrip"

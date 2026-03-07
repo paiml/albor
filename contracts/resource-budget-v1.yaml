@@ -96,3 +96,39 @@ falsification_tests:
       When: grep -rn '.safetensors|.gguf' configs/
       Then: Only matches are in export/release commands
     if_fails: "Format policy violation — internal checkpoint using non-APR"
+
+  - id: FALSIFY-RESOURCE-005
+    rule: "VRAM usage bounded by 22GB on RTX 4090"
+    prediction: "350M training with all optimizations uses < 22 GB VRAM"
+    test: |
+      Given: 350M model, batch_size=4, seq_len=1024, ga=16
+      When: Train for 10 steps on RTX 4090
+      Then: nvidia-smi peak memory.used < 22528 MiB
+    if_fails: "VRAM budget exceeded — new component allocates too much GPU memory"
+
+kani_harnesses:
+  - id: KANI-RESOURCE-001
+    obligation: heap_budget_readonly
+    property: "Read-only operations heap usage bounded by file_size / 10"
+    bound: 4
+    strategy: bounded_int
+    harness: verify_readonly_heap_bound
+
+  - id: KANI-RESOURCE-002
+    obligation: storage_budget
+    property: "Format conversion output size bounded by input_size * dtype_ratio * 1.01"
+    bound: 8
+    strategy: exhaustive
+    harness: verify_storage_overhead_bound
+
+qa_gate:
+  id: F-RESOURCE-001
+  name: "Resource Budget Discipline Contract"
+  min_coverage: 0.90
+  max_complexity: 15
+  required_tests:
+    - "readonly_heap_bounded"
+    - "streaming_writer_bounded"
+    - "throughput_no_regression"
+    - "apr_format_policy"
+    - "vram_bounded"

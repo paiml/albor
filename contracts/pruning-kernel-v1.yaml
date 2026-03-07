@@ -99,6 +99,37 @@ falsification_tests:
     test: "Assert output == input element-wise"
     if_fails: "Off-by-one in threshold or mask computation"
 
+  - id: FALSIFY-PRUNE-004
+    rule: "WANDA activation dependency"
+    prediction: "Same weight magnitude with different activation norms produces different WANDA scores"
+    test: |
+      Set w_ij = 1.0 for two different columns j1, j2.
+      Set ||X_j1||_2 = 5.0 and ||X_j2||_2 = 1.0.
+      Compute WANDA scores: score(j1) = 1.0 * 5.0 = 5.0, score(j2) = 1.0 * 1.0 = 1.0.
+      Assert score(j1) != score(j2).
+      Prune with sparsity=0.5 — assert j2 is pruned and j1 survives.
+    if_fails: "WANDA ignores activation norms and degenerates to magnitude pruning"
+
+  - id: FALSIFY-PRUNE-005
+    rule: "Full sparsity zeroes all"
+    prediction: "prune(model, sparsity=1.0) zeroes all prunable weights"
+    test: |
+      Build a 4-layer model with random weights.
+      Apply pruning with sparsity=1.0.
+      Assert all prunable weight values are exactly 0.0.
+      Assert embedding and output projection weights are unchanged.
+    if_fails: "Sparsity=1.0 edge case not handled — threshold computation fails or excludes some weights"
+
+  - id: FALSIFY-PRUNE-006
+    rule: "Embedding layer excluded from pruning"
+    prediction: "Embedding and output projection weights untouched after pruning"
+    test: |
+      Record embedding weights and output projection weights before pruning.
+      Apply pruning with sparsity=0.5 to full model.
+      Assert embedding weights are bitwise identical to pre-pruning values.
+      Assert output projection weights are bitwise identical to pre-pruning values.
+    if_fails: "Layer exclusion filter missing — pruning mask applied to non-prunable layers"
+
 kani_harnesses:
   - id: KANI-PRUNE-001
     obligation: PRUNE-INV-001

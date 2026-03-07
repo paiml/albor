@@ -102,6 +102,24 @@ falsification_tests:
     test: "Encode <fim_prefix>, <fim_suffix>, <fim_middle>, check length = 1"
     if_fails: "Sentinel tokens not added to vocabulary as special tokens"
 
+  - id: FALSIFY-TOK-005
+    rule: "Vocab size correctness"
+    prediction: "len(tokenizer.vocab) equals configured vocab size V exactly"
+    test: |
+      Build tokenizer with V=32000. Assert len(tokenizer.vocab) == 32000.
+      Build tokenizer with V=50257. Assert len(tokenizer.vocab) == 50257.
+      Verify no off-by-one from special token insertion.
+    if_fails: "Special tokens (FIM, BOS, EOS, PAD) alter vocab size or merge rules produce extra entries"
+
+  - id: FALSIFY-TOK-006
+    rule: "Empty input handling"
+    prediction: "encode('') returns [] and decode([]) returns ''"
+    test: |
+      Assert encode("") == [] (empty token list).
+      Assert decode([]) == "" (empty string).
+      Assert encode("") followed by decode produces "" (roundtrip on empty).
+    if_fails: "Edge case not handled — empty input produces BOS/EOS tokens or panics"
+
 kani_harnesses:
   - id: KANI-TOK-001
     obligation: TOK-INV-001
