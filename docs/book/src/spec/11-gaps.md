@@ -147,7 +147,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-086 | [albor#66](https://github.com/paiml/albor/issues/66) | apr (aprender) | SafeTensors checkpoint → realizar inference bridge validation | Medium | OPEN | Verify that entrenar-saved checkpoints load correctly in realizar for inference. config.json + tokenizer.json required in checkpoint dir. |
 | ALB-087 | [albor#67](https://github.com/paiml/albor/issues/67) | entrenar | Automatic eval scheduling + best-model checkpoint tracking | High | OPEN | Separate `eval_interval` from `save_interval`, track best val_loss, save `model-best.safetensors`, optional early stopping with patience. v3 wasted 65% compute post-plateau. |
 | ALB-088 | [albor#68](https://github.com/paiml/albor/issues/68) | apr (aprender) | Multi-sample pass@k evaluation (n samples per problem) | High | OPEN | `--samples 200 --temperature 0.8` for proper pass@k. Currently n=1 makes pass@10/100 meaningless. Prerequisite: ALB-089 (GPU inference) for practical runtime. |
-| ALB-089 | [albor#69](https://github.com/paiml/albor/issues/69) | entrenar/apr | GPU-accelerated inference for eval (CUDA forward pass) | High | OPEN | `--device cuda` for 10-20x speedup. CPU: 50min/164 problems. GPU target: <5min. Makes multi-sample (ALB-088) practical. |
+| ALB-089 | [albor#69](https://github.com/paiml/albor/issues/69) | entrenar/apr | GPU-accelerated inference for eval (CUDA forward pass) | High | DOGFOODING | `--device cuda` wired into `apr eval --task humaneval/mbpp`. Uses `CudaTransformerTrainer::for_inference()` + `forward_logits()`. No KV cache yet (O(n²) but still 20-40x faster than CPU). Awaiting dogfood when GPU is free from training. |
 
 ### 11.10 Training Infrastructure Gaps
 
