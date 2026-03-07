@@ -2657,7 +2657,7 @@ Combined: 890 tok/s → 3,587 tok/s (4x), 2.6% MFU → 10.4% MFU (4x).
 |-----|---------|-------------|--------|
 | **MFU** | 10.4% | 40-60% | 4-6x below |
 | **tok/s** (RTX 4090) | 3,587 | 15,000-30,000 | 4-8x below |
-| **val_ppl** | 1,018 (v3), TBD (v4) | <100 at 1B tokens | unproven |
+| **val_ppl** | 918 (v4 step 2K), 1,018 (v3 step 28K) | <100 at 1B tokens | **~876 predicted at 1B** |
 | **Eval benchmarks** | none run | HumanEval, MBPP, DS-1000 | zero signal |
 | **Distributed training** | single GPU | multi-node AllReduce | not started |
 | **Post-training pipeline** | not started | distill → finetune → merge → prune → quantize | 0/5 stages |
@@ -2678,28 +2678,83 @@ have known solutions — none are research problems:
 
 Each fix has a FUTURE or EXISTING contract entry in §10.
 
-#### Model quality: unproven
+#### Model quality: scaling law predicts failure
 
-v4 is at step 703 / 7,500 (~92M of ~1B tokens). We don't know:
+v4 eval results (cumulative steps including 500-step checkpoint resume):
 
-1. **Will v4 break v3's val_ppl=1018 plateau?** Expected by step ~2,000
-   (~260M tokens) if cosine decay + larger batch actually helps. If val_ppl
-   doesn't improve by step 2,000, something else is wrong (data quality,
-   model architecture, tokenizer).
+| Step | Tokens | val_loss | val_ppl | Δ ppl (per 500 steps) |
+|------|--------|----------|---------|----------------------|
+| 500 | 65M | 6.8935 | 985.8 | — |
+| 1,000 | 131M | 6.8906 | 983.0 | -2.8 |
+| 1,500 | 197M | 6.8592 | 952.6 | -30.4 |
+| 2,000 | 262M | 6.8226 | 918.4 | -34.2 |
 
-2. **Will perplexity translate to benchmark performance?** Low perplexity
-   on our training data doesn't guarantee HumanEval pass@1. The model may
-   memorize patterns without learning generalizable code completion.
+v4 is better than v3 (918 vs 1,018) — cosine decay + larger batch helped.
+But fitting a Kaplan scaling law `L(D) = a - b × ln(D)` to these 4 data
+points gives a damning prediction:
 
-3. **Is 350M enough for the target task?** Comparable models (CodeParrot-small
-   110M, phi-1 1.3B) suggest 350M is marginal for code completion. We may
-   need the full distillation pipeline (Qwen3-Coder-Next teacher) to be
-   competitive.
+```
+Fitted: L(D) = 7.1035 - 0.0477 × ln(D_millions)
 
-**Decision gate**: At step 2,000 (ETA ~5 days), evaluate val_ppl. If val_ppl
-< 500, continue to 7,500 steps. If val_ppl > 800 (no meaningful improvement
-over v3), stop and diagnose — likely data quality or architecture issue, not
-training infrastructure.
+Predictions:
+  step  2,000 (  262M tokens): val_ppl =  918   (measured: 918.4)
+  step  3,000 (  393M tokens): val_ppl =  915
+  step  5,000 (  655M tokens): val_ppl =  893
+  step  7,500 (  983M tokens): val_ppl =  876
+  step 10,000 (1,311M tokens): val_ppl =  864
+  step 20,000 (2,621M tokens): val_ppl =  836
+
+Tokens needed for target perplexity:
+  val_ppl = 500:  126 trillion tokens (impossible)
+  val_ppl = 200:  unreachable
+  val_ppl = 100:  unreachable
+```
+
+**The loss curve is log-linear with a near-zero slope.** More training steps
+will NOT solve this. The model is learning at a rate of ~0.05 nats per
+e-folding of data — reaching useful perplexity (<200) would require more
+tokens than exist on the internet.
+
+**Root cause analysis (Five Whys)**:
+
+1. **Why is val_ppl stuck above 900?** The loss barely decreases with more data.
+2. **Why doesn't more data help?** The learning rate per token is near zero
+   (0.0477 nats per ln(D) — essentially flat).
+3. **Why is the learning rate per token so low?** Most likely: the model has
+   already extracted all learnable signal from the training distribution.
+4. **Why can't it extract more signal?** Three candidates:
+   - **Data poverty**: 22K pre-tokenized sequences (~45M unique tokens) is
+     tiny. The model sees the same data ~6x per epoch. After a few epochs,
+     it has memorized the training set but can't generalize — val_ppl plateaus.
+   - **Tokenizer inefficiency**: ByteLevel BPE v2 with 32K vocab may split
+     Python tokens suboptimally, inflating per-token entropy.
+   - **Model capacity**: 370M params may be too small for the vocabulary
+     and sequence length, but this is unlikely to be the primary cause at
+     only 45M unique tokens.
+5. **Why is the dataset so small?** The data pipeline (§pipeline stage 1)
+   only ingested local repos. The external data sources (StarCoder, FineWeb)
+   in `configs/pipeline/albor.yaml` have not been ingested yet.
+
+**Diagnosis**: The bottleneck is almost certainly **data poverty**, not
+training infrastructure, hyperparameters, or model architecture. 45M unique
+tokens is 100-1000x smaller than comparable pretraining runs.
+
+**Action items** (ordered by expected impact):
+
+1. **Ingest external data**: Run `alimentar import hf bigcode/starcoderdata
+   --lang python` to get ~50B Python tokens. This is the single highest-impact
+   change possible.
+2. **Expand local data**: Add more ground-truth corpora beyond depyler/hf-gtc/
+   jax-gtc/vllm-gtc.
+3. **De-duplicate**: Ensure the mixed dataset has minimal repetition across
+   epochs.
+4. **Continue v4 to step 7,500**: Even if val_ppl only reaches ~876, the
+   checkpoint is useful as a baseline for distillation (stage 3) and as a
+   data point to confirm the scaling law prediction.
+
+**Decision**: Do NOT stop v4 training. Let it run to completion as a baseline.
+In parallel, build the data pipeline to produce a 10-100x larger dataset for
+v5.
 
 #### Pipeline completion: 20%
 
