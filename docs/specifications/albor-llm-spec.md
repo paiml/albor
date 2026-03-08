@@ -312,16 +312,39 @@ Each stage exercises a different `apr` subcommand and may reveal new stack gaps.
 
 ---
 
-## 11. Milestones
+## 11. Execution Plan
+
+### 11.1 Critical Path
+
+```
+Download → Import → Q4K → Adapt config → Dogfood teacher → Pilot → Scale → SFT → Eval
+  2h        30m     30m    1-3 days      1-2 days        4h    3-5 days  12h    2h
+```
+
+Steps 5-6 (prompt extraction + rejection pipeline) run parallel with Steps 3-4.
+
+### 11.2 Milestones
 
 | Milestone | Target Date | Criterion |
 |-----------|-------------|-----------|
-| M1: Teacher inference works | 2026-03-15 | Qwen3-Coder-30B-A3B generates valid Python via realizar |
-| M2: 100K completions generated | 2026-03-20 | Rejection-sampled, execution-verified |
-| M3: Student SFT complete | 2026-03-25 | Trained on teacher completions |
-| M4: HumanEval > 0% | 2026-03-25 | At least 1 problem solved |
-| M5: HumanEval ≥ 30% | 2026-04-01 | With CodeExercises finetuning |
-| M6: Q4 model published | 2026-04-07 | HuggingFace model card + WASM demo |
+| M0: Teacher downloaded + imported | 2026-03-09 | APR + Q4K files on disk |
+| M1: Teacher inference works | 2026-03-13 | Generates valid Python + FIM via realizar |
+| M1.5: Pilot generation | 2026-03-14 | 1K prompts, rejection rate > 30% |
+| M2: 100K completions generated | 2026-03-19 | Rejection-sampled, execution-verified |
+| M3: Student SFT complete | 2026-03-21 | Trained on teacher completions |
+| M4: HumanEval > 0% | 2026-03-21 | At least 1 problem solved |
+| M5: HumanEval ≥ 30% | 2026-03-28 | With iteration + CodeExercises |
+| M6: Q4 model published | 2026-04-04 | HuggingFace model card |
+
+### 11.3 Risk Register
+
+| Risk | Impact | Probability | Mitigation |
+|------|--------|-------------|------------|
+| realizar Q4K+MoE untested | M1 slips 1-2 weeks | Medium | Fallback: Qwen2.5-Coder-3B (dense, already works) |
+| Throughput < 50 tok/s | M2 slips 1-2 weeks | Medium | Batch prompts, optimize kernel dispatch |
+| Rejection rate < 10% | Bad SFT data | Low | Adjust temperature, inspect failure modes |
+| Student doesn't hit 30% | M5 fails | Medium | More data, CodeExercises FT, logit KD |
+| `apr export` missing SafeTensors | M6 blocked | Unknown | New gap — verify before M5 |
 
 ---
 
