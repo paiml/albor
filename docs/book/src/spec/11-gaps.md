@@ -55,7 +55,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-016 | [#17](https://github.com/paiml/albor/issues/17) | provable-contracts | Pruning contract (WANDA, magnitude) | Medium | DOGFOODING | `pruning-kernel-v1.yaml` — committed and passes `pv validate`. Sparsity invariant, score ordering. Needs binding. |
 | ALB-017 | [#18](https://github.com/paiml/albor/issues/18) | provable-contracts | Gradient accumulation contract | High | DOGFOODING | `gradient-accumulation-kernel-v1.yaml` — committed and passes `pv validate`. Numerical equivalence, gradient zeroing. Needs binding. |
 
-**Contract coverage report** (`pv coverage contracts`): 8 contracts, 31 equations, 51 obligations, 34 falsification tests, 10 Kani harnesses, **100% obligation coverage**. All contracts at impl=0/N — waiting for upstream bindings.
+**Contract coverage report** (`pv coverage contracts`): 30 contracts in `contracts/` covering training, GPU ops, evaluation, data pipeline, MoE routing, and configuration validation. Includes ALB-086 checkpoint-inference-bridge, ALB-087 auto-eval-scheduling, ALB-088 multi-sample-passk.
 
 ### 11.4 Dogfooding-Discovered Gaps
 
@@ -154,6 +154,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ID | Issue | Component | Gap | Severity | Status | Acceptance Criterion |
 |----|-------|-----------|-----|----------|--------|---------------------|
 | ALB-091 | — | entrenar | GPU-resident gradient accumulation — D2H bottleneck kills ga>1 throughput | Critical | **FIXED** | `GpuGradientAccumulator` accumulates gradients in GPU memory via `inplace_add_gpu()` (ResidualAddKernel). Zero D2H during micro-batch loop, ONE stream sync per optimizer step. Dogfooded: ga=8, batch=4 → 8.2K tok/s (23.7% MFU) vs previous CPU-side ga: 2.9K tok/s. VRAM cost: 1,520 MB for 350M model. |
+| ALB-092 | [trueno#178](https://github.com/paiml/trueno/pull/178), [entrenar#257](https://github.com/paiml/entrenar/pull/257) | trueno-gpu, entrenar | RMSNorm grad_gamma never computed + GPU accum uninitialized + checkpoint resume broken | Critical | **FIXED** | Three bugs: (1) `BatchedRmsNormBackwardKernel` declared `grad_gamma_ptr` but never wrote — 50 norm weights got zero gradient, only decay. Fixed via atomicAdd in Pass 2. (2) `GpuGradientAccumulator::new()` left VRAM uninitialized (cuMemAlloc) — first optimizer step corrupted. Fixed by `zero_all()` at init. (3) Checkpoint resume reset step counter — LR schedule + AdamW bias correction lost. Fixed by `set_initial_step()`. Root cause of v5 failure with ga>1; v3 (ga=1) survived because bug #2 only affects ga>1. v6 convergence ~30x faster to loss 6.5 (step 150 vs step 5000 in v3). |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
 
