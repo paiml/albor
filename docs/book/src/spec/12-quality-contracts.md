@@ -51,6 +51,14 @@ Many already exist in provable-contracts; new ones must be written.
 | `gradient-accumulation-kernel-v1.yaml` | G_accum = (1/N)·Σ g_i ≈ g_full | Numerical equivalence within tolerance, loss scaling correctness | High |
 | `training-config-kernel-v1.yaml` | steps_per_epoch, total_achievable_steps, LR warmup coverage, Chinchilla tokens | Epoch sufficiency for max_steps, warmup completion, peak LR reached, data sufficiency | Critical |
 
+### Evaluation & Checkpoint Contracts (ALB-086 through ALB-088)
+
+| Contract | Key Equations | Key Obligations | Priority |
+|----------|---------------|-----------------|----------|
+| `checkpoint-inference-bridge-v1.yaml` | shape(W) = [out, in] for linear; [H] for norm; [V, H] for embed | All tensors have correct 2D shapes; realizar loads without conversion; round-trip save→load preserves weights | High |
+| `multi-sample-passk-v1.yaml` | pass@k = 1 - C(n-c, k) / C(n, k) (Chen et al. 2021) | Unbiased estimator; pass@1 ≤ pass@10 ≤ pass@100; temperature > 0 required for k > 1; n ≥ k | High |
+| `auto-eval-scheduling-v1.yaml` | eval at step % eval_interval == 0; early_stop after patience evals | eval_interval decoupled from save_interval; best-model tracked; patience triggers stop | Medium |
+
 ## 12.3 Contract Workflow for Each Kernel
 
 ```bash
@@ -275,6 +283,12 @@ adamw ─────────── optimizer-step ──────── 
 gradient-accumulation ─────────────────────────┘
                                                │
 training-config ─── config-validation ─────────┘
+                                               │
+auto-eval-scheduling ── eval-during-training ──┘
+                              ↑
+checkpoint-inference-bridge ── checkpoint-save ── training-loop
+                                               │
+multi-sample-passk ── eval-harness ── eval-loop
                                                │
 knowledge-distillation ── distill-loss ── distill-loop
                               ↑

@@ -145,12 +145,38 @@ apr eval plan \
   --model ./checkpoints/albor-distill-350m/ \
   --tasks humaneval,humaneval_fim,mbpp,ds1000
 
-# Python code completion benchmarks (primary — run after every stage)
+# ── Single-sample pass@1 (fast screening) ──
 apr eval apply \
   --model ./checkpoints/albor-distill-350m/ \
-  --tasks humaneval,humaneval_fim,mbpp,ds1000 \
-  --output ./eval/python-code-results.json \
+  --task humaneval --data configs/eval/humaneval.jsonl \
+  --output ./eval/humaneval-pass1.json \
   --seed 42
+
+# ── Multi-sample pass@k (ALB-088 — leaderboard-grade) ──
+# Uses Chen et al. (2021) unbiased estimator: pass@k = 1 - C(n-c,k)/C(n,k)
+apr eval apply \
+  --model ./checkpoints/albor-distill-350m/ \
+  --task humaneval --data configs/eval/humaneval.jsonl \
+  --samples 50 --temperature 0.2 \
+  --output ./eval/humaneval-pass10.json \
+  --seed 42
+
+# MBPP evaluation (974 problems)
+apr eval apply \
+  --model ./checkpoints/albor-distill-350m/ \
+  --task mbpp --data configs/eval/mbpp.jsonl \
+  --samples 10 --temperature 0.2 \
+  --output ./eval/mbpp-results.json \
+  --seed 42
+
+# ── GPU-accelerated inference (ALB-089) ──
+# 20-40x faster than CPU. No KV cache yet (O(n²) but still fast for eval).
+apr eval apply \
+  --model ./checkpoints/albor-distill-350m/ \
+  --task humaneval --data configs/eval/humaneval.jsonl \
+  --samples 50 --temperature 0.2 \
+  --device cuda \
+  --output ./eval/humaneval-cuda.json
 
 # General capability benchmarks (secondary)
 apr eval apply \
@@ -189,16 +215,34 @@ apr eval apply \
 #   --output ./eval/bigcode-leaderboard/
 ```
 
+**Multi-sample pass@k (ALB-088)**: The `--samples N` flag generates N
+completions per problem with temperature sampling (`--temperature T`). The
+unbiased estimator from Chen et al. (2021) computes pass@k without enumeration:
+`pass@k = 1 - C(n-c, k) / C(n, k)` where n=samples, c=correct, k=target.
+Standard leaderboard params: n=50, temperature=0.2, top_p=0.95. Contract:
+`multi-sample-passk-v1.yaml`.
+
+**GPU inference (ALB-089)**: The `--device cuda` flag routes inference through
+`CudaTransformerTrainer::for_inference()` + `forward_logits()`. Currently no
+KV cache (O(n²) per token), but still 20-40x faster than CPU for full eval
+sweeps. Available when GPU is not occupied by training.
+
 ### 8.6 Continuous Evaluation During Training
 
-The intel box runs eval on the latest checkpoint concurrently with training:
+**ALB-087 auto eval** (v5+): entrenar now runs validation automatically during
+training at `eval_interval` steps. No external polling needed — the trainer
+computes val_loss, updates `model-best.safetensors` if improved, and triggers
+early stopping after `patience` evals without improvement.
+
+For code-generation eval (HumanEval/MBPP), the intel box runs on checkpoints
+concurrently with training:
 
 ```bash
 # On intel (300GB RAM), polling for new checkpoints
 apr eval apply \
   --model ./checkpoints/latest/ \
-  --tasks arc_easy,hellaswag \
-  --batch-size 16 \
+  --task humaneval --data configs/eval/humaneval.jsonl \
+  --samples 10 --temperature 0.2 \
   --output ./eval/step-$(cat ./checkpoints/latest/step.txt).json
 ```
 
@@ -286,7 +330,14 @@ with `x @ W.T`.
 | HuggingFace (standard) | [out, in] | `x @ W.T` | [2048, 512] |
 | realizar (inference) | [out, in] | `x @ W.T` | [2048, 512] |
 
-The `convert-checkpoint.py` script handles the conversion:
+**ALB-086 (FIXED)**: entrenar previously saved all tensors as 1D `[N]` flat
+arrays, requiring a separate conversion step. `infer_all_tensor_shapes()`
+(entrenar PR #255) now derives proper 2D `[out, in]` shapes from norm weight
+dimensions and element counts at save time. Checkpoints from v5 onward are
+directly HuggingFace-compatible. Contract: `checkpoint-inference-bridge-v1.yaml`.
+
+The `convert-checkpoint.py` script handles conversion of **legacy** (pre-v5)
+checkpoints:
 1. Reads 1D flat tensors from entrenar SafeTensors
 2. Reshapes as [in, out] (entrenar convention)
 3. Transposes to [out, in] (HuggingFace/realizar convention)

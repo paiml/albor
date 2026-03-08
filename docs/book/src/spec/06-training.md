@@ -13,26 +13,29 @@
 | Warmup steps | 2000 (v1) / 500 (v2) | **ALB-060**: 2000/5000 = 40%, not 0.2%. v2 config uses 500 (10%) per C-TRAINCFG-001 |
 | Min LR | 3e-5 | 10% of peak (standard) |
 | Gradient clipping | 1.0 (global norm) | Stability |
-| Batch size (global) | 512K tokens | ~512 sequences x 1024 tokens |
+| Batch size (global) | 32K tokens/step | batch=4 × ga=8 × seq_len=1024 (v5 config) |
 | Micro-batch (4090) | 4 | GPU-resident (batch=8 OOM at seq≥1024) |
-| Gradient accumulation | 1 (ALB-066) | Per-block CPU accumulation now works (PerBlockGradientAccumulator); kept at 1 for v2 config |
-| Total training tokens | Target 10B; current 139M (v2 dataset) | ~5000 steps × 4 seqs × 1024 tokens = 20M tokens/run (v2: 68K seqs) |
+| Gradient accumulation | 8 (ALB-091) | GPU-resident accumulation via `GpuGradientAccumulator` — zero D2H during micro-batch loop |
+| Total training tokens | Target 655M (v5); 5.3B available | 20,000 steps × 32K tokens/step; data: codeparrot-clean pretokenized-1024-v3 |
 | Mixed precision | fp16 (CUDA) | Hardware-appropriate |
 
-### 6.2 Training Config: `configs/train/pretrain-350m-v2.yaml`
+### 6.2 Training Config: `configs/train/pretrain-350m-v5.yaml`
 
 A single YAML file defines **everything** — model architecture and training
 hyperparameters. This is the industry standard (Axolotl, torchtune, HuggingFace
 Trainer). One file, one truth. `apr train validate` lints it before GPU time.
 
-**Current config** (v2 — expanded dataset, ALB-066 gradient_accumulation=1):
+**Current config** (v5 — full codeparrot-clean, GPU-resident gradient accumulation,
+auto eval scheduling):
 
 ```yaml
-# configs/train/pretrain-350m-v2.yaml — Albor 350M with expanded dataset
-# C-TRAINCFG-001: steps_per_epoch=16994 >= max_steps=5000
+# configs/train/pretrain-350m-v5.yaml — v5: Fresh start with full data coverage
+# Data: pretokenized-1024-v3 (5.3B unique tokens from codeparrot-clean)
+# ALB-091 FIXED: GPU-resident gradient accumulation, zero throughput loss.
+# Token budget: 20,000 steps x 32,768 tokens/step = 655M tokens
 
 model:
-  path: "."                                  # From scratch (random init)
+  path: "./checkpoints/albor-base-350m-v5/"
   mode: transformer
   architecture:
     hidden_size: 1024                       # d_model
@@ -45,7 +48,7 @@ model:
     rms_norm_eps: 1.0e-5
 
 data:
-  train: "data/pretokenized-2048-v2/train/" # Expanded v2 dataset (68K sequences)
+  train: "data/pretokenized-1024-v3/train/" # codeparrot-clean (5.3B tokens)
   val: "data/pretokenized-2048/val/"
   batch_size: 4                             # Micro-batch (batch=8 OOM'd)
   seq_len: 1024
@@ -61,20 +64,28 @@ optimizer:
 
 training:
   mode: "causal_lm"
-  epochs: 1                                 # C-TRAINCFG-001: steps_per_epoch=16994 >= 5000
-  # grad_clip: 1.0                           # ALB-067: disabled (CPU-side L2 norm bottleneck)
+  epochs: 1
+  grad_clip: 1.0                            # Re-enabled (ALB-078 fused GPU clip)
   lr_scheduler: "cosine"
-  warmup_steps: 500                         # 10% of max_steps (C-TRAINCFG-001)
-  gradient_accumulation: 1                  # ALB-066: per-sequence optimizer (no true accum in CUDA)
-  mixed_precision: "fp16"
-  output_dir: "./checkpoints/albor-base-350m-v2"
-  save_interval: 25
-  max_steps: 5000
+  warmup_steps: 500
+  gradient_accumulation: 8                  # 32K tokens/step (GPU-resident, ALB-091)
+  output_dir: "./checkpoints/albor-base-350m-v5"
+  save_interval: 500
+  eval_interval: 250                        # ALB-087: Eval 2x per save interval
+  patience: 10                              # ALB-087: Early stop after 10 evals without improvement
+  max_steps: 20000                          # 20K x 32K = 655M tokens
 ```
 
-**Legacy v1 config** (`pretrain-350m.yaml`) used 22K sequences with
-`gradient_accumulation: 128` and `epochs: 117` — see ALB-060 for why
-`epochs: 1` was fatal with the original data size.
+**Key changes from v2→v5**:
+- **Data**: codeparrot-clean 5.3B tokens (pretokenized-1024-v3) vs 139M (v2)
+- **Gradient accumulation**: 8 GPU-resident (ALB-091) vs 1 per-sequence (v2)
+- **Auto eval**: `eval_interval: 250` + `patience: 10` (ALB-087)
+- **Cosine LR decay**: Now implemented in CUDA trainer (ALB-079)
+- **Grad clip**: Re-enabled via fused GPU pipeline (ALB-078)
+
+**Legacy configs**: v1 (`pretrain-350m.yaml`), v2 (`pretrain-350m-v2.yaml`),
+v3 (`pretrain-350m-v3.yaml`), v4 (`pretrain-350m-v4.yaml`) — see gap register
+(§11) for per-version history and why each was superseded.
 
 **Note on YAML numeric formatting**: YAML supports underscore notation natively
 (`32_768`, `1_000_000`) for human-readable large numbers. All albor configs use
@@ -155,7 +166,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M full v2 (seq=1024, batch=4, accum=1) | 1183/5000 | 10.4→6.85 | ~1.4h | **CRASHED**: ALB-073 (PTX selp) + ALB-074 (stale binary). Step 1000 ckpt saved. |
 | 350M v3 (seq=1024, batch=4, codeparrot) | 28K/250K | 10.40→6.43 | ~1.9 days | **STOPPED** (plateau): val_ppl=1018 at step 28K. 6.7K tok/s, 19.3% MFU. Plateau since step 12K — ALB-079 (no cosine decay) + ALB-080 (batch too small). |
 | 350M v4 (seq=1024, batch=4, ga=32) | 500 | 10.40→5.76 | ~4.7h | Killed by system reboot at step 553. val_ppl=1032.7 at step 500 (matched v3 at 57% token budget). Checkpoint saved. |
-| 350M v4-resume (from step 500) | 56+ | 10.40→6.31 | est ~2.7 days | **RUNNING**: Warm-start 8x faster convergence. loss=6.31 at step 37. |
+| 350M v4-resume (from step 500) | ~500 | 10.40→5.69 | ~4.7h total | Killed by system reboot. Best loss=5.69 at step 262 (~100M tokens). 3,550 tok/s, 10.3% MFU. |
+| 350M v5 (seq=1024, batch=4, ga=8, codeparrot-5.3B) | 3,425+ | 10.38→6.20 | ~45 min | **CRASHED** at step 3429, restarted fresh. 7.9K tok/s, 22.8% MFU. ALB-087 eval active, ALB-091 GPU-resident ga. **RUNNING** (fresh restart). |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
@@ -190,20 +202,29 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 | Aspect | Design |
 |--------|--------|
 | Format | SafeTensors (primary) + JSON metadata |
-| Frequency | Every 1,000 steps (~1.2h at 4.2s/step, ~4M tokens) |
+| Save frequency | Every 500 steps (`save_interval: 500`) |
+| Eval frequency | Every 250 steps (`eval_interval: 250`, ALB-087) |
+| Best-model tracking | `model-best.safetensors` — updated when val_loss improves (ALB-087) |
+| Early stopping | `patience: 10` — stop after 10 evals (2,500 steps) without val_loss improvement (ALB-087) |
 | Content | Model weights (~1.5 GB), optimizer state (~1.3 GB), config.json |
 | Pruning | Automatic — keeps latest + best only, old checkpoints deleted |
 | Disk usage | ~8.4 GB peak (3 checkpoints: current + best + in-flight) |
 | Storage | Local NVMe RAID-0, checkpoints directory in repo |
 | Resume | From latest checkpoint on crash (weights + optimizer state) |
+| Shape format | 2D `[out, in]` shapes (ALB-086) — HuggingFace compatible |
 | Export | `apr publish --format safetensors` for HuggingFace |
 
-**Checkpoint interval rationale (v3)**: `save_interval: 1000` balances crash
-recovery (~8.7min max lost work at 525ms/step) against I/O overhead (~3s per
-checkpoint write vs ~525s between checkpoints = 0.6% overhead). With automatic
-pruning, disk usage stays constant regardless of training length. For the
-250K-step v3 run (~1.5 days at 7,579 tok/s), this yields 250 checkpoint events
-with ~8.4 GB steady-state disk.
+**Checkpoint interval rationale (v5)**: `save_interval: 500` with
+`eval_interval: 250` means validation runs twice per save interval. At 7.9K
+tok/s and 792ms/step, 500 steps ≈ 6.6 min — max lost work on crash. Best-model
+tracking (`model-best.safetensors`) ensures the optimal checkpoint is always
+available even if training continues past the minimum.
+
+**ALB-087 auto eval scheduling**: `eval_interval` is decoupled from
+`save_interval` — eval can run more frequently than checkpointing. The
+`patience` parameter triggers early stopping when val_loss stops improving,
+preventing wasted GPU time on plateaus (would have saved ~16h on v3's
+step 12K→28K plateau).
 
 ### 6.6 Experiment Tracking & Training Monitoring
 
