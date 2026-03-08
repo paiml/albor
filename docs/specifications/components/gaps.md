@@ -18,7 +18,7 @@ The model is the proof; the stack improvements are the lasting value.
 
 | ID | Gap | Status | Component | Notes |
 |----|-----|--------|-----------|-------|
-| ALB-010 | `qwen3_moe` teacher loading (re-scoped) | Steps 4-8 | realizar | **BLOCKER**: Qwen3-Coder-30B-A3B |
+| ALB-010 | `qwen3_moe` teacher loading (re-scoped) | Steps 6-8 | realizar | **BLOCKER**: Qwen3-Coder-30B-A3B |
 | ALB-089 | GPU-accelerated inference for eval | DOGFOODING | realizar | Needed for fast teacher generation |
 
 ### 2.1 ALB-010: Qwen3.5-35B-A3B MoE Support
@@ -33,9 +33,9 @@ original teacher has no FIM support and isn't code-specialized.
 | Step | Description | Status |
 |------|-------------|--------|
 | 1-3 | MoE routing, dispatch, forward (architecture-agnostic) | MERGED (PR #133) |
-| 4* | Config parsing (adapt `qwen3_5_moe` → `qwen3_moe`) | NEEDS UPDATE |
-| 5* | Tests (re-validate for 128 experts, no shared) | NEEDS UPDATE |
-| 6 | Download model + APR import + tensor→slot mapping | **TODO** |
+| 4 | Config: `has_qk_norm=true`, QK norm tensor names | DONE (`0c495ef`) |
+| 5 | Per-expert weight loading (Layout 2 fallback) | DONE (`0c495ef`) |
+| 6 | Download model + APR import + tensor→slot mapping | **IN PROGRESS** |
 | 7 | Q4K quantization via `apr quantize` | TODO |
 | 8 | End-to-end generation dogfood | BLOCKED on 6-7 |
 
