@@ -15,26 +15,22 @@ apr train apply configs/train/pretrain-350m.yaml --seed 42
 **Expected**: OPT-350M class on general benchmarks (~48% avg). On HumanEval,
 target >8% (above random, below CodeGen-350M's 12.8% due to less training data)
 
-### 7.2 Stage 2: Knowledge Distillation from Qwen3-Coder-Next
+### 7.2 Stage 2: Synthetic Data Distillation from Qwen3-Coder-30B
 
 ```bash
-# Plan: check teacher fits in RAM, estimate logit disk usage
-apr distill plan configs/train/distill.yaml
+# Phase 1: Generate synthetic Python completions with teacher (Q4K GPU)
+apr distill apply configs/train/distill-synthetic.yaml --stage generate
 
-# Apply phase 1: Pre-compute teacher logits on intel (300GB RAM, CPU inference)
-apr distill apply configs/train/distill.yaml --stage precompute
-
-# Apply phase 2: Distill into student on lambda (4090)
-apr distill apply configs/train/distill.yaml --stage train
+# Phase 2: Train student on synthetic + original data
+apr train apply configs/train/pretrain-350m-distill.yaml
 ```
 
 **Produces**: `albor-distill-350m` — distilled model with teacher knowledge
-**Exercises**: realizar (teacher inference), apr distill, alimentar (logit storage)
-**Expected**: Moderate improvement — absorbs coding patterns from 80B teacher.
-Estimated +2-7 points on HumanEval via logit-level KD. Note: MoE→dense
-distillation is uncharted at this scale; the architecture mismatch (DeltaNet+MoE
-teacher → LLaMA-style dense student) may limit transfer compared to dense→dense
-distillation (e.g., GPT-3.5→phi-1).
+**Exercises**: realizar (Q4K MoE inference), alimentar (data pipeline)
+**Expected**: Meaningful HumanEval improvement over pretraining-only baseline.
+Synthetic data approach avoids vocab mismatch between teacher (151K Qwen BPE)
+and student (32K Albor BPE). Student initializes from v8 pretrained checkpoint.
+See §4 for detailed architecture and data budget.
 
 ### 7.3 Stage 3: Instruction Fine-Tuning (LoRA/QLoRA)
 
@@ -122,17 +118,15 @@ Code completion metrics (HumanEval, FIM) are primary; general benchmarks are sec
 
 | Stage | Model | Params | Size | HumanEval | MBPP | CPU tok/s |
 |-------|-------|--------|------|-----------|------|-----------|
-| 1 | albor-base | 350M | ~700MB | ~8% | ~8% | — |
-| 2 | albor-distill | 350M | ~700MB | ~13-15% | ~10-12% | — |
-| 3 | albor-instruct | 350M | ~700MB | ~14-16% | ~11-13% | — |
-| 4 | albor-merged | 350M | ~700MB | ~15-17% | ~12-14% | — |
-| 5 | albor-pruned | ~175M | ~350MB | ~12-14% | ~10-12% | — |
-| 6 | albor-q4 | 350M | ~90MB | ~14-16% | ~11-13% | >50 |
+| 1 | albor-base (v8) | 350M | ~700MB | 0% | 0% | — |
+| 2 | albor-distill | 350M | ~700MB | ~3-9% | ~2-5% | — |
+| 3 | albor-instruct | 350M | ~700MB | ~5-11% | ~3-7% | — |
+| 4 | albor-merged | 350M | ~700MB | ~6-12% | ~4-8% | — |
+| 5 | albor-pruned | ~175M | ~350MB | ~4-9% | ~3-6% | — |
+| 6 | albor-q4 | 350M | ~90MB | ~5-11% | ~3-7% | >50 |
 
-*Numbers are estimates. The distillation gain (+2-7 points over base) assumes
-500M-2B tokens of teacher logits. This is conservative — published distillation
-results show larger gains with dense teachers (phi-1 used GPT-3.5, a dense
-model). Our MoE→dense distillation path is uncharted at 350M scale. The FIM
-column is removed because there is no standardized FIM benchmark — we will
-define our own eval and report absolute numbers, not targets.
+*Stage 1 numbers are actual (v8 step 1100, val_ppl=879, 0/164 HumanEval).
+Stage 2+ numbers are estimates. Distillation uses synthetic data generation
+(not logit-level KD) due to vocab mismatch between teacher and student.
+Any non-zero HumanEval from a 350M sovereign-stack model is a meaningful result.
 CPU tok/s measured on Xeon at Q4.*

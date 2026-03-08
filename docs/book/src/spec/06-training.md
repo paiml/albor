@@ -167,7 +167,10 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v3 (seq=1024, batch=4, codeparrot) | 28K/250K | 10.40→6.43 | ~1.9 days | **STOPPED** (plateau): val_ppl=1018 at step 28K. 6.7K tok/s, 19.3% MFU. Plateau since step 12K — ALB-079 (no cosine decay) + ALB-080 (batch too small). |
 | 350M v4 (seq=1024, batch=4, ga=32) | 500 | 10.40→5.76 | ~4.7h | Killed by system reboot at step 553. val_ppl=1032.7 at step 500 (matched v3 at 57% token budget). Checkpoint saved. |
 | 350M v4-resume (from step 500) | ~500 | 10.40→5.69 | ~4.7h total | Killed by system reboot. Best loss=5.69 at step 262 (~100M tokens). 3,550 tok/s, 10.3% MFU. |
-| 350M v5 (seq=1024, batch=4, ga=8, codeparrot-5.3B) | 3,425+ | 10.38→6.20 | ~45 min | **CRASHED** at step 3429, restarted fresh. 7.9K tok/s, 22.8% MFU. ALB-087 eval active, ALB-091 GPU-resident ga. **RUNNING** (fresh restart). |
+| 350M v5 (seq=1024, batch=4, ga=8, codeparrot-5.3B) | 3,429 | 10.38→6.20 | ~45 min | **CRASHED** at step 3429. 7.9K tok/s, 22.8% MFU. Resume broken (ALB-097). |
+| 350M v6 (seq=1024, batch=4, ga=8, codeparrot-5.3B) | 2,000 | 10.40→6.50 | ~4.5h | **KILLED** — strategic pivot to distillation. val_ppl=776, 6.5K tok/s. |
+| 350M v7 (seq=1024, batch=4, ga=8, codeparrot-5.3B) | 550 | 10.40→6.62 | ~1h | **KILLED** for checkpoint code fixes. 6.9K tok/s. Checkpoint at step 500, but resume broken (ALB-097: tied LM head not saved). |
+| 350M v8 (seq=1024, batch=4, ga=8, codeparrot-5.3B, APR) | 1,100 | 10.40→6.69 | ~1.5h | **KILLED** — Chinchilla scaling wall. val_ppl=879 at step 1000. 7.7K tok/s, 22.3% MFU. APR checkpoints, resume verified working (ALB-096/097). Pivoting to distillation. |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
@@ -201,16 +204,16 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 
 | Aspect | Design |
 |--------|--------|
-| Format | SafeTensors (primary) + JSON metadata |
+| Format | APR (primary, ALB-096) + SafeTensors fallback |
 | Save frequency | Every 500 steps (`save_interval: 500`) |
 | Eval frequency | Every 250 steps (`eval_interval: 250`, ALB-087) |
 | Best-model tracking | `model-best.safetensors` — updated when val_loss improves (ALB-087) |
 | Early stopping | `patience: 10` — stop after 10 evals (2,500 steps) without val_loss improvement (ALB-087) |
-| Content | Model weights (~1.5 GB), optimizer state (~1.3 GB), config.json |
+| Content | Model weights + optimizer state in single APR file (~1.8 GB), config.json |
 | Pruning | Automatic — keeps latest + best only, old checkpoints deleted |
 | Disk usage | ~8.4 GB peak (3 checkpoints: current + best + in-flight) |
 | Storage | Local NVMe RAID-0, checkpoints directory in repo |
-| Resume | From latest checkpoint on crash (weights + optimizer state) |
+| Resume | From latest APR checkpoint on crash (weights + optimizer state + step counter). ALB-097: LM head always saved (tied weights untied on save). |
 | Shape format | 2D `[out, in]` shapes (ALB-086) — HuggingFace compatible |
 | Export | `apr publish --format safetensors` for HuggingFace |
 
