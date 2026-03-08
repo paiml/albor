@@ -29,8 +29,8 @@ volume.
 | License | Apache 2.0 |
 | VRAM (Q4) | ~19.7 GB → fits RTX 4090 |
 | Throughput | ~100 tok/s generation at Q4 |
-| Model path | `/mnt/nvme-raid0/models/Qwen3.5-35B-A3B/` (67 GB, 14 shards) |
-| APR format | `/mnt/nvme-raid0/models/qwen35-moe.apr` (67 GB, streaming import) |
+| APR model | `/mnt/nvme-raid0/models/qwen35-moe.apr` (67 GB, mmap zero-copy) |
+| HF source | `/mnt/nvme-raid0/models/Qwen3.5-35B-A3B/` (14 SafeTensors shards, imported) |
 
 ### 2.1 Why This Teacher
 
@@ -51,10 +51,22 @@ volume.
 | 4 | Config parsing (`Qwen3_5MoeForConditionalGeneration`) | MERGED |
 | 5a | Unit tests (routing correctness) | MERGED |
 | 5b | Integration tests (15,053+ pass) | MERGED |
-| 6 | SafeTensors MoE weight loading (PR #135) | **IN PROGRESS** |
+| 6 | APR tensor→MoE slot mapping | **IN PROGRESS** |
 | 7 | End-to-end generation dogfood | BLOCKED on 6 |
 
-### 2.3 Fallback Teacher
+### 2.3 Weight Loading: APR, Not SafeTensors
+
+The model is already imported to APR format (`qwen35-moe.apr`, 67 GB). realizar
+has `AprV2ReaderRef` — mmap-based, zero-copy, 10.9 MB RSS. The Five Whys
+analysis revealed PR #135 conflated "read a file format" with "map tensors to
+MoE slots." The file format is solved (APR). The real work is Step 6: parsing
+tensor names like `model.language_model.layers.{L}.mlp.experts.{E}.gate_proj`
+and loading each into the correct expert slot in the MoE runtime.
+
+This is sovereign: we use our own format end-to-end. No SafeTensors dependency
+at inference time.
+
+### 2.4 Fallback Teacher
 
 **Qwen2.5-Coder-3B** (dense, already supported by realizar). Lower quality
 ceiling but zero implementation risk. If Step 6 blocks for >3 days, switch to
@@ -237,7 +249,7 @@ Microsoft's phi-1-small (350M, h=1024, 20 layers) achieved 45% HumanEval:
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| ALB-010 Step 6 blocks | Can't use best teacher | Fallback to Qwen2.5-Coder-3B |
+| ALB-010 Step 6 (tensor mapping) blocks | Can't use best teacher | Fallback to Qwen2.5-Coder-3B |
 | Low rejection sampling rate | Fewer verified samples | Increase temperature, use more prompts |
 | Student doesn't converge in Stage B | Wasted compute | Monitor val_ppl every 100 steps, early stop |
 | Execution sandbox escape | Security | Use bubblewrap/nsjail, restricted imports |

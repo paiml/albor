@@ -149,7 +149,7 @@ quality ceiling but zero implementation risk.
 
 **Implementation status** (ALB-010):
 - Steps 1-5b MERGED: MoE routing, expert dispatch, forward integration
-- Step 6 IN PROGRESS: SafeTensors weight loading (PR #135)
+- Step 6 IN PROGRESS: APR tensor→MoE slot mapping (load from `qwen35-moe.apr`)
 - Remaining: end-to-end dogfood with actual model files
 
 → Details: [components/distillation.md](components/distillation.md)
@@ -287,7 +287,7 @@ Each stage exercises a different `apr` subcommand and may reveal new stack gaps.
 
 | ID | Gap | Status | Blocker? |
 |----|-----|--------|----------|
-| ALB-010 | MoE weight loading in realizar | Step 6 | **YES** |
+| ALB-010 | MoE tensor→slot mapping (APR format) | Step 6 | **YES** |
 | ALB-089 | GPU-accelerated inference for eval | DOGFOODING | No |
 | ALB-092 | Norm grads + accum zeroing + resume | FIXED | No |
 

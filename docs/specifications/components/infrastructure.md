@@ -21,7 +21,7 @@
 | Config | VRAM | Breakdown |
 |--------|------|-----------|
 | Student training (350M) | ~18 GB | Weights (1.4 GB) + AdamW (2.8 GB) + workspace (~14 GB) |
-| Teacher inference (35B Q4) | ~20 GB | Q4 weights (18.3 GB) + KV cache + activations |
+| Teacher inference (35B Q4) | ~20 GB | Q4 weights from APR (18.3 GB) + KV cache + activations |
 | Student eval | ~5 GB | Forward only, no optimizer states |
 
 **Constraint**: Teacher and student run sequentially, never simultaneously.
@@ -113,7 +113,7 @@ apr-cli
 | Path | Purpose |
 |------|---------|
 | `/mnt/nvme-raid0/targets/` | Cargo build targets (aprender, entrenar) |
-| `/mnt/nvme-raid0/models/` | Large model files (Qwen3.5, APR exports) |
+| `/mnt/nvme-raid0/models/` | Large model files (`qwen35-moe.apr`, HF source) |
 | `/mnt/nvme-raid0/data/` | Additional datasets (CSN, merged) |
 
 ---

@@ -18,7 +18,7 @@ The model is the proof; the stack improvements are the lasting value.
 
 | ID | Gap | Status | Component | Notes |
 |----|-----|--------|-----------|-------|
-| ALB-010 | MoE weight loading in realizar | Step 6 (PR #135) | realizar | **BLOCKER**: SafeTensors → MoE experts |
+| ALB-010 | MoE tensor→slot mapping (APR) | Step 6 | realizar | **BLOCKER**: APR tensors → MoE expert slots |
 | ALB-089 | GPU-accelerated inference for eval | DOGFOODING | realizar | Needed for fast teacher generation |
 
 ### 2.1 ALB-010: Qwen3.5-35B-A3B MoE Support
@@ -29,15 +29,20 @@ teacher model.
 | Step | Description | Status |
 |------|-------------|--------|
 | 1-5b | MoE routing, dispatch, forward, config, tests | MERGED (PR #133) |
-| 6 | SafeTensors weight loading for MoE experts | IN PROGRESS (PR #135) |
+| 6 | APR tensor→MoE slot mapping | IN PROGRESS |
 | 7 | End-to-end generation with actual model files | BLOCKED on 6 |
+
+**Format**: Model already imported to APR (`qwen35-moe.apr`, 67 GB). Reader
+exists: `AprV2ReaderRef` (mmap, zero-copy, 10.9 MB RSS). Five Whys analysis
+revealed the blocker is tensor name parsing, not file format. No SafeTensors
+dependency needed at inference time.
 
 **Tensor mapping challenges**:
 - Config key: `Qwen3_5MoeForConditionalGeneration` → `text_config` nesting
 - Tensor prefix: `model.language_model.layers.{L}`
 - Expert format: experts packed (no `.weight` suffix)
 - Linear attention: `linear_attn.{in_proj_qkv,in_proj_z,...}` (NOT `self_attn`)
-- Model: 14 SafeTensors shards, 1811 tensors total
+- Model: 1811 tensors (imported from 14 HF shards into single APR file)
 
 **Fallback**: If blocked >3 days → Qwen2.5-Coder-3B (dense, already supported).
 
