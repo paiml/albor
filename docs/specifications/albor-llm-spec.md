@@ -5,7 +5,7 @@
 **Author**: Noah Gift / Pragmatic AI Labs
 
 > *Albor* (Spanish: "dawn") — A sovereign 350M Python code completion model.
-> Distilled from Qwen3.5-35B-A3B, trained exclusively with the Sovereign AI stack.
+> Distilled from Qwen3-Coder-30B-A3B, trained exclusively with the Sovereign AI stack.
 > The goal: produce a **usable Python code assist** that runs anywhere Rust compiles,
 > **and** validate every layer of the stack end-to-end.
 
@@ -24,7 +24,12 @@
 **Strategic pivot (v1.0)**: Pre-training from scratch plateaus at val_ppl ~776 after
 64M tokens. The phi-1 result proves a 350M model can reach 45% HumanEval — but only
 with high-quality data (filtered web + synthetic textbooks + exercises). Our path:
-**distillation-first** using Qwen3.5-35B-A3B as teacher, combined with data curation.
+**distillation-first** using Qwen3-Coder-30B-A3B as teacher, combined with data curation.
+
+**Teacher selection (v1.1)**: Falsification analysis revealed Qwen3.5-35B-A3B is the
+wrong teacher — no FIM support, no HumanEval benchmarks, designed for agentic reasoning
+not code completion. Switched to Qwen3-Coder-30B-A3B-Instruct: Apache 2.0, FIM support,
+code-specialized, simpler MoE architecture (`qwen3_moe`, 128 experts, standard GQA).
 
 ---
 
@@ -84,21 +89,24 @@ trained on 7B curated tokens beats a 350M model trained on 577B raw tokens. Our
 strategy has three phases:
 
 ### Phase 1: Teacher Inference (3-5 days)
-Generate high-quality Python completions from Qwen3.5-35B-A3B (MoE, 35B total,
-3B active per token) running at Q4 on the RTX 4090.
+Generate high-quality Python completions from Qwen3-Coder-30B-A3B (MoE, 30.5B total,
+3.3B active per token) running at Q4 on the RTX 4090. FIM-capable.
 
 ```
-Qwen3.5-35B-A3B (Q4, 19.7 GB VRAM)
+Qwen3-Coder-30B-A3B (Q4, 18.6 GB VRAM)
     │
     ├── Sequence-level: Generate 100-500K code completions
     │   Filter by execution correctness (rejection sampling)
     │   → 25-128M tokens of verified synthetic data
     │
+    ├── FIM completions: <|fim_prefix|>...<|fim_suffix|>...<|fim_middle|>
+    │   → Code infill training data matching student's target task
+    │
     └── Logit-level: Precompute top-k soft targets on training data
         → Richer gradient signal for student optimization
 ```
 
-**Teacher throughput**: ~100 tok/s at Q4 on RTX 4090.
+**Teacher throughput**: ~100-140 tok/s at Q4 on RTX 4090.
 - 100K completions × 256 tok avg = ~71 hours
 - 500K completions = ~15 days
 - Start with 100K, scale if benchmarks justify
@@ -129,28 +137,36 @@ Two-stage training of the 350M student:
 
 ---
 
-## 4. Teacher: Qwen3.5-35B-A3B
+## 4. Teacher: Qwen3-Coder-30B-A3B-Instruct
 
 | Property | Value |
 |----------|-------|
-| Parameters | 35B total, 3B active (MoE: 256 experts, top-8 + 1 shared) |
-| Architecture | Hybrid: 30 Gated DeltaNet + 10 full GQA layers |
+| Parameters | 30.5B total, 3.3B active (MoE: 128 experts, top-8) |
+| Architecture | Standard GQA, 48 layers, h=2048, SwiGLU (moe_intermediate=768) |
 | License | Apache 2.0 |
-| VRAM (Q4) | 19.7 GB → fits RTX 4090 (4.3 GB headroom) |
-| Throughput | ~100 tok/s generation on RTX 4090 |
-| Code capability | Strong (designed for code generation + agentic reasoning) |
+| VRAM (Q4) | 18.6 GB → fits RTX 4090 (5.4 GB headroom) |
+| Throughput | ~100-140 tok/s generation on RTX 4090 |
+| FIM | Yes (`<|fim_prefix|>`, `<|fim_suffix|>`, `<|fim_middle|>`) |
+| Code capability | Code-specialized (SWE-bench 50.3%, FIM trained) |
+| model_type | `qwen3_moe` (standard, NOT `qwen3_5_moe`) |
 
-**Why this teacher**: 35B knowledge at 3B inference cost. Apache 2.0 license.
-Fits on our single 4090. Soft targets from 256 experts encode far richer
-distributional information than a dense 3B teacher.
+**Why this teacher**: Code-specialized with FIM support — directly matches our
+target task. Apache 2.0 license. 30.5B knowledge at 3.3B inference cost.
+Simpler MoE than Qwen3.5 (standard GQA, no DeltaNet, no shared expert).
 
-**Fallback**: Qwen2.5-Coder-3B (dense, already supported by realizar). Lower
-quality ceiling but zero implementation risk.
+**Previous teacher (Qwen3.5-35B-A3B) rejected**: Falsification revealed it has
+no FIM support, no HumanEval benchmarks, and is designed for agentic reasoning
+rather than code completion. The right teacher must match the student's task.
 
-**Implementation status** (ALB-010):
-- Steps 1-5b MERGED: MoE routing, expert dispatch, forward integration
-- Step 6 IN PROGRESS: APR tensor→MoE slot mapping (load from `qwen35-moe.apr`)
-- Remaining: end-to-end dogfood with actual model files
+**Fallback**: Qwen2.5-Coder-3B (dense, 84.1% HumanEval, already supported by
+realizar). Lower distillation ceiling but zero implementation risk. License:
+Qwen Research (not Apache 2.0).
+
+**Implementation status** (ALB-010, re-scoped for `qwen3_moe`):
+- MoE routing, expert dispatch from Steps 1-3: reusable (architecture-agnostic)
+- Config parsing: needs adaptation (`qwen3_moe` vs `qwen3_5_moe`)
+- Tensor mapping: simpler (128 experts, no shared expert, standard attn names)
+- Model files: need download + APR import
 
 → Details: [components/distillation.md](components/distillation.md)
 
@@ -177,9 +193,9 @@ The phi-1 recipe:
 4. **Two-stage**: Pretrain on (1)+(2), finetune on (3)
 
 Our adaptation:
-1. **Filter** 5.3B codeparrot-clean → ~1-2B via Qwen3.5-annotated classifier
-2. **Generate** synthetic completions from Qwen3.5-35B-A3B (100-500K samples)
-3. **Generate** CodeExercises-style data from teacher
+1. **Filter** 5.3B codeparrot-clean → ~1-2B via teacher-annotated classifier
+2. **Generate** synthetic completions from Qwen3-Coder-30B-A3B (100-500K samples)
+3. **Generate** CodeExercises-style data + FIM completions from teacher
 4. **Two-stage**: Pretrain on filtered data, SFT on synthetic data
 
 → Details: [components/data.md](components/data.md)
@@ -208,7 +224,7 @@ Our adaptation:
 | Config | VRAM | Notes |
 |--------|------|-------|
 | Student training (350M) | ~18 GB | Weights + AdamW + workspace |
-| Teacher inference (35B Q4) | ~20 GB | Weights + KV cache + activations |
+| Teacher inference (30.5B Q4) | ~19 GB | Q4 weights (18.6 GB) + KV cache + activations |
 | Student eval | ~5 GB | Forward only |
 
 Teacher and student run sequentially, never simultaneously.
@@ -287,7 +303,7 @@ Each stage exercises a different `apr` subcommand and may reveal new stack gaps.
 
 | ID | Gap | Status | Blocker? |
 |----|-----|--------|----------|
-| ALB-010 | MoE tensor→slot mapping (APR format) | Step 6 | **YES** |
+| ALB-010 | `qwen3_moe` teacher loading (re-scoped) | IN PROGRESS | **YES** |
 | ALB-089 | GPU-accelerated inference for eval | DOGFOODING | No |
 | ALB-092 | Norm grads + accum zeroing + resume | FIXED | No |
 
@@ -300,7 +316,7 @@ Each stage exercises a different `apr` subcommand and may reveal new stack gaps.
 
 | Milestone | Target Date | Criterion |
 |-----------|-------------|-----------|
-| M1: Teacher inference works | 2026-03-15 | Qwen3.5-35B-A3B generates valid Python via realizar |
+| M1: Teacher inference works | 2026-03-15 | Qwen3-Coder-30B-A3B generates valid Python via realizar |
 | M2: 100K completions generated | 2026-03-20 | Rejection-sampled, execution-verified |
 | M3: Student SFT complete | 2026-03-25 | Trained on teacher completions |
 | M4: HumanEval > 0% | 2026-03-25 | At least 1 problem solved |
@@ -345,4 +361,5 @@ Eight hard rules from 52 bugs found during ALB-040 dogfooding. See `CLAUDE.md`.
 - [Sparse Logit Sampling](https://arxiv.org/abs/2503.16870) — Efficient logit storage
 - [DeepSeek-R1](https://github.com/deepseek-ai/DeepSeek-R1) — Sequence-level distillation
 - [Magicoder](https://github.com/ise-uiuc/magicoder) — OSS-Instruct synthetic data
-- [Qwen3.5-35B-A3B](https://huggingface.co/Qwen/Qwen3.5-35B-A3B) — Teacher model
+- [Qwen3-Coder-30B-A3B-Instruct](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct) — Teacher model
+- [Qwen3.5-35B-A3B](https://huggingface.co/Qwen/Qwen3.5-35B-A3B) — Previous teacher (rejected: no FIM)

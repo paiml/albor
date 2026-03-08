@@ -84,7 +84,7 @@ phi-1's data stack:
 
 **Training data for classifier**:
 1. Sample ~10K code snippets from codeparrot-clean (stratified by file size)
-2. Annotate with Qwen3.5-35B-A3B: "Is this code pedagogically clear,
+2. Annotate with Qwen3-Coder-30B-A3B: "Is this code pedagogically clear,
    well-structured, and suitable as a textbook example? Score 1-5."
 3. Threshold: score ≥ 4 → positive, score ≤ 2 → negative
 4. Train random forest on features: code length, comment ratio, function count,

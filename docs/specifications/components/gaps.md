@@ -18,7 +18,7 @@ The model is the proof; the stack improvements are the lasting value.
 
 | ID | Gap | Status | Component | Notes |
 |----|-----|--------|-----------|-------|
-| ALB-010 | MoE tensor→slot mapping (APR) | Step 6 | realizar | **BLOCKER**: APR tensors → MoE expert slots |
+| ALB-010 | `qwen3_moe` teacher loading (re-scoped) | Steps 4-8 | realizar | **BLOCKER**: Qwen3-Coder-30B-A3B |
 | ALB-089 | GPU-accelerated inference for eval | DOGFOODING | realizar | Needed for fast teacher generation |
 
 ### 2.1 ALB-010: Qwen3.5-35B-A3B MoE Support
@@ -26,25 +26,29 @@ The model is the proof; the stack improvements are the lasting value.
 **The single most important gap.** Without this, we cannot use our primary
 teacher model.
 
+**Re-scoped**: Teacher changed from Qwen3.5-35B-A3B (`qwen3_5_moe`) to
+Qwen3-Coder-30B-A3B-Instruct (`qwen3_moe`). Falsification revealed the
+original teacher has no FIM support and isn't code-specialized.
+
 | Step | Description | Status |
 |------|-------------|--------|
-| 1-5b | MoE routing, dispatch, forward, config, tests | MERGED (PR #133) |
-| 6 | APR tensor→MoE slot mapping | IN PROGRESS |
-| 7 | End-to-end generation with actual model files | BLOCKED on 6 |
+| 1-3 | MoE routing, dispatch, forward (architecture-agnostic) | MERGED (PR #133) |
+| 4* | Config parsing (adapt `qwen3_5_moe` → `qwen3_moe`) | NEEDS UPDATE |
+| 5* | Tests (re-validate for 128 experts, no shared) | NEEDS UPDATE |
+| 6 | Download model + APR import + tensor→slot mapping | **TODO** |
+| 7 | Q4K quantization via `apr quantize` | TODO |
+| 8 | End-to-end generation dogfood | BLOCKED on 6-7 |
 
-**Format**: Model already imported to APR (`qwen35-moe.apr`, 67 GB). Reader
-exists: `AprV2ReaderRef` (mmap, zero-copy, 10.9 MB RSS). Five Whys analysis
-revealed the blocker is tensor name parsing, not file format. No SafeTensors
-dependency needed at inference time.
+**Architecture differences** (`qwen3_moe` vs `qwen3_5_moe`):
+- 128 experts (not 256), no shared expert
+- Standard GQA (no Gated DeltaNet, no linear attention layers)
+- `model.layers.{L}` tensor prefix (no `language_model` nesting)
+- 48 layers (not 40), h=2048 (not 2048), vocab 151936 (not 248320)
 
-**Tensor mapping challenges**:
-- Config key: `Qwen3_5MoeForConditionalGeneration` → `text_config` nesting
-- Tensor prefix: `model.language_model.layers.{L}`
-- Expert format: experts packed (no `.weight` suffix)
-- Linear attention: `linear_attn.{in_proj_qkv,in_proj_z,...}` (NOT `self_attn`)
-- Model: 1811 tensors (imported from 14 HF shards into single APR file)
+**Simpler**: No DeltaNet attention, no shared expert routing. Core MoE
+dispatch from Steps 1-3 transfers directly.
 
-**Fallback**: If blocked >3 days → Qwen2.5-Coder-3B (dense, already supported).
+**Fallback**: Qwen2.5-Coder-3B (dense, 84.1% HumanEval, already supported).
 
 ---
 

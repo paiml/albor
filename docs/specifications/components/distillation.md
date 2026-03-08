@@ -18,59 +18,76 @@ volume.
 
 ---
 
-## 2. Teacher: Qwen3.5-35B-A3B
+## 2. Teacher: Qwen3-Coder-30B-A3B-Instruct
 
 | Property | Value |
 |----------|-------|
-| Total params | 35B (256 experts + 1 shared) |
-| Active params | 3B per token (top-8 routing) |
-| Architecture | 40 layers: 30 Gated DeltaNet + 10 full GQA |
-| FFN (experts) | SwiGLU, intermediate_size=512 |
+| Total params | 30.5B (128 experts, top-8 routing) |
+| Active params | 3.3B per token |
+| Architecture | 48 layers, h=2048, 32 Q-heads, 4 KV-heads, standard GQA |
+| FFN (experts) | SwiGLU, moe_intermediate_size=768 |
 | License | Apache 2.0 |
-| VRAM (Q4) | ~19.7 GB → fits RTX 4090 |
-| Throughput | ~100 tok/s generation at Q4 |
-| APR model | `/mnt/nvme-raid0/models/qwen35-moe.apr` (67 GB, mmap zero-copy) |
-| HF source | `/mnt/nvme-raid0/models/Qwen3.5-35B-A3B/` (14 SafeTensors shards, imported) |
+| model_type | `qwen3_moe` |
+| VRAM (Q4) | ~18.6 GB → fits RTX 4090 (5.4 GB headroom) |
+| Throughput | ~100-140 tok/s generation at Q4 |
+| FIM tokens | `<|fim_prefix|>`, `<|fim_suffix|>`, `<|fim_middle|>` |
+| HF source | `Qwen/Qwen3-Coder-30B-A3B-Instruct` (16 shards, 61.1 GB BF16) |
+| SWE-bench | 50.3% verified |
+| vocab_size | 151936 |
 
 ### 2.1 Why This Teacher
 
-1. **Knowledge density**: 256 MoE experts encode rich distributional info.
-   Soft targets from MoE are more informative than dense model logits.
-2. **Inference efficiency**: 3B active → ~100 tok/s on 4090. Fast enough
-   for 100K+ completion generation in 3-4 days.
-3. **License**: Apache 2.0 — no restrictions on derivative models.
-4. **Single-GPU**: Fits at Q4 with 4.3 GB headroom for KV cache.
+1. **Code-specialized**: Trained specifically for code generation + FIM.
+   Matches our student's target task (Python code completion).
+2. **FIM support**: Native fill-in-middle tokens — can generate infill training
+   data directly. Qwen3.5-35B-A3B lacks this entirely.
+3. **Apache 2.0**: No restrictions on derivative models.
+4. **Inference efficiency**: 3.3B active → ~100-140 tok/s on 4090.
+5. **Simpler MoE**: Standard GQA, 128 experts, no shared expert, no DeltaNet.
+   Significantly less engineering than `qwen3_5_moe`.
 
-### 2.2 Implementation Status (ALB-010)
+### 2.2 Teacher Selection: Falsification Record
+
+Qwen3.5-35B-A3B was the original teacher choice. Falsification revealed three
+fatal flaws:
+
+1. **No FIM support** — cannot generate code infill training data
+2. **No HumanEval/MBPP benchmarks** — code capability unverifiable
+3. **Designed for agentic reasoning** — thinking mode (`<think>...</think>`),
+   not direct code completion
+
+The `qwen3_5_moe` architecture is also more complex (Gated DeltaNet, 256
+experts + shared expert, hybrid linear attention) with no benefit for our
+code completion use case. ALB-010 Steps 1-5b MoE routing/dispatch code is
+reusable; config parsing needs adaptation for `qwen3_moe`.
+
+### 2.3 Implementation Status (ALB-010, re-scoped)
 
 | Step | Description | Status |
 |------|-------------|--------|
-| 1 | MoE routing (top-k gating, load balancing) | MERGED |
-| 2 | Expert dispatch (scatter/gather) | MERGED |
-| 3 | Forward pass integration | MERGED |
-| 4 | Config parsing (`Qwen3_5MoeForConditionalGeneration`) | MERGED |
-| 5a | Unit tests (routing correctness) | MERGED |
-| 5b | Integration tests (15,053+ pass) | MERGED |
-| 6 | APR tensor→MoE slot mapping | **IN PROGRESS** |
-| 7 | End-to-end generation dogfood | BLOCKED on 6 |
+| 1-3 | MoE routing, dispatch, forward (architecture-agnostic) | MERGED |
+| 4* | Config parsing (adapt for `qwen3_moe`) | NEEDS UPDATE |
+| 5* | Tests (re-validate for 128 experts, no shared) | NEEDS UPDATE |
+| 6 | Download model + APR import + tensor→slot mapping | **TODO** |
+| 7 | Q4 quantization via `apr quantize` | TODO |
+| 8 | End-to-end generation dogfood | BLOCKED on 6-7 |
 
-### 2.3 Weight Loading: APR, Not SafeTensors
+Steps marked * need adaptation from `qwen3_5_moe` → `qwen3_moe`. The core
+MoE routing/dispatch is architecture-agnostic and transfers directly.
 
-The model is already imported to APR format (`qwen35-moe.apr`, 67 GB). realizar
-has `AprV2ReaderRef` — mmap-based, zero-copy, 10.9 MB RSS. The Five Whys
-analysis revealed PR #135 conflated "read a file format" with "map tensors to
-MoE slots." The file format is solved (APR). The real work is Step 6: parsing
-tensor names like `model.language_model.layers.{L}.mlp.experts.{E}.gate_proj`
-and loading each into the correct expert slot in the MoE runtime.
+### 2.4 Weight Loading: APR Format
 
-This is sovereign: we use our own format end-to-end. No SafeTensors dependency
-at inference time.
+Same sovereign approach: download HF shards → `apr import` → APR file →
+`apr quantize --scheme q4k` → Q4K APR → realizar loads via
+`load_quantized_weights_with_type()`. Q4K GEMV kernels already exist in
+realizar (multi-warp vectorized, DP4A, fused RMSNorm+Q4K).
 
-### 2.4 Fallback Teacher
+### 2.5 Fallback Teacher
 
-**Qwen2.5-Coder-3B** (dense, already supported by realizar). Lower quality
-ceiling but zero implementation risk. If Step 6 blocks for >3 days, switch to
-this fallback and begin generating data immediately.
+**Qwen2.5-Coder-3B** (dense, 84.1% HumanEval, 85.7% HumanEval-FIM).
+Already supported by realizar. Zero implementation risk.
+Caveats: Qwen Research license (not Apache 2.0), lower distillation ceiling
+(dense 3B vs MoE 30.5B with 128 expert banks).
 
 ---
 
@@ -145,8 +162,8 @@ HumanEval.
 
 ```yaml
 teacher:
-  model: "qwen35-moe.apr"
-  quantization: "q4"
+  model: "qwen3-coder-30b.apr"
+  quantization: "q4k"
   temperature: 0.8
   top_p: 0.95
   max_tokens: 512
@@ -194,7 +211,7 @@ Train student from random init on quality-filtered codeparrot-clean.
 | Steps | ~40K-60K |
 | Target | val_loss < 4.0 |
 
-**Quality classifier**: Train random forest on Qwen3.5 annotations.
+**Quality classifier**: Train random forest on teacher annotations.
 Annotate ~10K samples as "textbook quality" (1) or not (0). Apply classifier
 to full 5.3B tokens, keep samples scoring > 0.5.
 
@@ -249,7 +266,7 @@ Microsoft's phi-1-small (350M, h=1024, 20 layers) achieved 45% HumanEval:
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| ALB-010 Step 6 (tensor mapping) blocks | Can't use best teacher | Fallback to Qwen2.5-Coder-3B |
+| ALB-010 qwen3_moe loading blocks | Can't use best teacher | Fallback to Qwen2.5-Coder-3B |
 | Low rejection sampling rate | Fewer verified samples | Increase temperature, use more prompts |
 | Student doesn't converge in Stage B | Wasted compute | Monitor val_ppl every 100 steps, early stop |
 | Execution sandbox escape | Security | Use bubblewrap/nsjail, restricted imports |
