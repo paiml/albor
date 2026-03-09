@@ -102,3 +102,14 @@ gap_register:
          → 6 MB (11x reduction via with_limit()).
       6. trueno: TunerFeatures::to_vector() caused 140K tiny Vec<f32>
          allocations in tests. Added to_array() returning [f32; 42] on stack.
+      Round 2 (deeper workloads):
+      7. trueno: BLIS gemm_blis() allocated+freed 4.3 MB workspace buffers
+         (packed_a, packed_b, c_micro) on every call. Fixed with thread-local
+         high-water-mark buffers — zero allocation after first call.
+      8. alimentar: Unique::apply() created O(rows×cols) String allocations
+         for row keys. Switched to u64 hash keys (DefaultHasher) — zero
+         String allocations in the hot path.
+      9. aprender+entrenar: APR checkpoint save copied 450 MB model weights
+         twice (add_tensor_f32 to_vec + V2Writer f32→bytes flat_map).
+         Added add_tensor_f32_owned, into_bytes, write_into consuming pipeline.
+         350M checkpoint save: ~900 MB redundant copies eliminated.
