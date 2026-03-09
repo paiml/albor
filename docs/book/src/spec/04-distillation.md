@@ -168,21 +168,20 @@ At 17.5 tok/s decode (serve path), synthetic data generation times:
 | 6. Scale to 50M tokens | IN PROGRESS | Current: 50-prompt batch running |
 | 7. Train student | TODO | After sufficient synthetic data |
 
-**Throughput bottleneck**: realizar `serve` doesn't support GPU Q4K
-(APR serve path uses CPU). Using subprocess mode (`realizar run --gpu`)
-at ~5 tok/s effective (13 tok/s decode + 5s model load overhead).
+**Throughput (measured 2026-03-09)**:
 
-**Revised generation time estimates** (at 5 tok/s effective):
+| Mode | Throughput | Notes |
+|------|-----------|-------|
+| `realizar serve --gpu` | **17.5 tok/s** | Model loaded once, HTTP API, pool allocator |
+| `realizar run --gpu` | ~5 tok/s | 5s model load per subprocess call |
+
+**Generation time estimates** (at 17.5 tok/s serve path):
 
 | Tier | Tokens | Time | Prompts (256 tok avg) |
 |------|--------|------|-----------------------|
-| PoC | 500K | ~28h | 2,000 |
-| Minimum | 5M | ~12d | 20,000 |
-| Target | 50M | ~4mo | 200,000 |
-
-**Critical optimization needed**: Fix `realizar serve` to use Q4K GPU
-path (load model once, serve many requests). This would eliminate the
-5s model load per request, improving effective throughput to ~13 tok/s.
+| PoC | 500K | ~8h | 2,000 |
+| Minimum | 5M | ~3.3d | 20,000 |
+| Target | 50M | ~33d | 200,000 |
 
 ### 4.8 Fallback: Qwen2.5-Coder-3B (Dense)
 

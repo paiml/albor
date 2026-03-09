@@ -10,12 +10,11 @@
 - [ ] All existing kernel contracts pass `pv audit` (Level 2+)
 - [ ] `pmat comply check` passes on all modified components
 
-**Current blockers for Phase 3 completion:**
+**Current blocker for Phase 3 completion:**
 - ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
-- v8 training not yet started (all infrastructure bugs fixed, ready to train)
 
-**All critical training bugs FIXED (61 gaps closed):**
-- ~~ALB-038–044, 059–060, 065, 069, 071–074, 079–080, 092, 096–097, 099–105~~ — see §11 gap register
+**All critical training bugs FIXED (64 gaps closed):**
+- ~~ALB-038–044, 059–060, 063, 065, 069, 071–074, 079–080, 083, 092, 096–097, 099–105~~ — see §11 gap register
 
 **Training run history:**
 
@@ -27,15 +26,9 @@
 | v5 | — | — | — | — | **FAILED**: ALB-092 (grad_gamma + uninitialized accum) |
 | v6 | 2,000 | 776 | 6,500 | — | **KILLED** for distillation pivot |
 | v7 | 550 | ~780 | 6,900 | — | **KILLED** for ALB-097 (checkpoint resume bug) |
+| **v8** | **1,000+** | **761** | **7,714** | **23.3%** | **RUNNING** — resumed at step 1000, all fixes applied |
 
-**Best result (v6):** val_ppl=776 at step 2000, loss ~6.1. Killed before convergence.
-
-**Key fixes since v7:**
-- ALB-097: Tied LM head now saved in checkpoint → resume works (`entrenar@604f32f`)
-- ALB-099: 15 memory issues fixed via dhat-rs profiling (Chapter 20)
-- ALB-100–105: 6 architectural memory fixes (streaming loader, LMBatch dedup, etc.)
-
-**Next: v8 training** — all fixes applied, restart from scratch. Target: val_ppl < 100 by 1B tokens.
+**v8 training (ACTIVE):** Resumed at step 1000, 7.7K tok/s, 23.3% MFU, val_ppl 761-909. Running to 20K steps (~655M tokens). All ALB-079–105 fixes applied. APR checkpoints with optimizer state.
 
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen3.5-35B-A3B demonstrated (ALB-010); fallback: Qwen2.5-Coder-3B (dense)

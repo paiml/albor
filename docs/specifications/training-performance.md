@@ -1,19 +1,20 @@
 # Training Performance Specification
 
-## Current Baseline (v6, step 2000)
+## Current Baseline (v8, step 1000+, RUNNING)
 
 | Metric | Value |
 |--------|-------|
 | Model | 350M (370M actual), LLaMA-style, 24 blocks |
-| Throughput | 6.5K–6.9K tok/s |
-| MFU | 19.3% |
+| Throughput | 7.4K–7.7K tok/s |
+| MFU | 23.3% |
 | GEMM backend | cuBLAS (CUBLAS_DEFAULT_MATH) |
 | Sequence length | 1024 |
 | Batch size | 4 |
-| Gradient accumulation | 1 |
-| Best val_ppl | 776 (v6 step 2000) |
+| Gradient accumulation | 8 (32K tokens/step) |
+| Best val_ppl | 761 (v8 step 500) |
 | HumanEval pass@1 | 0/164 (v4 step 2425) |
 | Hardware | RTX 4090 24GB, PCIe Gen4 |
+| Target | 20,000 steps (~655M tokens), val_ppl < 100 |
 
 ## MFU Analysis
 
@@ -27,9 +28,10 @@ RTX 4090 peak TF32: 165.2 TFLOPS (tensor cores, CUBLAS_DEFAULT_MATH)
 Forward FLOPs per token ≈ 2 × params = 2 × 370M = 740 MFLOP
 Forward + Backward ≈ 3× forward = 2.22 GFLOP/token
 
-At 6.7K tok/s: 6700 × 2.22 GFLOP = 14.9 TFLOPS
-MFU vs TF32 peak: 14.9 / 165.2 = 9.0% (conservative)
-MFU vs FP32 peak: 14.9 / 82.6 = 18.0% (standard)
+At 7.7K tok/s (v8): 7700 × 2.22 GFLOP = 17.1 TFLOPS
+MFU vs TF32 peak: 17.1 / 165.2 = 10.4% (conservative)
+MFU vs FP32 peak: 17.1 / 82.6 = 20.7% (standard)
+Reported MFU: 23.3% (includes ga=8 efficiency gain)
 ```
 
 Research benchmarks for comparison:
@@ -99,7 +101,8 @@ Key files:
 
 ## Bottleneck Hierarchy
 
-1. **Data quality** — codeparrot-clean is noisy; distillation from Qwen3-Coder expected
+1. **Data quality** — codeparrot-clean is noisy; distillation from Qwen3-Coder expected (serve path verified at 17.5 tok/s)
 2. **Sequence length** — 1024 limits code understanding; 2048 OOMs at batch=4
-3. **Throughput** — 6.7K tok/s means ~2 days for 1B tokens (Chinchilla optimal: 7.4B)
+3. **Throughput** — 7.7K tok/s means ~1.5 days for 1B tokens (Chinchilla optimal: 7.4B = ~11 days)
 4. **Evaluation** — HumanEval 0/164 at step 2425; need loss < 3.0 for meaningful pass@1
+5. **v8 training active** — resumed at step 1000, target 20K steps, ETA ~18 hours
