@@ -85,7 +85,7 @@ gap_register:
     fix: |
       Feature-gated dhat-rs in all 5 repos. Same pattern: optional dep,
       #[global_allocator], Profiler::new_heap() in main(). Zero overhead
-      when disabled. Six issues found and fixed:
+      when disabled. Fifteen issues found and fixed across 3 rounds:
       1. realizar: 17.4 GB wasted std::fs::read → early-out for GPU Q4K.
          Peak host RAM: 19.6 GB → 1.3 GB (93% reduction).
       2. realizar: PMAT-045 variable scoping — vars declared inside
@@ -124,3 +124,8 @@ gap_register:
           Scoped dataset to drop before batch creation (~1 GB/shard saved).
       13. entrenar: 3 Vec allocations without with_capacity in hot data
           loading path. Added capacity hints.
+      14. realizar: detect_model() read entire model file via std::fs::read
+          just to detect 8-byte magic. Fixed with File::open + read (8 bytes).
+      15. realizar: run_inference() read entire model file via std::fs::read
+          for format detection. Fixed with File::open + read_exact (8 bytes).
+          Peak host RAM for 17 GB model: 17+ GB → ~0 bytes for detection.
