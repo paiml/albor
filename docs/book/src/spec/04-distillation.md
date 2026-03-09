@@ -126,17 +126,15 @@ Qwen3-Coder-30B at Q4K on RTX 4090 (measured 2026-03-09):
 | Mode | Expected | Measured | Notes |
 |------|----------|----------|-------|
 | Prefill (prompt) | ~200-500 tok/s | TBD | Batch-1, Q4K GEMV |
-| Decode (generation) | ~30-80 tok/s | **13.2 tok/s** | Autoregressive, CPU attention |
-| Subprocess overhead | — | **5s/request** | Model load per `realizar run` |
-| Effective throughput | — | **5.1 tok/s** | Including subprocess overhead |
+| Decode (generation) | ~30-80 tok/s | **17.5 tok/s** | Autoregressive, serve path |
+| Subprocess (`realizar run`) | — | **5.1 tok/s** | 5s model load per subprocess call |
+| Server (`realizar serve --gpu`) | — | **17.5 tok/s** | Model loaded once at startup |
 
-The 13.2 tok/s decode is below initial estimates because attention is on
-CPU (KV cache management). The 5s model load per subprocess call is the
-dominant bottleneck for batch generation.
-
-**Optimization path**: Fix `realizar serve` to support GPU Q4K path,
-eliminating the 5s model load per request. This would improve effective
-throughput from 5.1 to ~13.2 tok/s (2.6x).
+**Status: VERIFIED** — `realizar serve --gpu` with Q4K works end-to-end:
+- ALB-098 pool allocator: 18,673 Q4K tensors in 1 cuMemAlloc (17.0 GB)
+- Dedicated inference thread with channel communication
+- 131 tokens generated in 7.5s (merge sort, correct output)
+- Build: `cargo build --release --features cuda` (required for GPU serve)
 
 ### 4.7 Progress: Teacher Inference (ALB-095 FIXED)
 
@@ -144,7 +142,19 @@ ALB-095 (Q4K GPU inference in realizar) was the critical dependency.
 Fixed 2026-03-08 — three bugs: explicit head_dim, MoE metadata inference,
 head_dim inference from q_proj weight.
 
-**Measured throughput**: 13.2 tok/s decode (Q4K GPU, RTX 4090)
+**Measured throughput**: 17.5 tok/s decode via serve path (Q4K GPU, RTX 4090)
+
+### 4.8 Generation Time Estimates
+
+At 17.5 tok/s decode (serve path), synthetic data generation times:
+
+| Dataset Size | Avg Completion | Generation Time | Notes |
+|-------------|---------------|-----------------|-------|
+| 50M tokens (MVP) | 128 tok | 391K requests × 7.3s = **33 days** | Too slow for single GPU |
+| 10M tokens (pilot) | 128 tok | 78K requests × 7.3s = **6.6 days** | Feasible first batch |
+| 5M tokens (minimum) | 128 tok | 39K requests × 7.3s = **3.3 days** | Quick validation |
+
+**Strategy**: Start with 5M tokens to validate quality, scale up if HumanEval improves.
 
 **Pipeline status** (2026-03-09):
 
