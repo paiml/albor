@@ -1,0 +1,103 @@
+# gpu-weight-pool-v1.yaml — ALB-098
+#
+# Provable contract for GPU weight pool allocator.
+# Root cause: 18,867 individual cuMemAlloc() calls for MoE expert tensors
+# causes CUDA memory fragmentation → OOM on 24 GB VRAM for 17 GB model.
+# Fix: single cuMemAlloc() + contiguous packing. 1 allocation vs 18,867.
+
+metadata:
+  version: "1.0.0"
+  created: "2026-03-09"
+  author: "PAIML Engineering"
+  description: "GPU weight pool allocator — coalesce thousands of small cuMemAlloc into one"
+  references:
+    - "CUDA Driver API: cuMemAlloc granularity (2 MB pages, per-alloc metadata)"
+    - "Qwen3-Coder-30B-A3B: 128 experts × 48 layers × 3 projections = 18,432 expert tensors"
+    - "ALB-095: Q4K GPU inference for MoE teacher model"
+  depends_on:
+    - "cuda-inference-v1"
+
+equations:
+  pool_allocation:
+    formula: |
+      Given N tensors with sizes s_1, s_2, ..., s_N:
+        total_bytes = sum(align(s_i, 256)) for i in 1..N
+        num_cuMemAlloc_calls = 1
+      where align(x, a) = ceil(x / a) * a
+    domain: "N > 0, s_i > 0 for all i"
+    codomain: "Single contiguous GPU allocation of total_bytes"
+    invariants:
+      - "Exactly 1 cuMemAlloc call (vs N without pool)"
+      - "total_bytes <= sum(s_i) + N * 255 (alignment overhead bounded)"
+      - "Each tensor region is 256-byte aligned (CUDA coalesced access)"
+
+  pointer_correctness:
+    formula: |
+      For tensor i at pool offset o_i:
+        device_ptr(tensor_i) = pool_base_ptr + o_i
+        o_i = sum(align(s_j, 256)) for j in 1..i-1
+      Memory region [o_i, o_i + s_i) does not overlap with any other tensor.
+    domain: "pool_base_ptr > 0 (valid device allocation)"
+    codomain: "Correct non-overlapping device pointers for all N tensors"
+    invariants:
+      - "get_quantized_weight_ptr(name) returns pool_base + offset for pooled tensors"
+      - "Backward compatible: non-pooled tensors still use individual GpuBuffer"
+
+  memory_bound:
+    formula: |
+      For Qwen3-Coder-30B at Q4K:
+        Expert tensors: 18,432 × ~885 KB = ~15.4 GB
+        Attention tensors: 48 × 4 × ~2.5 MB = ~485 MB
+        Norms/embed: ~1.3 GB
+        Total pool: ~17.2 GB
+        Available VRAM: 24 GB - 0.7 GB (display) = 23.3 GB
+        Headroom: 23.3 - 17.2 = 6.1 GB
+      Without pool: 18,867 × 2 MB page overhead = 37 GB → OOM
+      With pool: 17.2 GB + 1 × 2 MB = 17.2 GB → fits
+    domain: "RTX 4090, 24 GB VRAM"
+    codomain: "Model fits in VRAM"
+    invariants:
+      - "Pool overhead < N * 256 bytes (alignment only)"
+      - "CUDA driver overhead: 1 allocation metadata vs 18,867"
+
+obligations:
+  - id: C-POOL-001
+    description: "Pool allocator uses exactly 1 cuMemAlloc for all quantized weights"
+    falsification: |
+      Count cuMemAlloc calls during model load with pool vs without.
+      With pool: count must be 1 for quantized weights.
+      Without pool: count equals number of quantized tensors.
+
+  - id: C-POOL-002
+    description: "Every tensor's device pointer falls within pool bounds"
+    falsification: |
+      For each tensor name in pool:
+        ptr = get_quantized_weight_ptr(name)
+        assert pool_base <= ptr < pool_base + total_bytes
+        assert ptr + tensor_size <= pool_base + total_bytes
+
+  - id: C-POOL-003
+    description: "Pool is freed when CudaExecutor is dropped (no leak)"
+    falsification: |
+      Before: nvidia-smi shows X MB used
+      Create executor, load pool, drop executor
+      After: nvidia-smi shows ~X MB used (within 10 MB tolerance)
+
+  - id: C-POOL-004
+    description: "17 GB Q4K MoE model loads on RTX 4090 without OOM"
+    falsification: |
+      realizar run /mnt/nvme-raid0/models/qwen3-coder-30b-q4k.apr "def fib(n):" --gpu
+      Must succeed (exit 0) and produce coherent Python output.
+      Must NOT produce CUDA_ERROR_OUT_OF_MEMORY.
+
+gap_register:
+  - id: ALB-098
+    title: "GPU weight pool allocator for MoE models"
+    status: OPEN
+    root_cause: |
+      18,867 individual cuMemAlloc() calls for MoE expert tensors.
+      CUDA driver allocates per-call metadata and may round up to 2 MB pages.
+      For 18,867 allocations × 2 MB page = 37 GB virtual → exceeds 24 GB VRAM.
+    fix: |
+      Pool allocator: pre-scan total bytes, single cuMemAlloc, pack tensors
+      at 256-byte aligned offsets. Store (name → device_ptr) in HashMap.

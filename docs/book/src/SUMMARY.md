@@ -39,6 +39,7 @@
 # Training Performance
 
 - [Training Performance Spec](./spec/19-training-performance.md)
+- [Memory Profiling (dhat-rs)](./spec/20-memory-profiling.md)
 
 # Model Cards
 
