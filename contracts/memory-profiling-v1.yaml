@@ -83,8 +83,12 @@ gap_register:
       ALB-098 CUDA fragmentation) were caught by symptoms (swap storm, CUDA error)
       not by proactive measurement.
     fix: |
-      Feature-gated dhat-rs in all 4 repos. Same pattern: optional dep,
-      #[global_allocator], Profiler::new_heap() in main(). Zero overhead
-      when disabled. First profiling run found 17.4 GB wasted host allocation
-      (std::fs::read of entire APR file, then re-opened via mmap). Fixed by
-      early-out for GPU Q4K path. Peak host RAM: 19.6 GB → 1.3 GB (93% reduction).
+      Feature-gated dhat-rs in all 5 repos (+ alimentar). Same pattern: optional
+      dep, #[global_allocator], Profiler::new_heap() in main(). Zero overhead
+      when disabled. Profiling findings:
+      1. realizar: 17.4 GB wasted std::fs::read (APR file re-opened via mmap).
+         Fixed by early-out for GPU Q4K path. Peak host RAM: 19.6 GB → 1.3 GB.
+      2. aprender: RosettaStone::validate_gguf dequantized every tensor to f32
+         during apr run contract gate — 8.2 GB heap (5.4 GB Q4K + 1.7 GB Q6K +
+         1.1 GB file read). Fixed with validate_metadata_only() reading 24-byte
+         GGUF header only. Total heap: 8.2 GB → 6.0 GB.
