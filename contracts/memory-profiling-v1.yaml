@@ -113,3 +113,14 @@ gap_register:
          twice (add_tensor_f32 to_vec + V2Writer f32→bytes flat_map).
          Added add_tensor_f32_owned, into_bytes, write_into consuming pipeline.
          350M checkpoint save: ~900 MB redundant copies eliminated.
+      Round 3 (code analysis):
+      10. aprender: resolve_f32_tied_embeddings cloned entire BTreeMap
+          unconditionally (~1.4 GB for 350M model). Fixed with Cow —
+          only clones when tied embeddings need synthesis.
+      11. aprender: AprV2Writer::write() output Vec had no capacity hint.
+          Added with_capacity(total_size) — eliminates reallocation.
+      12. entrenar: ArrowDataset stayed alive during LMBatch construction
+          (triple materialization: Arrow + Vec<Vec<u32>> + LMBatch).
+          Scoped dataset to drop before batch creation (~1 GB/shard saved).
+      13. entrenar: 3 Vec allocations without with_capacity in hot data
+          loading path. Added capacity hints.
