@@ -393,7 +393,107 @@ If any of these fail, the task is re-run. For training jobs that crashed
 mid-run, the `command` itself includes `--resume` logic (e.g., `apr train
 apply` auto-detects and resumes from the latest checkpoint).
 
-### 10.5 Why Not Makefile / Shell Scripts
+### 10.5 Foundational Pipeline: SafeTensors → Q4K APR (ALB-093)
+
+The direct SafeTensors-to-Q4K-APR streaming pipeline is the foundational proof
+that the sovereign stack works end-to-end. Every layer is owned: the format
+(APR), the quantization (trueno-quant Q4K), the serving runtime (realizar),
+the orchestration (forjar). The model is the proof; the stack improvements are
+the lasting value.
+
+**Contract**: `contracts/safetensors-to-q4k-v1.yaml`
+
+#### 10.5.1 Five Whys Root Cause
+
+1. **Why can't we quantize the teacher model?** — OOM during `apr quantize`
+2. **Why OOM?** — `load_model_tensors()` reads entire file + dequants to f32 (~170 GB)
+3. **Why full load?** — Quantize path designed for small models, no streaming
+4. **Why create 57 GB intermediate?** — Two-step pipeline: import→APR then APR→Q4K
+5. **Why two steps?** — No direct SafeTensors→Q4K path exists. Must be single-piece flow.
+
+#### 10.5.2 Toyota Way Principles
+
+| Principle | Application |
+|-----------|-------------|
+| **Single-piece flow** | One tensor flows through load→validate→quantize→validate→write. No batching. |
+| **Heijunka** (level loading) | Constant memory pressure. Peak RSS = largest single tensor, not model size. |
+| **Jidoka** (stop-the-line) | NaN, Inf, shape mismatch → halt immediately, delete partial output. |
+| **Pull system** | Tensor precision pulled by downstream role: norms→F32, weights→Q4K. |
+| **Poka-Yoke** (mistake-proofing) | Type-safe dtype handling, compile-time tensor validation. |
+
+#### 10.5.3 Architecture
+
+```
+SafeTensors Shards (16 × 4 GB)     Q4K APR (single file, ~18 GB)
+┌──────────────┐                    ┌──────────────┐
+│ shard-00001  │─┐                  │ Header       │
+│ shard-00002  │ │                  │ Metadata     │
+│ ...          │ │  single-piece    │ Tensor Index │
+│ shard-00016  │ ├─────flow────────▶│ Tensor Data  │
+│              │ │  (one tensor     │  (Q4K packed) │
+│ index.json   │─┘   at a time)    │              │
+└──────────────┘                    └──────────────┘
+
+Peak Memory: T_max_f32 + T_max_q4k + index (~1.6 GB for 30B MoE)
+NOT:         entire model in RAM    (~170 GB for 30B F16)
+```
+
+**Data flow per tensor** (single-piece):
+
+```
+SafeTensors shard (mmap, lazy)
+  → read single tensor bytes (BF16/F16)
+  → pre-validate (NaN, Inf, shape)       ← Jidoka
+  → decide: quantize or passthrough      ← Pull system
+  → if weight ≥256 elements, 2D+:
+      dequant to f32 → quantize Q4K → post-validate
+  → else (norm, embed, bias, small):
+      passthrough as F32
+  → AprV2StreamingWriter::add_tensor()   ← writes to temp, frees immediately
+  → tensor memory freed                  ← Heijunka
+```
+
+**Key insight from llama.cpp**: Tensors are lazy callables (LazyTorchTensor
+pattern). Materialized only when processed, then immediately released. Peak
+memory is O(max_single_tensor), independent of model size.
+
+**Key insight from GGUF**: Single file, quantized at rest, mmap to serve.
+Sharding exists only for download/distribution. Once quantized, the file is
+small enough to be monolithic (57 GB F16 → ~18 GB Q4K).
+
+#### 10.5.4 Equations
+
+| Quantity | Formula | Example (Qwen3-Coder-30B) |
+|----------|---------|--------------------------|
+| Peak memory | `T_max_f32 + T_max_q4k + I + S` | 1.2 + 0.35 + 0.002 + 0.001 ≈ 1.6 GB |
+| Compression | `input_f16 / output_q4k` | 57 / ~18 ≈ 3.2x |
+| Throughput | `bytes_written / wall_time` | Target ≥ 100 MB/s (NVMe-bound) |
+| Recon. error | `‖W - dequant(quant(W))‖ / ‖W‖` | < 5% per tensor |
+
+#### 10.5.5 Falsification Tests
+
+| ID | Rule | If fails |
+|----|------|----------|
+| FALSIFY-STQ4K-001 | 57 GB model quantized with < 2 GB peak RSS | Tensor memory leak in single-piece flow |
+| FALSIFY-STQ4K-002 | NaN in any tensor halts pipeline | Jidoka validation missing |
+| FALSIFY-STQ4K-003 | Output loadable by realizar for inference | Tensor packing or metadata wrong |
+| FALSIFY-STQ4K-004 | Per-tensor reconstruction error < 5% | Q4K quantization quality regression |
+| FALSIFY-STQ4K-005 | All 18,867 tensors accounted for in output | Shard index not fully traversed |
+| FALSIFY-STQ4K-006 | MoE expert tensors individually quantized | Expert name pattern not matched |
+
+#### 10.5.6 Pipeline Command
+
+```bash
+# Direct SafeTensors → Q4K APR (no intermediate)
+apr quantize apply \
+  --from-safetensors /mnt/nvme-raid0/models/Qwen3-Coder-30B-A3B-Instruct/ \
+  --scheme q4k \
+  --output /mnt/nvme-raid0/models/qwen3-coder-30b-q4k.apr
+
+# Expected: ~18 GB output, < 2 GB peak RSS, ~10 minutes on NVMe
+```
+
+### 10.6 Why Not Makefile / Shell Scripts
 
 | Approach | DAG | State | Resume | Multi-Machine | Lint |
 |----------|-----|-------|--------|---------------|------|

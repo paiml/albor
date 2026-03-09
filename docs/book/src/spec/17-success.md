@@ -11,44 +11,31 @@
 - [ ] `pmat comply check` passes on all modified components
 
 **Current blockers for Phase 3 completion:**
-- ~~ALB-038 (Critical): entrenar saves initialization weights, not trained weights~~ **FIXED** (`entrenar@91ba9da`, `@1ede409`)
-- ~~ALB-035: No per-step loss logging during training~~ **FIXED** (`entrenar@5d41a96`)
-- ~~ALB-041: D2D buffer mismatch in backward_attention~~ **FIXED** (`entrenar@a48e3d2`)
-- ~~ALB-037: realizar ignores loaded weights~~ **FIXED** (e2e verified: `realizar run` loads 350M trained checkpoint, generates tokens from 218 tensors)
-- ~~ALB-043 (Critical): backward_ffn buffer overflow + missing SwiGLU gradients~~ **FIXED** (`entrenar@f7805f1`)
-- ~~ALB-044 (Critical): activation gradient clipping + CPU optimizer hyperparams~~ **FIXED** (`entrenar@86eec38`)
-- ~~ALB-059 (Critical): GEMM backward constructor n/k swapped — buffer overflow into optimizer states~~ **FIXED** (`entrenar@846ae0c`)
-- ~~ALB-040: GPU-resident pretraining~~ **VERIFIED** — 350M CUDA test: 50 steps, loss 10.39→5.92, checkpoint valid, realizar inference works
 - ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
-- ~~ALB-069 (Critical): PTX selp_f32 argument order in fused cross-entropy~~ **FIXED** (`trueno@10bec89`)
-- ~~ALB-060 (Critical)~~: Training ran only 43/5000 steps (epochs=1). **CONFIG FIXED**: C-TRAINCFG-001 contract + v2 config. V2 training (ALB-063) restarted after ALB-069 fix — PID 106929, loss=10.39 at step 1.
+- v8 training not yet started (all infrastructure bugs fixed, ready to train)
 
-**350M CUDA test results (50 steps, post ALB-059 fix):**
-- Loss: 10.39 → 5.92 (best: 5.53) — clear convergence with correct GEMM backward
-- Training time: ~400s (~8s/step) with PTX; ~26s (~0.5s/step) with cuBLAS (ALB-075/077)
-- Checkpoint: 1.59 GB SafeTensors, 218 tensors, config.json saved
-- Checkpoint validation: PASS (weights trained, layers distinct)
-- realizar inference: loads model, generates tokens (gibberish at 50 steps — expected)
-- Perplexity: 31,926 (finite; random baseline ~32,768 for vocab 32K)
+**All critical training bugs FIXED (61 gaps closed):**
+- ~~ALB-038–044, 059–060, 065, 069, 071–074, 079–080, 092, 096–097, 099–105~~ — see §11 gap register
 
-**350M v3 training (250K steps, codeparrot-clean, ALB-077 fix) — STOPPED:**
-- Final: step 28K, loss=6.43, val_ppl=1018, 6.7K tok/s, 19.3% MFU
-- Plateau since step 12K — val_ppl stalled at ~1000, gnorm collapsed 3.0→0.13
-- Root cause: ALB-079 (constant lr after warmup, no cosine decay) + ALB-080 (4K tokens/step, 48-128x too small)
-- Checkpoints: step 1K-28K (1520 MB each, all verified OK)
-- No NaN in 28K steps (ALB-077: tensor cores disabled, CUBLAS_DEFAULT_MATH)
+**Training run history:**
 
-**350M v4 training (ALB-079 + ALB-080 fixes) — RESUMED from step 500:**
-- Fixes: cosine LR decay (entrenar PR #241) + gradient_accumulation=32 (131K tokens/step)
-- Original run: 500 steps, val_ppl=1032.7 (matched v3 at 57% token budget)
-- System reboot at step 553; resumed from step-500 checkpoint
-- Extended resume: step 350 (cum. step 850), **best loss=5.69** at step 262
-- 111M tokens processed (2.1% of 5.3B available); loss plateau at mean ~6.65
-- Cosine decay just engaging (lr 3.00e-4→2.98e-4); expect plateau break at step 1000+
-- ZClip catching gradient spikes (z=2.0–4.0), gnorm healthy 0.05–0.32
-- Throughput: 3,564–3,569 tok/s steady, 10.3% MFU, 14-16 GB / 24 GB VRAM
-- Target: val_ppl < 100 by 1B tokens (~60 hours remaining)
-- Same hardware (RTX 4090), same data (codeparrot-clean, 5.3B tokens available)
+| Run | Steps | Best val_ppl | tok/s | MFU | Outcome |
+|-----|-------|-------------|-------|-----|---------|
+| v2 | 1,183 | 1,008 | — | — | Crashed: ALB-073 (PTX selp) + ALB-074 (stale binary) |
+| v3 | 28,000 | 1,018 | 6,700 | 19.3% | **STOPPED**: plateau — ALB-079 no cosine decay + ALB-080 batch too small |
+| v4 | ~850 | 918 | 3,564 | 10.3% | **STOPPED**: HumanEval 0/164, cosine decay barely engaging |
+| v5 | — | — | — | — | **FAILED**: ALB-092 (grad_gamma + uninitialized accum) |
+| v6 | 2,000 | 776 | 6,500 | — | **KILLED** for distillation pivot |
+| v7 | 550 | ~780 | 6,900 | — | **KILLED** for ALB-097 (checkpoint resume bug) |
+
+**Best result (v6):** val_ppl=776 at step 2000, loss ~6.1. Killed before convergence.
+
+**Key fixes since v7:**
+- ALB-097: Tied LM head now saved in checkpoint → resume works (`entrenar@604f32f`)
+- ALB-099: 15 memory issues fixed via dhat-rs profiling (Chapter 20)
+- ALB-100–105: 6 architectural memory fixes (streaming loader, LMBatch dedup, etc.)
+
+**Next: v8 training** — all fixes applied, restart from scratch. Target: val_ppl < 100 by 1B tokens.
 
 ### Good (Phase 5 complete)
 - [ ] Distillation from Qwen3.5-35B-A3B demonstrated (ALB-010); fallback: Qwen2.5-Coder-3B (dense)

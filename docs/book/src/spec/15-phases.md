@@ -69,9 +69,25 @@
 - [x] ~~Fix ALB-073~~ FIXED — fused_cross_entropy selp arg order, same class as ALB-069 (`trueno@10bec89`)
 - [x] ~~Fix ALB-074~~ FIXED — stale binary missed eval truncation fix. Rebuilt with `entrenar@5c4c2d8`.
 - [x] Monitor training via `apr monitor` (ALB-025 FIXED)
-- [ ] **Data scaling**: Download codeparrot-clean (2M files, ~4.4B tokens) → pretokenize at 1024 → ~5.2M sequences
-- [ ] Full 350M v3 training — **PENDING**: 250K steps on ~1B tokens from codeparrot-clean. Config: `pretrain-350m-v3.yaml`. ETA ~10 days.
-- [ ] Validate loss curve, perplexity convergence
+- [x] **Data scaling**: codeparrot-clean downloaded (2M files) → pretokenized at 1024 → 19 shards, ~4.9M seqs, 5.0B tokens
+- [x] v3 training — 28K steps, loss 6.43, val_ppl=1018, 6.7K tok/s, 19.3% MFU. **STOPPED**: plateau (ALB-079 no cosine decay + ALB-080 batch too small)
+- [x] ~~Fix ALB-079~~ FIXED — cosine LR schedule (`entrenar` PR #241)
+- [x] ~~Fix ALB-080~~ FIXED — batch size scaling via gradient_accumulation (`contracts/batch-size-scaling-v1.yaml`)
+- [x] v4 training — 500+ steps with cosine decay + ga=32. val_ppl=918. **STOPPED**: HumanEval 0/164
+- [x] ~~Fix ALB-092~~ FIXED — RMSNorm grad_gamma + GPU accum uninitialized (`trueno` PR #178, `entrenar` PR #257)
+- [x] v5 training — **FAILED**: two bugs above. Fixed in ALB-092
+- [x] v6 training — 2000 steps, val_ppl=776, 6.5K tok/s. **KILLED** for distillation pivot
+- [x] ~~Fix ALB-096~~ FIXED — APR checkpoint format for training (`entrenar@604f32f`)
+- [x] ~~Fix ALB-097~~ FIXED — tied LM head not saved in checkpoint (`entrenar@604f32f`)
+- [x] v7 training — 550 steps, loss ~6.62, 6.9K tok/s. **KILLED** for checkpoint resume bug fix (ALB-097: checkpoint cannot resume)
+- [x] ~~Fix ALB-099~~ FIXED — dhat-rs profiling: 15 memory issues across 5 repos
+- [x] ~~Fix ALB-100~~ FIXED — LMBatch dedup (`entrenar@8e62668`)
+- [x] ~~Fix ALB-101~~ FIXED — Streaming Parquet loader (`entrenar@86e0faa`)
+- [x] ~~Fix ALB-102~~ FIXED — KV cache GQA sizing (`realizar@747d921`)
+- [x] ~~Fix ALB-103~~ FIXED — sample_topk zero-alloc (`realizar@747d921`)
+- [x] ~~Fix ALB-104~~ FIXED — APR reader cached offset (`aprender@d4c5a4c6`)
+- [x] ~~Fix ALB-105~~ FIXED — APR streaming writer (`aprender@d4c5a4c6`)
+- [ ] v8 training — restart from scratch with all fixes. Target: val_ppl < 100
 - [ ] HumanEval pass@1 evaluation (target >8%)
 - [ ] Verify FALSIFY-ALBOR-003 (checkpoint determinism)
 - [ ] `pmat tdg check-regression` on all touched components

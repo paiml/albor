@@ -119,43 +119,64 @@ student. No VRAM contention.
 Start with minimum viable (50M tokens), evaluate on HumanEval/MBPP,
 scale up if results justify the compute.
 
-### 4.6 Expected Throughput
+### 4.6 Measured Throughput
 
-Qwen3-Coder-30B at Q4K on RTX 4090:
+Qwen3-Coder-30B at Q4K on RTX 4090 (measured 2026-03-09):
 
-| Mode | Throughput | Notes |
-|------|-----------|-------|
-| Prefill (prompt) | ~200-500 tok/s | Batch-1, Q4K GEMV |
-| Decode (generation) | ~30-80 tok/s | Autoregressive, KV cache |
+| Mode | Expected | Measured | Notes |
+|------|----------|----------|-------|
+| Prefill (prompt) | ~200-500 tok/s | TBD | Batch-1, Q4K GEMV |
+| Decode (generation) | ~30-80 tok/s | **13.2 tok/s** | Autoregressive, CPU attention |
+| Subprocess overhead | — | **5s/request** | Model load per `realizar run` |
+| Effective throughput | — | **5.1 tok/s** | Including subprocess overhead |
 
-At 50 tok/s decode average, 50M tokens of synthetic data takes:
-50M / 50 = 1M seconds = ~12 days. That's too slow.
+The 13.2 tok/s decode is below initial estimates because attention is on
+CPU (KV cache management). The 5s model load per subprocess call is the
+dominant bottleneck for batch generation.
 
-**Optimization: batch prefill + greedy decode.**
-- Process prompts in batches where possible
-- Use greedy decode (temperature=0) for deterministic, faster generation
-- Focus on short completions (128-256 tokens, not 512)
-- 50M tokens at 128 avg length = 390K completions
+**Optimization path**: Fix `realizar serve` to support GPU Q4K path,
+eliminating the 5s model load per request. This would improve effective
+throughput from 5.1 to ~13.2 tok/s (2.6x).
 
-**Revised estimate**: With prompt batching and short completions,
-~2-4 days for 50M tokens is realistic.
+### 4.7 Progress: Teacher Inference (ALB-095 FIXED)
 
-### 4.7 Blocker: Teacher Inference (ALB-095)
+ALB-095 (Q4K GPU inference in realizar) was the critical dependency.
+Fixed 2026-03-08 — three bugs: explicit head_dim, MoE metadata inference,
+head_dim inference from q_proj weight.
 
-ALB-095 (Q4K GPU inference in realizar) is the critical dependency.
-The Q4K APR file exists, the GPU adapter code exists, but end-to-end
-inference hasn't been dogfooded yet.
+**Measured throughput**: 13.2 tok/s decode (Q4K GPU, RTX 4090)
 
-**Unblock sequence:**
-1. Dogfood realizar Q4K GPU inference on Qwen3-Coder-30B
-2. Verify text generation quality (sample outputs)
-3. Build prompt extraction pipeline (from codeparrot)
-4. Generate synthetic data (Phase 1)
-5. Train student (Phase 2)
+**Pipeline status** (2026-03-09):
+
+| Step | Status | Notes |
+|------|--------|-------|
+| 1. Dogfood Q4K GPU inference | DONE | 13.2 tok/s, correct Python output |
+| 2. Verify text generation quality | DONE | fibonacci, binary_search, test classes — all correct |
+| 3. Build prompt extraction | DONE | `scripts/extract-prompts.py` — 1000 prompts from codeparrot |
+| 4. Build generation script | DONE | `scripts/generate-synthetic.py` — subprocess mode |
+| 5. PoC end-to-end | DONE | 5/5 prompts generated, high quality |
+| 6. Scale to 50M tokens | IN PROGRESS | Current: 50-prompt batch running |
+| 7. Train student | TODO | After sufficient synthetic data |
+
+**Throughput bottleneck**: realizar `serve` doesn't support GPU Q4K
+(APR serve path uses CPU). Using subprocess mode (`realizar run --gpu`)
+at ~5 tok/s effective (13 tok/s decode + 5s model load overhead).
+
+**Revised generation time estimates** (at 5 tok/s effective):
+
+| Tier | Tokens | Time | Prompts (256 tok avg) |
+|------|--------|------|-----------------------|
+| PoC | 500K | ~28h | 2,000 |
+| Minimum | 5M | ~12d | 20,000 |
+| Target | 50M | ~4mo | 200,000 |
+
+**Critical optimization needed**: Fix `realizar serve` to use Q4K GPU
+path (load model once, serve many requests). This would eliminate the
+5s model load per request, improving effective throughput to ~13 tok/s.
 
 ### 4.8 Fallback: Qwen2.5-Coder-3B (Dense)
 
-If ALB-095 (MoE Q4K inference) proves too complex, fall back to
+If Q4K MoE throughput proves insufficient, fall back to
 **Qwen2.5-Coder-3B** as a dense teacher:
 
 | Property | Value |

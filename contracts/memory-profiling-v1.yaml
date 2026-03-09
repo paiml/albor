@@ -74,6 +74,68 @@ obligations:
       For each repo:
         grep -q 'dhat-heap' Cargo.toml || exit 1
 
+proof_obligations:
+  - type: invariant
+    property: "All 5 repos compile with --features dhat-heap"
+    formal: "cargo check --features dhat-heap exits 0 in all 5 repos"
+    tolerance: 0
+    applies_to: zero_overhead
+
+  - type: invariant
+    property: "Binary crates produce dhat-heap.json on exit"
+    formal: "test -f dhat-heap.json after cargo run --features dhat-heap"
+    tolerance: 0
+    applies_to: integration_pattern
+
+  - type: bound
+    property: "Zero overhead when feature disabled"
+    formal: "binary_size(release) = binary_size(release, no dhat) within 1%"
+    applies_to: zero_overhead
+
+  - type: invariant
+    property: "Feature flag is 'dhat-heap' in all repos"
+    formal: "grep 'dhat-heap' Cargo.toml succeeds in all 5 repos"
+    tolerance: 0
+    applies_to: integration_pattern
+
+falsification_tests:
+  - id: FALSIFY-DHAT-001
+    rule: "All repos compile with dhat-heap feature"
+    prediction: "cargo check --features dhat-heap exits 0"
+    test: "For each repo in {realizar, aprender, trueno, entrenar, alimentar}: cargo check --features dhat-heap"
+    if_fails: "dhat dependency missing or feature flag not wired"
+
+  - id: FALSIFY-DHAT-002
+    rule: "Binary crates produce heap profile on exit"
+    prediction: "dhat-heap.json exists after profiled run"
+    test: "rm -f dhat-heap.json && cargo run --features dhat-heap -- <args> && test -f dhat-heap.json"
+    if_fails: "Profiler not instantiated in main() or program crashed before drop"
+
+  - id: FALSIFY-DHAT-003
+    rule: "Zero overhead without feature"
+    prediction: "Release binary identical with and without dhat dep (feature off)"
+    test: "Compare binary sizes: cargo build --release vs baseline (no dhat dep in Cargo.toml)"
+    if_fails: "dhat linked unconditionally or cfg guard missing"
+
+  - id: FALSIFY-DHAT-004
+    rule: "Feature flag name is dhat-heap in all repos"
+    prediction: "grep 'dhat-heap' Cargo.toml succeeds in all 5 repos"
+    test: "For each repo: grep -q 'dhat-heap' Cargo.toml || exit 1"
+    if_fails: "Feature flag renamed or missing in a repo"
+
+kani_harnesses:
+  - id: KANI-DHAT-001
+    obligation: C-DHAT-001
+    property: "Feature-gated cfg guard prevents dhat in release binary"
+    bound: 1
+    strategy: exhaustive
+
+qa_gate:
+  id: F-DHAT-001
+  name: "dhat-rs Memory Profiling Contract"
+  coverage_threshold: 0.90
+  complexity_threshold: 15
+
 gap_register:
   - id: ALB-099
     title: "dhat-rs heap profiling across sovereign stack"

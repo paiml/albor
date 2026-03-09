@@ -42,22 +42,36 @@ Many already exist in provable-contracts; new ones must be written.
 
 ### New Contracts Required for Albor (ALB-013 through ALB-017)
 
-| Contract (NEW) | Key Equations | Key Obligations | Priority |
-|----------------|---------------|-----------------|----------|
-| `knowledge-distillation-kernel-v1.yaml` | KD_loss = α·KL(σ(z_t/T) ∥ σ(z_s/T))·T² + (1-α)·CE(y, z_s) | KL non-negativity, temperature scaling invariant, gradient correctness, α interpolation bound | Critical |
-| `bpe-tokenizer-kernel-v1.yaml` | BPE merge rules, byte-pair encoding | Roundtrip invariant: decode(encode(x)) = x, vocab coverage, merge ordering | High |
-| `model-merging-kernel-v1.yaml` | SLERP: interp(θ, w₁, w₂) on unit sphere; TIES: trim + elect + disjoint merge | SLERP interpolation bound (‖result‖ ≈ 1), TIES sparsity guarantee | Medium |
-| `pruning-kernel-v1.yaml` | WANDA: score = |w| · ‖x‖₂; magnitude: score = |w| | Sparsity invariant (exactly k% weights zeroed), score ordering preserved | Medium |
-| `gradient-accumulation-kernel-v1.yaml` | G_accum = (1/N)·Σ g_i ≈ g_full | Numerical equivalence within tolerance, loss scaling correctness | High |
-| `training-config-kernel-v1.yaml` | steps_per_epoch, total_achievable_steps, LR warmup coverage, Chinchilla tokens | Epoch sufficiency for max_steps, warmup completion, peak LR reached, data sufficiency | Critical |
+| Contract (NEW) | Key Equations | Key Obligations | Priority | `pv validate` |
+|----------------|---------------|-----------------|----------|---------------|
+| `knowledge-distillation-kernel-v1.yaml` | KD_loss = α·KL(σ(z_t/T) ∥ σ(z_s/T))·T² + (1-α)·CE(y, z_s) | KL non-negativity, temperature scaling invariant, gradient correctness, α interpolation bound | Critical | PASS |
+| `bpe-tokenizer-kernel-v1.yaml` | BPE merge rules, byte-pair encoding | Roundtrip invariant: decode(encode(x)) = x, vocab coverage, merge ordering | High | PASS |
+| `model-merging-kernel-v1.yaml` | SLERP: interp(θ, w₁, w₂) on unit sphere; TIES: trim + elect + disjoint merge | SLERP interpolation bound (‖result‖ ≈ 1), TIES sparsity guarantee | Medium | PASS |
+| `pruning-kernel-v1.yaml` | WANDA: score = |w| · ‖x‖₂; magnitude: score = |w| | Sparsity invariant (exactly k% weights zeroed), score ordering preserved | Medium | PASS |
+| `gradient-accumulation-kernel-v1.yaml` | G_accum = (1/N)·Σ g_i ≈ g_full | Numerical equivalence within tolerance, loss scaling correctness | High | PASS |
+| `training-config-kernel-v1.yaml` | steps_per_epoch, total_achievable_steps, LR warmup coverage, Chinchilla tokens | Epoch sufficiency for max_steps, warmup completion, peak LR reached, data sufficiency | Critical | PASS |
 
-### Evaluation & Checkpoint Contracts (ALB-086 through ALB-088)
+### Evaluation, Checkpoint & Quantization Contracts (ALB-086 through ALB-093)
 
 | Contract | Key Equations | Key Obligations | Priority |
 |----------|---------------|-----------------|----------|
-| `checkpoint-inference-bridge-v1.yaml` | shape(W) = [out, in] for linear; [H] for norm; [V, H] for embed | All tensors have correct 2D shapes; realizar loads without conversion; round-trip save→load preserves weights | High |
-| `multi-sample-passk-v1.yaml` | pass@k = 1 - C(n-c, k) / C(n, k) (Chen et al. 2021) | Unbiased estimator; pass@1 ≤ pass@10 ≤ pass@100; temperature > 0 required for k > 1; n ≥ k | High |
-| `auto-eval-scheduling-v1.yaml` | eval at step % eval_interval == 0; early_stop after patience evals | eval_interval decoupled from save_interval; best-model tracked; patience triggers stop | Medium |
+| `checkpoint-inference-bridge-v1.yaml` | shape(W) = [out, in] for linear; [H] for norm; [V, H] for embed | All tensors have correct 2D shapes; realizar loads without conversion; round-trip save→load preserves weights | High | PASS |
+| `multi-sample-passk-v1.yaml` | pass@k = 1 - C(n-c, k) / C(n, k) (Chen et al. 2021) | Unbiased estimator; pass@1 ≤ pass@10 ≤ pass@100; temperature > 0 required for k > 1; n ≥ k | High | PASS |
+| `auto-eval-scheduling-v1.yaml` | eval at step % eval_interval == 0; early_stop after patience evals | eval_interval decoupled from save_interval; best-model tracked; patience triggers stop | Medium | PASS |
+| `safetensors-to-q4k-v1.yaml` | compression ≥ 3x (F16→Q4K); RSS < peak target; NaN/Inf count = 0 per tensor | Single-piece flow (one tensor at a time, constant memory); Jidoka validation (reject NaN/Inf tensors); F32 passthrough for norms/embeddings/biases; output = single APR file (no intermediates); shard-order-independent correctness | Critical | PASS |
+
+### Infrastructure Contracts (ALB-075, ALB-098, ALB-099)
+
+| Contract | Key Equations | Key Obligations | Priority | `pv validate` |
+|----------|---------------|-----------------|----------|---------------|
+| `cublas-gemm-v1.yaml` | cuBLAS GEMM matches PTX GEMM within 1e-2 | FFI overhead < 2%, MFU improvement, training stability, gradient flow | Critical | PASS |
+| `gpu-weight-pool-v1.yaml` | 1 cuMemAlloc for N tensors; 256-byte aligned packing | Pool uses exactly 1 alloc, pointers within bounds, no VRAM leak, 17 GB MoE fits | Critical | PASS |
+| `memory-profiling-v1.yaml` | Zero overhead when feature disabled | All 5 repos compile with `--features dhat-heap`, produce heap profile, flag convention | Medium | PASS |
+| `gpu-gradient-accumulation-v1.yaml` | GPU-resident gradient accumulation across micro-batches | Accum buffer zeroed per step, correct mean scaling, stream sync | High | PASS |
+| `cosine-lr-schedule-v1.yaml` | lr(t) = lr_min + 0.5(lr_max - lr_min)(1 + cos(π·t/T)) | Peak at warmup end, decay to lr_min, warmup linear | High | PASS |
+| `batch-size-scaling-v1.yaml` | effective_batch = micro_batch × grad_accum × seq_len | Chinchilla-scale token budget, numerical equivalence | High | PASS |
+
+**Contract validation status: 34/34 PASS** (`pv validate contracts/*.yaml`, 2026-03-09)
 
 ## 12.3 Contract Workflow for Each Kernel
 
@@ -296,6 +310,7 @@ bpe-tokenizer ─── data-pipeline ─── training-loop
 
 model-merging ─── post-training ─── albor-merged
 pruning ────────── post-training ─── albor-pruned
+safetensors-to-q4k ── quantize-pipeline ── albor-q4k
 ```
 
 Each node in this DAG is a contract. `pv graph contracts/ --format mermaid`

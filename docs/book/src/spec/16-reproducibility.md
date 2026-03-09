@@ -109,21 +109,36 @@ python scripts/pretokenize.py \
     --output data/pretokenized-2048/val/val.parquet
 ```
 
+**v3 pipeline** (codeparrot-clean, 5.3B tokens, 19 shards at seq_len=1024):
+
+```bash
+# Download + pretokenize codeparrot-clean (2M Python files)
+python scripts/pretokenize-codeparrot.py \
+    --tokenizer models/albor-tokenizer-v2/tokenizer.json \
+    --seq-len 1024 \
+    --output data/pretokenized-1024-v3/train/ \
+    --val-output data/pretokenized-1024-v3/val/val.parquet \
+    --val-size 1000 \
+    --num-shards 19
+```
+
 ### Step 4: Model Training
 
 ```bash
 # 50M pipeline validation (< 2 minutes)
-make train-50m
-# Equivalent to:
-# apr train apply --task pretrain --config configs/train/pretrain-50m.yaml
+/mnt/nvme-raid0/targets/aprender/release/apr train apply \
+    --task pretrain --config configs/train/pretrain-50m-quick.yaml
 
-# 350M base model, v2 data (~20 hours on RTX 4090)
-apr train apply --task pretrain --config configs/train/pretrain-350m-v2.yaml
-# v2 config: epochs=38, warmup=500, 67977 seqs, 5000 max_steps
-# C-TRAINCFG-001 verified: steps_per_epoch=132, 38×132=5016 >= 5000
+# 350M v8 — current production config (~24 hours on RTX 4090)
+# All ALB-079–105 fixes applied, APR checkpoints with resume
+/mnt/nvme-raid0/targets/aprender/release/apr train apply \
+    --task pretrain --config configs/train/pretrain-350m-v8.yaml
+# v8: cosine LR, ga=8, 20K steps, 32K tokens/step, 655M tokens
+# Data: codeparrot-clean 5.3B tokens (19 shards, streaming loader)
 
-# Legacy v1 (22K seqs, fixed epochs=117 post ALB-060)
-# apr train apply --task pretrain --config configs/train/pretrain-350m.yaml
+# Build apr-cli with local patches
+cd ~/src/aprender && CARGO_TARGET_DIR=/mnt/nvme-raid0/targets/aprender \
+    cargo build --release -p apr-cli
 ```
 
 ### Step 5: Checkpoint Conversion (for evaluation)
@@ -149,14 +164,39 @@ make training-status
 
 ## 16.3 Key SHA-256 Checksums
 
-See `docs/PROVENANCE.md` for complete checksums. Key artifacts:
+### v3 Data (codeparrot-clean, 5.3B tokens, production)
+
+| Artifact | SHA-256 |
+|----------|---------|
+| v2 tokenizer (`tokenizer.json`) | `d999cc9e283d7934a726a863b196ccf91c143b1d25a87fcda4fb984ab469e403` |
+| Val (`val.parquet`) | `95db0c72a108507460f2dcd6b04b387fc4a6beb647016d4759d684932cdfc7e4` |
+| `shard-0000.parquet` | `d49c7d9e7c9a524de1eafd5cfc02b736d737ff6c5ae918480ad005ab2b914037` |
+| `shard-0001.parquet` | `b39dc2d001efc1c4cc95de291f6380988a303d2cf2c9fbc5a24cc01210399eb6` |
+| `shard-0002.parquet` | `384934cd3448d76cc5b282344de5345ede0b95329973d1e9d890ac9bab3c9bee` |
+| `shard-0003.parquet` | `e542b6291b7c432c32a359e640a798ac1102709262040bd4ea62b2a282e23572` |
+| `shard-0004.parquet` | `0d139da5bcde3fff8573e1bad40c6b0a5ae34ef1f006c304f2deb30aa1e225e1` |
+| `shard-0005.parquet` | `7c229c697281e66678bdf108dcfb584e79387e8c986cb528bf956ccbd96e65a2` |
+| `shard-0006.parquet` | `a02ed61cb66358f6e05332f81b3df6d64ebeb117d7645e8f74fa0f59e40c5aed` |
+| `shard-0007.parquet` | `c159e5f83a45ee8cb116a7568e04fb5c860d93866a25ee49431065e5be0966eb` |
+| `shard-0008.parquet` | `8b3b6388724e72cc6c2c721501a62da360c99b8eb5b5b74e60c198b50d5683a2` |
+| `shard-0009.parquet` | `85cd172b060171eb99c8cb6651cfd24bea6d59a3bc33d57921aa4fa290ef0087` |
+| `shard-0010.parquet` | `f41fe614cb7bb7a516e656e088b57e82fcdcbddacd478b6fd4f98a2d52f8bdd5` |
+| `shard-0011.parquet` | `c2be1e6b8230f3105ec6caffd949f86447e4cf52dd1af19085a7ad74f7e5a4ab` |
+| `shard-0012.parquet` | `6b3392880fc5e4f18be2f52de1f05268302aaf2c8010964fc9bf7125bb4afa71` |
+| `shard-0013.parquet` | `2d2b5ea6062c2a318b52bec1c646740b77bc10b217d71a0f30b81ae3f335ccf1` |
+| `shard-0014.parquet` | `4c501eed6392808faba747f32f2ecd5458118133a4f96611fc44137ebe071ff1` |
+| `shard-0015.parquet` | `236c111cf7572b11bf4615aeeb798100db3041f57d0e528a02e27a38def81a55` |
+| `shard-0016.parquet` | `e13a54c04b074f17787f9c95a267f07612ce09a79258ea37350f42cc5dbf24ea` |
+| `shard-0017.parquet` | `ae35c3231d94a2076ad21c275638a9a8663d74e48657d2052b33db08d046e213` |
+| `shard-0018.parquet` | `6ad5fa5616b33478e1f3f9229fd89016a46b5c7a8b3e2293cfdca76d21d98dbb` |
+
+### Legacy Data
 
 | Artifact | SHA-256 (first 8 hex) |
 |----------|----------------------|
 | Training data (mixed.parquet) | `bdfe8742` |
 | Val data (val.parquet) | `6be03768` |
 | v1 tokenizer (vocab.json) | `aca6fa72` |
-| v2 tokenizer (tokenizer.json) | `d999cc9e` |
 | Pre-tokenized train (2048) | `4f54e422` |
 | Pre-tokenized val (2048) | `c9c1d093` |
 

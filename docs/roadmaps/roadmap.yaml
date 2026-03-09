@@ -95,3 +95,251 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: PMAT-064
+  github_issue: null
+  item_type: task
+  title: 'ALB-100: LMBatch input/target deduplication — 50% token memory wasted'
+  status: inprogress
+  priority: high
+  assigned_to: null
+  created: 2026-03-09T10:43:05Z
+  updated: 2026-03-09T11:22:57.160500210+00:00
+  spec: null
+  acceptance_criteria:
+  - 'LMBatch stores both input and target token vectors where target[i]=input[i+1]. For seq length S, this duplicates S-1 tokens. At 5.0B tokens: 18.7 GB redundant. Fix: store single tokens vec, derive input/target as slices. GH #73.'
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels:
+  - entrenar
+  - memory
+  - ALB-099
+  notes: null
+- id: PMAT-065
+  github_issue: null
+  item_type: task
+  title: 'ALB-101: Streaming Parquet loader — 37 GB eager dataset loading'
+  status: inprogress
+  priority: high
+  assigned_to: null
+  created: 2026-03-09T10:43:08Z
+  updated: 2026-03-09T11:23:35.175998677+00:00
+  spec: null
+  acceptance_criteria:
+  - 'load_lm_batches_from_parquet() eagerly loads ALL 19 shards (37 GB peak) before training. StreamingParquetLoader exists but unused. Fix: load one shard at a time (~1 GB), create batches, train, drop, next. Peak 37 GB → 4 GB. GH #74.'
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels:
+  - entrenar
+  - memory
+  - ALB-099
+  notes: null
+- id: PMAT-066
+  github_issue: null
+  item_type: task
+  title: 'ALB-102: KV cache GQA over-allocation — 8x waste for grouped query attention'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-03-09T10:43:12Z
+  updated: 2026-03-09T11:23:35.998902417+00:00
+  spec: null
+  acceptance_criteria:
+  - 'KV cache uses num_heads (query) instead of num_kv_heads for KV dimension. Albor 350M: 4x over-alloc (16 vs 4 heads). Qwen3-Coder: 8x (16 vs 2). Fix: use num_kv_heads for KV cache sizing. GH #75.'
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels:
+  - realizar
+  - memory
+  - ALB-099
+  notes: null
+- id: PMAT-067
+  github_issue: null
+  item_type: task
+  title: 'ALB-103: sample_topk per-token allocation — 2.4 MB churn per generated token'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-03-09T10:43:15Z
+  updated: 2026-03-09T11:23:36.422910560+00:00
+  spec: null
+  acceptance_criteria:
+  - 'sample_topk() allocates Vec<(f32,u32)> of vocab_size on every token. 32768 × 8 = 256 KB/call, ~2.4 MB with sorting. Over 512 tokens = 1.2 GB churn. Fix: pre-allocated SamplingState buffer, reused across generations. GH #76.'
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels:
+  - realizar
+  - memory
+  - ALB-099
+  notes: null
+- id: PMAT-068
+  github_issue: null
+  item_type: task
+  title: 'ALB-104: AprV2Reader::from_bytes() double copy on deserialization'
+  status: inprogress
+  priority: low
+  assigned_to: null
+  created: 2026-03-09T10:43:18Z
+  updated: 2026-03-09T11:23:36.749928016+00:00
+  spec: null
+  acceptance_criteria:
+  - 'from_bytes() copies bytes→Vec<u8>, then downstream converts Vec<u8>→Vec<f32>. For 350M model: 2.8 GB redundant copies. Fix: zero-copy borrowed slices or single-pass bytes→f32. GH #77.'
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels:
+  - aprender
+  - memory
+  - ALB-099
+  notes: null
+- id: PMAT-069
+  github_issue: null
+  item_type: task
+  title: 'ALB-105: APR write_to() should stream directly to file'
+  status: inprogress
+  priority: low
+  assigned_to: null
+  created: 2026-03-09T10:43:20Z
+  updated: 2026-03-09T11:23:37.070738916+00:00
+  spec: null
+  acceptance_criteria:
+  - 'write_to() serializes entire model into Vec<u8> in memory then writes to disk. For 350M: 1.4 GB intermediate buffer. Fix: stream to BufWriter<File> — write header, metadata, tensors sequentially. Eliminates intermediate Vec. GH #78.'
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels:
+  - aprender
+  - memory
+  - ALB-099
+  notes: null
+- id: PMAT-070
+  github_issue: null
+  item_type: task
+  title: Update Chapter 20 (memory-profiling.md) — reflects ALB-099 completion
+  status: planned
+  priority: high
+  assigned_to: null
+  created: 2026-03-09T11:29:25Z
+  updated: 2026-03-09T11:29:25Z
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-071
+  github_issue: null
+  item_type: task
+  title: 'ALB-088: Multi-sample pass@k evaluation (--samples N flag in apr eval)'
+  status: planned
+  priority: high
+  assigned_to: null
+  created: 2026-03-09T11:29:25Z
+  updated: 2026-03-09T11:29:25Z
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-072
+  github_issue: null
+  item_type: task
+  title: Contract falsification suite execution — pv validate all contracts
+  status: planned
+  priority: medium
+  assigned_to: null
+  created: 2026-03-09T11:29:25Z
+  updated: 2026-03-09T11:29:25Z
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-073
+  github_issue: null
+  item_type: task
+  title: Chapter 15 phase checklist update — mark completed phases
+  status: planned
+  priority: medium
+  assigned_to: null
+  created: 2026-03-09T11:29:25Z
+  updated: 2026-03-09T11:29:25Z
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-074
+  github_issue: null
+  item_type: task
+  title: Chapter 17 success criteria status update — current vs target
+  status: planned
+  priority: medium
+  assigned_to: null
+  created: 2026-03-09T11:29:25Z
+  updated: 2026-03-09T11:29:25Z
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-075
+  github_issue: null
+  item_type: task
+  title: Data reproducibility manifest — SHA-256 checksums for all data artifacts
+  status: planned
+  priority: medium
+  assigned_to: null
+  created: 2026-03-09T11:29:25Z
+  updated: 2026-03-09T11:29:25Z
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-076
+  github_issue: null
+  item_type: task
+  title: Chapter 12 contract verification gaps — Level 3+ for all new contracts
+  status: planned
+  priority: medium
+  assigned_to: null
+  created: 2026-03-09T11:29:25Z
+  updated: 2026-03-09T11:29:25Z
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-077
+  github_issue: null
+  item_type: task
+  title: Chapter 4 distillation throughput — fix realizar serve GPU Q4K path
+  status: planned
+  priority: critical
+  assigned_to: null
+  created: 2026-03-09T11:29:25Z
+  updated: 2026-03-09T11:29:25Z
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
