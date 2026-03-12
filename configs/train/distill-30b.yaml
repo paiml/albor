@@ -1,0 +1,88 @@
+# configs/train/distill-30b.yaml — Qwen3-Coder-30B-A3B teacher distillation
+#
+# Text-based synthetic data distillation (spec 4.3):
+#   Phase 1: Teacher generates Python completions from codeparrot prompts
+#   Phase 2: Student trains on synthetic data (causal LM, no KL — vocab mismatch)
+#
+# Teacher: Qwen3-Coder-30B-A3B-Instruct (MoE, 128 experts top-8, 3.3B active)
+#   - Q4K APR: 17 GB, fits 4090 with 7 GB headroom
+#   - FIM: <|fim_prefix|>, <|fim_suffix|>, <|fim_middle|>
+#   - Decode throughput: ~15 tok/s Q4K GPU (measured ALB-095)
+#
+# Student: albor-base-350m (LLaMA-style, 24 layers, h=1024, 32K vocab)
+#
+# Why text-based, not logit KD:
+#   Qwen3 vocab=151,936 vs Albor vocab=32,768 — logit distributions don't align.
+#   Teacher generates text → student tokenizes with its own tokenizer → standard CE loss.
+
+teacher:
+  model: "/mnt/nvme-raid0/models/qwen3-coder-30b-q4k.apr"
+  tokenizer: "/mnt/nvme-raid0/models/Qwen3-Coder-30B-A3B-Instruct/tokenizer.json"
+  precision: "q4k"
+  gpu: true
+  max_tokens: 256                          # Per completion (function bodies are short)
+  temperature: 0.8                         # Diversity without garbage
+  top_p: 0.95
+  batch_size: 1                            # Single-sequence decode for Q4K GEMV
+
+student:
+  checkpoint: "./checkpoints/albor-base-350m-v9/model-best.apr"
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  config: "configs/train/pretrain-350m-v9.yaml"
+
+synthetic_data:
+  prompts: "data/distill/prompts-20k.jsonl"
+  output: "data/distill/synthetic-5m.jsonl"
+  # Data budget tiers (spec 4.5):
+  #   Minimum viable: 5M tokens (~3.3 days at 17.5 tok/s)
+  #   Target: 50M tokens (~33 days)
+  #   PoC (done): 500K tokens — 705 completions → distill-v1/v2
+  target_tokens: 5000000                   # 5M minimum viable tier
+  samples_per_prompt: 1
+  min_completion_tokens: 10
+  max_prompt_chars: 2048                    # Skip prompts > 2048 chars (ALB-111: 55K char prompt caused hours-long prefill)
+
+training:
+  # Phase 2: Student training on synthetic data
+  # Mix: 90% codeparrot + 10% synthetic (prevents catastrophic forgetting)
+  # Distill-v2 validated 90/10 mix — val_ppl regressed only 10.6% vs 143% pure synthetic
+  synthetic_weight: 0.1
+  original_weight: 0.9
+  original_data: "data/pretokenized-1024-v3/train/"
+
+  mode: "pretrain"                         # Standard causal LM, not KD loss
+  max_steps: 6000
+  batch_size: 4
+  seq_len: 1024
+  gradient_accumulation: 8                 # Global batch = 4 * 8 * 1024 = 32K tokens
+
+optimizer:
+  name: "adamw"
+  lr: 1.0e-4                              # Lower than pretraining (fine-tuning regime)
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+  epsilon: 1.0e-8
+
+lr_schedule:
+  type: "cosine"
+  warmup_steps: 200
+  min_lr_ratio: 0.1
+
+monitoring:
+  save_interval: 500
+  eval_interval: 100
+  log_interval: 10
+  output_dir: "./checkpoints/albor-distill-30b"
+
+# Sovereign stack commands (all via apr-cli, GH-455):
+#   1. Generate synthetic data (spawns realizar serve internally):
+#      apr distill --config configs/train/distill-30b.yaml --stage generate
+#
+#   2. Tokenize synthetic data for student:
+#      apr data tokenize --input data/distill/synthetic.jsonl \
+#          --tokenizer models/albor-tokenizer-v2/tokenizer.json \
+#          --output data/distill/pretokenized/
+#
+#   3. Train student on synthetic data:
+#      apr train apply --task pretrain --config configs/train/distill-30b-student.yaml
