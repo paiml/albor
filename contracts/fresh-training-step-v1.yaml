@@ -1,0 +1,41 @@
+# contracts/fresh-training-step-v1.yaml — ALB-117
+# C-FRESH-TRAIN-001: Initial step is 0 when loading weights from model_path
+#
+# When output_dir has no checkpoint (no model-step-N.apr, no model-best.apr),
+# training MUST start at step=0 regardless of the step encoded in model_path.
+# This prevents the LR schedule, AdamW bias correction, and max_steps check
+# from inheriting stale state from a source checkpoint.
+
+contract:
+  id: C-FRESH-TRAIN-001
+  title: "Fresh training step counter starts at zero"
+  status: IMPLEMENTED
+  gap: ALB-117
+  issue: "https://github.com/paiml/entrenar/issues/273"
+
+  invariant: |
+    For any training run where output_dir contains no checkpoint:
+      initial_step = 0
+    regardless of checkpoint_step embedded in model_path APR metadata
+    or model-step-N.apr filename.
+
+  falsification:
+    - name: "model_path with step does not leak"
+      given: "model.path = dir containing model-step-14500.apr, output_dir = empty"
+      when: "load_transformer_model(model_path, config, output_dir)"
+      then: "checkpoint_step = 0"
+
+    - name: "output_dir resume preserves step"
+      given: "output_dir = dir containing model-step-500.apr"
+      when: "load_transformer_model(model_path, config, output_dir)"
+      then: "checkpoint_step = 500"
+
+    - name: "max_steps not prematurely reached"
+      given: "model_path has step=14500, max_steps=5, output_dir empty"
+      when: "training loop starts"
+      then: "trainer.step() = 0 AND at least 5 train_batch() calls execute"
+
+  evidence:
+    commit: "pending"
+    file: "entrenar/src/config/train/loader.rs"
+    fix: "Override checkpoint_step to 0 when loading from model_path (lines 2365-2372)"
