@@ -110,13 +110,18 @@ student. No VRAM contention.
 
 #### 4.5.3 Data Budget
 
-| Tier | Synthetic Tokens | Generation Time (est.) | Student Training |
-|------|-----------------|----------------------|-----------------|
-| Minimum viable | 50M | ~6 hours | ~3 hours (1,500 steps) |
-| Target | 200M | ~24 hours | ~12 hours (6,000 steps) |
-| Full | 500M | ~60 hours | ~30 hours (15,000 steps) |
+| Tier | Synthetic Tokens | Generation Time (measured) | Student Training |
+|------|-----------------|--------------------------|-----------------|
+| PoC (done) | 500K | ~8 hours | 1,000 steps |
+| **Minimum viable** | **5M** | **~3.3 days** | ~3,000 steps |
+| Target | 50M | ~33 days | ~15,000 steps |
 
-Start with minimum viable (50M tokens), evaluate on HumanEval/MBPP,
+**Measured throughput**: ~97K tokens/hour at Q4K GPU decode (27 tok/s
+per token, including prefill, prompt filtering, and HTTP overhead).
+Improved from initial 15 tok/s after ALB-111 batched GEMV and
+ALB-112 max_prompt_chars filtering (skip pathological prefills).
+
+Start with minimum viable (5M tokens), evaluate on HumanEval/MBPP,
 scale up if results justify the compute.
 
 ### 4.6 Measured Throughput
@@ -156,7 +161,7 @@ At 17.5 tok/s decode (serve path), synthetic data generation times:
 
 **Strategy**: Start with 5M tokens to validate quality, scale up if HumanEval improves.
 
-**Pipeline status** (2026-03-09):
+**Pipeline status** (2026-03-11):
 
 | Step | Status | Notes |
 |------|--------|-------|
@@ -165,13 +170,23 @@ At 17.5 tok/s decode (serve path), synthetic data generation times:
 | 3. Build prompt extraction | DONE | `scripts/extract-prompts.py` — 1000 prompts from codeparrot |
 | 4. Build generation script | DONE | `scripts/generate-synthetic.py` — subprocess mode |
 | 5. PoC end-to-end | DONE | 5/5 prompts generated, high quality |
-| 6. Scale to 50M tokens | IN PROGRESS | Current: 50-prompt batch running |
-| 7. Train student | TODO | After sufficient synthetic data |
+| 6. Generate 705 completions | DONE | 321K student tokens, resume+retry support |
+| 7. Train distill-v1 (PoC) | DONE | 100% synthetic → catastrophic forgetting (§4.11) |
+| 8. Train distill-v2 (mixed) | DONE | 90/10 mix → val_ppl 148 (+10.6%, needs more data) |
+| 9. Scale to 5M+ synthetic tokens | **IN PROGRESS** | 2.67M tokens (53%), 27 tok/s, ETA ~March 15 |
+| 10. Fix realizar f32 APR eval | DONE | ALB-108: LM head weight layout swap + tokenizer fix (§4.13) |
+| 11. HumanEval/MBPP eval | **DONE** | Baseline v9: 0/164 HumanEval, 0/500 MBPP (§4.14) |
+| 12. Fix APR CPU inference in eval | DONE | `SafetensorsToAprConverter` → `AprTransformer::from_apr_file()` |
+| 13. Fix max_tokens truncation | DONE | ALB-112: 256→512, was causing 92.7% truncation (§4.15) |
+| 14. aarch64 cross-platform build | DONE | GH #480: cfg-gated realizar/CUDA imports in apr-cli (§4.16) |
+| 15. gx10 data sync | DONE | Checkpoint, 7.1 GB train data, val, tokenizer synced to GB10 |
+| 16. gx10 CPU training validation | DONE | Pipeline works (model+data load, trainer init). Too slow for production (§4.16) |
 
-**Throughput (measured 2026-03-09)**:
+**Throughput (measured 2026-03-14)**:
 
 | Mode | Throughput | Notes |
 |------|-----------|-------|
+| `apr distill --stage generate` | **27 tok/s** | Batched Q4K GEMV (ALB-111), prompt filtering |
 | `realizar serve --gpu` | **17.5 tok/s** | Model loaded once, HTTP API, pool allocator |
 | `realizar run --gpu` | ~5 tok/s | 5s model load per subprocess call |
 
@@ -203,27 +218,274 @@ produces useful synthetic data — just lower quality.
 ### 4.9 Student Training on Synthetic Data
 
 The student trains with standard causal LM loss on synthetic data,
-mixed with original codeparrot data for regularization:
+**mixed with original codeparrot pre-training data** to prevent
+catastrophic forgetting.
 
-| Parameter | Value |
-|-----------|-------|
-| Data mix | 70% synthetic + 30% codeparrot original |
-| Optimizer | AdamW (lr=1e-4, lower than pretraining) |
-| Schedule | Cosine with 100-step warmup |
-| Init | From v8 checkpoint (step 1000, loss 6.69) |
-| Max steps | 6,000-15,000 (depending on data tier) |
+**Data mixing is non-negotiable.** Training on pure synthetic data
+causes catastrophic forgetting of the pre-training distribution
+(distill-v1 PoC confirmed this — see §4.11). The literature is
+unambiguous:
 
-Starting from the v8 checkpoint (not random init) means the student
-already has basic language modeling ability. The synthetic data teaches
-it the teacher's coding patterns on top of that foundation.
+- **Ouyang et al. (2022)**: InstructGPT mixed pre-training gradients
+  into RLHF to prevent capability regression ("alignment tax")
+- **Touvron et al. (2023)**: LLaMA 2 used replay during fine-tuning
+- **Li et al. (2023)**: Phi-1.5 used synthetic + filtered web data,
+  never pure synthetic
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Data mix | **90% codeparrot + 10% synthetic** | Prevents catastrophic forgetting (literature standard: 90-95% replay) |
+| Optimizer | AdamW (lr=1e-4, lower than pretraining) | Conservative for fine-tuning |
+| Schedule | Cosine with 100-step warmup | Standard |
+| Init | From **v9 checkpoint** (step 14950, val_ppl=133) | Best available base model (includes RoPE) |
+| Max steps | 1,000-3,000 | Small synthetic budget; early stopping on val_ppl |
+
+Starting from the v9 checkpoint means the student already has
+val_ppl=133 on codeparrot. The mixed training teaches it the teacher's
+coding patterns while replaying the original distribution to maintain
+(or improve) general Python capability.
 
 ### 4.10 Success Criteria
 
-| Metric | Pretraining Only (v8) | Distillation Target | Stretch |
-|--------|----------------------|--------------------|---------|
-| val_ppl | ~800 | < 200 | < 100 |
+| Metric | Base v9 | Distillation Target | Stretch |
+|--------|---------|---------------------|---------|
+| val_ppl (codeparrot) | 133 | < 130 (no regression) | < 100 |
+| train_loss (synthetic) | ~6.0 (untrained) | < 4.5 | < 3.5 |
 | HumanEval pass@1 | 0/164 | > 5/164 (3%) | > 15/164 (9%) |
 | MBPP pass@1 | 0/974 | > 20/974 (2%) | > 50/974 (5%) |
 
+**Critical constraint**: val_ppl on codeparrot must NOT regress beyond
+10% of base (i.e., must stay < 147). Distill-v1 violated this (133 →
+326, a 2.4x regression) because it used 100% synthetic data.
+
 Any non-zero HumanEval score from a 350M model trained on sovereign
 stack synthetic data would be a meaningful result.
+
+### 4.11 Distill-v1 PoC Results (2026-03-11)
+
+**Purpose**: Validate the end-to-end pipeline (generate → tokenize →
+train). Not expected to produce a usable model — data budget was 321K
+tokens (0.006% of the 50M minimum viable tier).
+
+| Parameter | Value |
+|-----------|-------|
+| Synthetic data | 705 completions, 321K student tokens |
+| Data mix | **100% synthetic (no replay)** |
+| Base checkpoint | v9 (step 14000, val_ppl=133) |
+| Training | 1000 steps, lr=1e-4, grad_accum=8 |
+| Train loss | 5.35 → 3.94 (synthetic data, improving) |
+| Val PPL (codeparrot) | **133 → 326 (2.4x regression)** |
+
+**Diagnosis**: Textbook catastrophic forgetting. The model overfit to
+321K tokens of synthetic data (~100 epochs) while losing the broader
+codeparrot distribution it was pre-trained on. Train loss improved
+because the model memorized the tiny synthetic dataset, but val_ppl
+on held-out codeparrot doubled.
+
+**Lessons learned**:
+
+1. **Data mixing is mandatory** — pure synthetic training causes
+   catastrophic forgetting regardless of dataset quality
+2. **Pipeline validated** — the generate → tokenize → train loop works
+   end-to-end (ALB-107 APR duplicate key bug fixed along the way)
+3. **321K tokens is not enough** — even with mixing, need ≥5M synthetic
+   tokens for measurable improvement
+4. **Eval gap**: realizar cannot generate from f32 APR checkpoints
+   (both base v9 and distill-v1 produce garbage via `realizar run`).
+   HumanEval/MBPP eval requires fixing this (separate from distillation)
+
+**Bug fixed**: ALB-107 — AprWriter serialized duplicate JSON keys
+(`rms_norm_eps` in both struct field and flattened custom map),
+causing `AprReader::open()` to fail silently → random initialization
+instead of loading v9 weights. Fixed in aprender (reader tolerance +
+writer key mapping).
+
+### 4.12 Distill-v2 Results: Data Mixing (2026-03-11)
+
+**Purpose**: Validate that data mixing prevents catastrophic forgetting.
+Same synthetic data as v1, but mixed 90% codeparrot + 10% synthetic.
+
+| Parameter | Value |
+|-----------|-------|
+| Synthetic data | 313 seqs (321K tokens, same as v1) |
+| Codeparrot replay | 2,817 seqs (2.9M tokens, sampled from shard-0000) |
+| Data mix | **90% codeparrot + 10% synthetic** |
+| Total | 3,130 seqs × 1024 = 3.2M tokens |
+| Training | 1000 steps (12 epochs), lr=1e-4, grad_accum=8 |
+
+**Results comparison**:
+
+| Metric | Base v9 | Distill-v1 (pure) | Distill-v2 (mixed) |
+|--------|---------|-------------------|-------------------|
+| Val PPL | **133.68** | 325.50 (+143%) | **147.88 (+10.6%)** |
+| Train loss | 4.79 | 3.94 | 4.75 |
+
+**Analysis**:
+
+1. **Data mixing works** — reduced regression from 143% to 10.6%
+   (325 → 148 vs base 134). Confirms the literature.
+2. **Still regressed** — val_ppl 148 > 134 baseline. Missed the <10%
+   regression target (147) by 1 PPL point.
+3. **Root cause: insufficient synthetic data** — 321K synthetic tokens
+   is 16x below the minimum viable tier (5M). The 313 synthetic
+   sequences are too few to teach new patterns; they add noise to
+   the 90% replay signal without adding enough signal to compensate.
+
+**Conclusion**: The mixing ratio (90/10) and training procedure are
+sound. The bottleneck is **synthetic data volume**. Need to scale
+from 705 to ~20,000+ teacher completions (5M+ tokens) before
+distillation can improve on the base model.
+
+### 4.13 ALB-108: realizar F32 APR Inference Fix (2026-03-11)
+
+**Purpose**: Enable code generation from entrenar APR checkpoints for
+HumanEval/MBPP eval. Previously, `realizar run` on v9 checkpoint
+produced garbage tokens regardless of input.
+
+**Two bugs found**:
+
+1. **LM head weight layout swap** (`realizar/src/gpu/adapters/apr.rs`):
+   - APR `get_f32()` with `transpose_cublas_weights` produces weights
+     in `[vocab_size, hidden_dim]` (HF convention)
+   - GGUF loader provides weights in `[hidden_dim, vocab_size]`
+   - `AprF32ToGpuAdapter` stored the APR weight directly as
+     `lm_head_weight` — but GpuModel's GPU GEMV expects the GGUF
+     layout `[hidden_dim, vocab_size]`
+   - Block weights were correct (double-transpose: `get_f32` + adapter
+     transpose cancel out), but LM head was only transposed once
+   - **Fix**: Swap `lm_head_weight` and `lm_head_weight_t` assignments
+   - **Symptom**: Token 21474 ("QUO") predicted with 18.7 logit for ALL
+     prompts (input-independent output = wrong weight layout)
+
+2. **CPU tokenizer fallback** (`realizar/src/cli/apr_inference.rs`):
+   - `encode_text()` returns `None` for entrenar checkpoints (no
+     embedded tokenizer)
+   - Fallback `chars().map(|c| c as u32)` mapped characters to Unicode
+     codepoints instead of BPE token IDs
+   - **Fix**: Add `.or_else()` to try sibling `tokenizer.json`
+   - GPU path was already fixed; CPU path still had the bug
+
+**After fix**: CPU and GPU produce identical output. Model responds
+differently to different prompts. Output quality (mostly punctuation,
+whitespace) reflects val_ppl=133 — model is ~250x better than random
+but still too uncertain for coherent code generation.
+
+**Implication for eval**: Base v9 at val_ppl=133 will score ~0/164
+HumanEval and ~0/974 MBPP. Any non-zero score after distillation
+with sufficient synthetic data (5M+ tokens) would demonstrate
+distillation effectiveness.
+
+### 4.14 Baseline Eval Results (2026-03-13)
+
+**Purpose**: Establish pre-distillation baselines on HumanEval and MBPP
+using the v9 base model with real CPU inference. Previously, `apr eval`
+silently fell back to structural validation (100% pass) because
+`SafetensorsToAprConverter` couldn't load `.apr` files. Fixed by adding
+`AprTransformer::from_apr_file()` as the primary load path.
+
+| Benchmark | Problems | Passed | pass@1 | Time |
+|-----------|----------|--------|--------|------|
+| **HumanEval** | 164 | **0** | **0.0%** | 2387s (~40 min, CPU) |
+| **MBPP** (sanitized) | 500 | **0** | **0.0%** | CPU |
+
+**As predicted**: 0/164 HumanEval. The base model generates plausible
+Python tokens but cannot produce functionally correct solutions. It was
+trained on unsupervised next-token prediction, not code completion.
+
+**Any non-zero pass@1 after distillation is a meaningful result.**
+
+### 4.15 ALB-112: Synthetic Data Truncation Fix (2026-03-13)
+
+**Problem**: Quality analysis of 6,153 synthetic completions revealed
+92.7% hit the `max_tokens: 256` limit — the vast majority of teacher
+completions were truncated mid-function.
+
+| Metric | Value |
+|--------|-------|
+| Truncated (>=255 tokens) | 92.7% (5,704/6,153) |
+| Syntax OK (all) | 11.8% |
+| Syntax OK (non-truncated) | 25.8% |
+| Unique (first 200 chars) | 97.4% |
+| Token length p10/p50/p90 | 256/256/256 |
+
+**Five Whys**:
+
+1. **Why would distillation fail?** The student never sees how functions
+   *end* — no return statements, no closing logic, no dedent. HumanEval
+   requires complete functions.
+2. **Why is 92.7% truncated?** `max_tokens: 256` in config. Class bodies
+   and functions with docstrings exceed 256 tokens.
+3. **Why was it set to 256?** Config comment said "function bodies are
+   short" — incorrect for class prompts (428/1000 prompts are classes)
+   and for functions with docstrings + complex logic.
+4. **Why wasn't this caught earlier?** PoC used 5 prompts and
+   eyeballed output. No systematic quality analysis until 6K records.
+5. **Why not just accept it?** Causal LM loss treats each token
+   independently, so truncated sequences aren't "teaching bad behavior."
+   But the student needs to learn function *structure* (beginning →
+   middle → end), and 92.7% of synthetic examples lack the ending.
+
+**Fix**: `max_tokens: 256` → `max_tokens: 512`. The spec (§4.5.2)
+already specified 512; the YAML config was out of sync.
+
+**Impact**: Existing 1.5M tokens (6,153 records at 256 tok) preserved
+in the JSONL file. Generation resumed from record 6,153 with 512-token
+completions. Expected truncation rate at 512: ~35-40% (mostly class
+bodies), down from 92.7%.
+
+### 4.16 aarch64 Cross-Platform Build (2026-03-14)
+
+**Goal**: Enable parallel student training on NVIDIA GB10 Blackwell
+(aarch64, 119 GB unified memory, CUDA 13.0 SM_120) while the 4090
+continues teacher inference for distillation.
+
+**Blockers found and fixed**:
+
+1. **renacer (GH #43)**: x86_64 ptrace register names in aarch64 build.
+   Already fixed in `2c64aca`. Published renacer 0.10.1 to crates.io.
+
+2. **realizar (GH #143)**: WMMA kernel type imports
+   (`BatchedFusedResidualRmsNormKernel`, `InterleavedWmmaQ4KGemmKernel`,
+   `W4a16WmmaQ4KGemmKernel`) not available on aarch64. Fixed by gating
+   behind `#[cfg(target_arch = "x86_64")]` in 4 files. Also fixed
+   pre-existing clippy warnings blocking pre-push gate.
+
+3. **apr-cli (GH [#480](https://github.com/paiml/aprender/issues/480))**:
+   25 source files imported `realizar` types without
+   `#[cfg(feature = "inference")]` guards. With `--no-default-features
+   --features training`, build failed with 40 errors. Fixed by gating
+   all realizar imports behind feature flags. Added `training-gpu`
+   feature for entrenar CUDA support. Committed `1471cb11`.
+
+**Result**: `apr 0.4.11 (1471cb11)` running on aarch64 GB10:
+```
+$ file target/release/apr
+ELF 64-bit LSB pie executable, ARM aarch64
+```
+
+**Data synced to gx10**:
+
+| Data | Size | Path |
+|------|------|------|
+| v9 checkpoint | 1.9 GB | `checkpoints/albor-base-350m-v9/model-best.apr` |
+| Training data | 7.1 GB | `data/pretokenized-1024-v3/train/` (19 shards) |
+| Val data | 1.6 MB | `data/pretokenized-1024-v3/val/val.parquet` |
+| Tokenizer | 931 KB | `models/albor-tokenizer-v2/tokenizer.json` |
+
+**CPU training validation**: Pipeline works end-to-end (model loads
+from APR checkpoint, 4.9M batches created from 19 shards, CPU
+TransformerTrainer initializes). However, CPU training at 350M params
+is impractical — one forward+backward step takes >15 minutes on 20
+ARM cores. Production training requires GPU.
+
+**GPU training on GB10**: Blocked. The GB10 has SM_120 (Blackwell)
+but trueno-gpu emits PTX for SM_89 (Ada Lovelace). Options:
+
+1. **cuBLAS path** (preferred): entrenar already has cuBLAS integration
+   via trueno-gpu. cuBLAS handles SM_120 natively — no custom PTX
+   needed. Requires building with `--features training-gpu` and
+   ensuring cuBLAS FFI links correctly on aarch64.
+2. **SM_120 PTX support**: Add Blackwell PTX emission to trueno-gpu
+   kernel compiler. Larger effort, lower priority.
+3. **Wait for 4090**: Train on 4090 after distillation completes
+   (~25h). Proven path at 8K tok/s, 23.8% MFU.
