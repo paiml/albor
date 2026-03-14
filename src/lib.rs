@@ -10,8 +10,8 @@
 pub mod config {
     /// Validate a YAML config file
     pub fn validate_yaml(path: &std::path::Path) -> Result<(), String> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("read {}: {}", path.display(), e))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {}", path.display(), e))?;
         let _: serde_yaml::Value = serde_yaml::from_str(&content)
             .map_err(|e| format!("parse {}: {}", path.display(), e))?;
         Ok(())

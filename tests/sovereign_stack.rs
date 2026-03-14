@@ -12,11 +12,7 @@ fn pv_validates_all_contracts() {
     let entries: Vec<_> = std::fs::read_dir("contracts")
         .expect("contracts/ directory must exist")
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|ext| ext == "yaml")
-        })
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "yaml"))
         .collect();
 
     assert!(!entries.is_empty(), "no contract YAML files found");
@@ -48,11 +44,7 @@ fn pv_audits_all_contracts_clean() {
     let entries: Vec<_> = std::fs::read_dir("contracts")
         .expect("contracts/ directory must exist")
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|ext| ext == "yaml")
-        })
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "yaml"))
         .collect();
 
     for entry in &entries {
@@ -109,7 +101,10 @@ fn all_yaml_configs_parse() {
 
 #[test]
 fn all_contract_yamls_parse() {
-    for entry in std::fs::read_dir("contracts").expect("contracts/").flatten() {
+    for entry in std::fs::read_dir("contracts")
+        .expect("contracts/")
+        .flatten()
+    {
         let path = entry.path();
         if path.extension().is_some_and(|e| e == "yaml") {
             let content = std::fs::read_to_string(&path)
@@ -150,7 +145,10 @@ fn bashrs_lints_makefile() {
 
 #[test]
 fn falsify_test_yamls_parse() {
-    for entry in std::fs::read_dir("tests/falsify").expect("tests/falsify/").flatten() {
+    for entry in std::fs::read_dir("tests/falsify")
+        .expect("tests/falsify/")
+        .flatten()
+    {
         let path = entry.path();
         if path.extension().is_some_and(|e| e == "yaml") {
             let content = std::fs::read_to_string(&path)
