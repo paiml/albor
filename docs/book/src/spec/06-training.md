@@ -13,29 +13,27 @@
 | Warmup steps | 2000 (v1) / 500 (v2) | **ALB-060**: 2000/5000 = 40%, not 0.2%. v2 config uses 500 (10%) per C-TRAINCFG-001 |
 | Min LR | 3e-5 | 10% of peak (standard) |
 | Gradient clipping | 1.0 (global norm) | Stability |
-| Batch size (global) | 32K tokens/step | batch=4 × ga=8 × seq_len=1024 (v5 config) |
+| Batch size (global) | 32K tokens/step | batch=4 × ga=8 × seq_len=1024 (v9 config) |
 | Micro-batch (4090) | 4 | GPU-resident (batch=8 OOM at seq≥1024) |
 | Gradient accumulation | 8 (ALB-091) | GPU-resident accumulation via `GpuGradientAccumulator` — zero D2H during micro-batch loop |
 | Total training tokens | Target 655M (v5); 5.3B available | 20,000 steps × 32K tokens/step; data: codeparrot-clean pretokenized-1024-v3 |
 | Mixed precision | fp16 (CUDA) | Hardware-appropriate |
 
-### 6.2 Training Config: `configs/train/pretrain-350m-v5.yaml`
+### 6.2 Training Config: `configs/train/pretrain-350m-v9.yaml`
 
 A single YAML file defines **everything** — model architecture and training
 hyperparameters. This is the industry standard (Axolotl, torchtune, HuggingFace
 Trainer). One file, one truth. `apr train validate` lints it before GPU time.
 
-**Current config** (v5 — full codeparrot-clean, GPU-resident gradient accumulation,
-auto eval scheduling):
+**Current config** (v9 — all v8 fixes + ALB-106 RoPE in CUDA forward/backward):
 
 ```yaml
-# configs/train/pretrain-350m-v5.yaml — v5: Fresh start with full data coverage
+# configs/train/pretrain-350m-v9.yaml — v9: ALB-106 RoPE fix, all v8 fixes
 # Data: pretokenized-1024-v3 (5.3B unique tokens from codeparrot-clean)
-# ALB-091 FIXED: GPU-resident gradient accumulation, zero throughput loss.
 # Token budget: 20,000 steps x 32,768 tokens/step = 655M tokens
 
 model:
-  path: "./checkpoints/albor-base-350m-v5/"
+  path: "."
   mode: transformer
   architecture:
     hidden_size: 1024                       # d_model
@@ -49,7 +47,7 @@ model:
 
 data:
   train: "data/pretokenized-1024-v3/train/" # codeparrot-clean (5.3B tokens)
-  val: "data/pretokenized-2048/val/"
+  val: "data/pretokenized-1024-v3/val/"     # Same distribution as train
   batch_size: 4                             # Micro-batch (batch=8 OOM'd)
   seq_len: 1024
   tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
@@ -69,23 +67,23 @@ training:
   lr_scheduler: "cosine"
   warmup_steps: 500
   gradient_accumulation: 8                  # 32K tokens/step (GPU-resident, ALB-091)
-  output_dir: "./checkpoints/albor-base-350m-v5"
+  output_dir: "./checkpoints/albor-base-350m-v9"
   save_interval: 500
   eval_interval: 250                        # ALB-087: Eval 2x per save interval
   patience: 10                              # ALB-087: Early stop after 10 evals without improvement
   max_steps: 20000                          # 20K x 32K = 655M tokens
 ```
 
-**Key changes from v2→v5**:
-- **Data**: codeparrot-clean 5.3B tokens (pretokenized-1024-v3) vs 139M (v2)
-- **Gradient accumulation**: 8 GPU-resident (ALB-091) vs 1 per-sequence (v2)
-- **Auto eval**: `eval_interval: 250` + `patience: 10` (ALB-087)
-- **Cosine LR decay**: Now implemented in CUDA trainer (ALB-079)
-- **Grad clip**: Re-enabled via fused GPU pipeline (ALB-078)
+**Key changes in v9** (cumulative from v5→v9):
+- **RoPE**: Applied in CUDA forward/backward — positional awareness (ALB-106). All v1-v8 trained without RoPE.
+- **Data**: codeparrot-clean 5.3B tokens (pretokenized-1024-v3), val from same distribution
+- **Gradient accumulation**: 8 GPU-resident (ALB-091) — zero D2H during micro-batch loop
+- **Cosine LR decay**: Implemented in CUDA trainer (ALB-079)
+- **APR checkpoints**: Atomic single-file with optimizer state (ALB-096), resume verified (ALB-097)
+- **RMSNorm backward**: grad_gamma computed + accum zeroed (ALB-092)
 
-**Legacy configs**: v1 (`pretrain-350m.yaml`), v2 (`pretrain-350m-v2.yaml`),
-v3 (`pretrain-350m-v3.yaml`), v4 (`pretrain-350m-v4.yaml`) — see gap register
-(§11) for per-version history and why each was superseded.
+**Legacy configs**: v1-v8 — see gap register (§11) for per-version history and
+why each was superseded.
 
 **Note on YAML numeric formatting**: YAML supports underscore notation natively
 (`32_768`, `1_000_000`) for human-readable large numbers. All albor configs use
@@ -170,7 +168,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v5 (seq=1024, batch=4, ga=8, codeparrot-5.3B) | 3,429 | 10.38→6.20 | ~45 min | **CRASHED** at step 3429. 7.9K tok/s, 22.8% MFU. Resume broken (ALB-097). |
 | 350M v6 (seq=1024, batch=4, ga=8, codeparrot-5.3B) | 2,000 | 10.40→6.50 | ~4.5h | **KILLED** — strategic pivot to distillation. val_ppl=776, 6.5K tok/s. |
 | 350M v7 (seq=1024, batch=4, ga=8, codeparrot-5.3B) | 550 | 10.40→6.62 | ~1h | **KILLED** for checkpoint code fixes. 6.9K tok/s. Checkpoint at step 500, but resume broken (ALB-097: tied LM head not saved). |
-| 350M v8 (seq=1024, batch=4, ga=8, codeparrot-5.3B, APR) | 1,100 | 10.40→6.69 | ~1.5h | **KILLED** — Chinchilla scaling wall. val_ppl=879 at step 1000. 7.7K tok/s, 22.3% MFU. APR checkpoints, resume verified working (ALB-096/097). Pivoting to distillation. |
+| 350M v8 (seq=1024, batch=4, ga=8, codeparrot-5.3B, APR) | 5,337 | 10.40→6.40 | ~5h | **KILLED** — no RoPE (ALB-106). 7.8K tok/s, 24.6% MFU. All steps wasted: model trained without positional awareness. |
+| 350M v9 (seq=1024, batch=4, ga=8, codeparrot-5.3B, ALB-106 RoPE) | 14,950 | 10.40→4.79 | ~3h | **STOPPED** — val_ppl=133 at step 14750. 8.2K tok/s, 23.8% MFU. First run with RoPE. Massive improvement over v8 (val_ppl=879 without RoPE). Base model sufficient for distillation (Stage 2). |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
@@ -199,6 +198,7 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 - C-GPUINIT-001: All optimizer m/v buffers zero-initialized (ALB-059 fix)
 - C-LOSSSCALE-001: fp16 loss scaling excluded from GPU backward (all backward uses f32; scaling causes overflow) (ALB-072 fix)
 - C-CUBLAS-NOTENCORE-001: cuBLAS uses CUBLAS_DEFAULT_MATH (no tensor cores) — tensor core algorithms produce NaN for transposed backward GEMMs at ~1e5 gradient magnitude (ALB-077 fix)
+- C-ROPE-001: RoPE applied to Q and K in CUDA forward (after GEMM, before attention), inverse RoPE in backward (after interleaved conversion, before projection backward) — in-place via per-thread pair independence (ALB-106 fix)
 
 ### 6.5 Checkpointing Strategy
 

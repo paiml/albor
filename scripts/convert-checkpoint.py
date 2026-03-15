@@ -64,7 +64,7 @@ def save_safetensors(path: Path, tensors: dict[str, tuple[np.ndarray, str]]):
 
     header["__metadata__"] = {
         "version": "0.1.0",
-        "architecture": "Qwen2ForCausalLM",
+        "architecture": "LlamaForCausalLM",
         "converted_by": "albor/scripts/convert-checkpoint.py",
     }
 

@@ -20,7 +20,7 @@ teacher:
   tokenizer: "/mnt/nvme-raid0/models/Qwen3-Coder-30B-A3B-Instruct/tokenizer.json"
   precision: "q4k"
   gpu: true
-  max_tokens: 256                          # Per completion (function bodies are short)
+  max_tokens: 512                          # 256 caused 92.7% truncation (ALB-112)
   temperature: 0.8                         # Diversity without garbage
   top_p: 0.95
   batch_size: 1                            # Single-sequence decode for Q4K GEMV
