@@ -1,0 +1,75 @@
+# configs/train/distill-student-v3.yaml — Distillation student training (ALB-117 fixed)
+#
+# Train albor-350M on 90% codeparrot + 10% synthetic (from Qwen3-Coder-30B).
+# Starts from v9 checkpoint (val_ppl=133, step 14950).
+#
+# ALB-117 FIX: Step starts at 0 (model_path weights no longer leak checkpoint step).
+# Previous configs (v1/v2) worked around this by setting warmup_steps=14100, max_steps=15000.
+# Now we use correct values directly.
+#
+# Data budget: ~5M synthetic tokens / 0.10 = ~50M total mixed tokens
+#   synthetic seqs: ~5000 (5M tokens / 1024)
+#   codeparrot seqs: ~45000 (45M tokens / 1024)
+#   Total: ~50K seqs × 1024 = 51.2M tokens
+#
+# Global batch: 4 seqs × 8 accum × 1024 tokens = 32,768 tokens/step
+# Steps for 1 epoch: 50K / 32 = 1,562 steps
+# 3 epochs ≈ 4,700 steps → max_steps=5000 with early stopping
+
+model:
+  path: "./checkpoints/albor-base-350m-v9/model-best.apr"
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
+
+data:
+  train: "data/distill/mixed-v3/train/"
+  val: "data/pretokenized-1024-v3/val/"
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 1.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 5
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 200
+  gradient_accumulation: 8
+  output_dir: "./checkpoints/albor-distill-v3"
+  save_interval: 500
+  eval_interval: 100
+  patience: 10
+  max_steps: 5000
+
+monitoring:
+  terminal:
+    enabled: false
+  tracking:
+    enabled: false
+  system:
+    enabled: false
+
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded — Andon stop"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion — Andon stop"
