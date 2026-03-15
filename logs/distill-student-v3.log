@@ -1,0 +1,1294 @@
+
+[36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+  [1;36mapr train apply — Causal LM Pre-training[0m
+[36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[0m
+
+  [1;37m  Config[0m: configs/train/distill-student-v3.yaml
+
+✓ Config loaded and validated (Transformer mode)
+  Model: ./checkpoints/albor-base-350m-v9/model-best.apr
+  Optimizer: adamw (lr=0.0001)
+  Batch size: 4
+  Epochs: 5
+  Training mode: CausalLm
+
+Loading model weights from ./checkpoints/albor-base-350m-v9/model-best.apr...
+  Found 219 weight tensors (APR)
+✓ Loaded pre-trained weights successfully (APR)
+  embed_tokens stats: min=-4.3458e-2 max=4.1943e-2 mean=5.7892e-8
+  Gradient accumulation: 8 (effective batch: 32768 tokens/step)
+Loading training data...
+  Loading tokenizer from: models/albor-tokenizer-v2/tokenizer.json
+  Tokenizer vocab size: 32768
+  Streaming 1 Parquet shard(s) from data/distill/mixed-v3/train/ (ALB-101)
+    shard 1/1: 14165 batches (cumulative: 14165)
+  Total: 14165 batches from 1 shards
+✓ 14165 LM batches created
+
+[CUDA] cuBLAS initialized — tensor core GEMMs enabled
+[CUDA] Kernel cache initialized for target: sm_89
+  GPU: NVIDIA GeForce RTX 4090 (25.3 GB)
+[CUDA] Pre-warmed 27 forward kernels (JIT compiled before block upload)
+  ✓ 24 transformer blocks uploaded to GPU
+  ✓ GPU training state allocated (LM head: 134.2 MB)
+  ✓ Gradient accumulation: 8 steps, CPU buffers (1728.3 MB)
+  GPU gradient accumulation: 24 blocks, 1520.2 MB VRAM
+  ✓ GPU gradient accumulation enabled (ALB-091)
+  ✓ Fused gradient clipping: 1794 partials (7.0 KB)
+✓ CudaTransformerTrainer initialized (GPU: NVIDIA GeForce RTX 4090)
+Starting transformer training (CUDA GPU-resident)...
+
+  max_steps: 5000 (will stop early when reached)
+  eval_interval: 100 (decoupled from save_interval=500)
+  early_stopping: patience=10 eval intervals
+  Loading tokenizer from: models/albor-tokenizer-v2/tokenizer.json
+  Tokenizer vocab size: 32768
+  Streaming 1 Parquet shard(s) from data/pretokenized-1024-v3/val/ (ALB-101)
+    shard 1/1: 250 batches (cumulative: 250)
+  Total: 250 batches from 1 shards
+  ✓ 250 validation batches loaded from data/pretokenized-1024-v3/val/
+  [ZClip] gradient spike at step 0: z=4.4 gnorm=4.46e-1 ema=2.23e-2
+  [1/14165 batches] step=0 loss=8.6575 lr=0.00e0 tok/s=4807 mfu=15.1% gnorm=4.46e-1 gpu=13241/24081MB step=852ms eta=12069s
+  [ROLLBACK] loss spike at step 0: 8.7572 > 3.0×EMA(0.4329), rollback #1/3
+  [ZClip] gradient spike at step 0: z=3.6 gnorm=6.53e-1 ema=5.38e-2
+  [ROLLBACK] loss spike at step 0: 8.7872 > 3.0×EMA(0.8491), rollback #2/3
+  [ROLLBACK] loss spike at step 0: 8.7496 > 3.0×EMA(1.2460), rollback #3/3
+  [ZClip] gradient spike at step 0: z=2.1 gnorm=5.29e-1 ema=9.58e-2
+  [ZClip] gradient spike at step 5: z=2.0 gnorm=8.73e-1 ema=4.60e-1
+  [100/14165 batches] step=12 loss=8.4273 lr=6.00e-6 tok/s=5248 mfu=16.5% gnorm=3.60e-1 gpu=13241/24081MB step=752ms eta=10977s
+  [ZClip] gradient spike at step 13: z=2.6 gnorm=7.79e-1 ema=5.03e-1
+  [ZClip] gradient spike at step 20: z=2.5 gnorm=6.55e-1 ema=4.47e-1
+  [ZClip] gradient spike at step 21: z=3.3 gnorm=8.80e-1 ema=4.72e-1
+  [ZClip] gradient spike at step 24: z=2.5 gnorm=7.70e-1 ema=4.31e-1
+  [200/14165 batches] step=25 loss=7.9597 lr=1.25e-5 tok/s=5245 mfu=16.5% gnorm=3.29e-1 gpu=13241/24081MB step=979ms eta=10905s
+  [ZClip] gradient spike at step 26: z=2.7 gnorm=7.37e-1 ema=3.94e-1
+  [ZClip] gradient spike at step 28: z=2.2 gnorm=6.60e-1 ema=3.80e-1
+  [ZClip] gradient spike at step 34: z=2.1 gnorm=4.73e-1 ema=3.22e-1
+  [ZClip] gradient spike at step 36: z=2.2 gnorm=4.83e-1 ema=3.17e-1
+  [300/14165 batches] step=37 loss=6.9933 lr=1.85e-5 tok/s=5254 mfu=16.5% gnorm=4.29e-1 gpu=13241/24081MB step=751ms eta=10809s
+  [ZClip] gradient spike at step 38: z=4.0 gnorm=1.03e0 ema=3.65e-1
+  [ZClip] gradient spike at step 41: z=2.2 gnorm=6.35e-1 ema=3.60e-1
+  [ZClip] gradient spike at step 41: z=2.7 gnorm=7.47e-1 ema=3.73e-1
+  [ZClip] gradient spike at step 44: z=3.7 gnorm=1.06e0 ema=3.96e-1
+  [ZClip] gradient spike at step 47: z=2.0 gnorm=5.71e-1 ema=3.50e-1
+  [400/14165 batches] step=50 loss=6.9500 lr=2.50e-5 tok/s=5254 mfu=16.5% gnorm=3.32e-1 gpu=13241/24081MB step=980ms eta=10730s
+  [ZClip] gradient spike at step 50: z=3.1 gnorm=7.00e-1 ema=3.63e-1
+  [ZClip] gradient spike at step 52: z=2.9 gnorm=7.28e-1 ema=3.78e-1
+  [ZClip] gradient spike at step 56: z=2.1 gnorm=5.47e-1 ema=3.44e-1
+  [ZClip] gradient spike at step 56: z=2.1 gnorm=5.73e-1 ema=3.55e-1
+  [ZClip] gradient spike at step 61: z=3.4 gnorm=6.77e-1 ema=3.28e-1
+  [500/14165 batches] step=62 loss=7.2012 lr=3.10e-5 tok/s=5261 mfu=16.5% gnorm=2.30e-1 gpu=13241/24081MB step=740ms eta=10640s
+  [ZClip] gradient spike at step 69: z=2.2 gnorm=4.92e-1 ema=3.13e-1
+  [ZClip] gradient spike at step 69: z=3.1 gnorm=6.62e-1 ema=3.35e-1
+  [ZClip] gradient spike at step 74: z=2.5 gnorm=5.06e-1 ema=2.93e-1
+  [600/14165 batches] step=75 loss=6.9332 lr=3.75e-5 tok/s=5262 mfu=16.5% gnorm=3.48e-1 gpu=13241/24081MB step=981ms eta=10559s
+  [ZClip] gradient spike at step 78: z=3.4 gnorm=6.57e-1 ema=2.86e-1
+  [ZClip] gradient spike at step 78: z=2.1 gnorm=5.36e-1 ema=2.94e-1
+  [700/14165 batches] step=87 loss=6.7510 lr=4.35e-5 tok/s=5261 mfu=16.5% gnorm=2.66e-1 gpu=13241/24081MB step=756ms eta=10484s
+  [ZClip] gradient spike at step 87: z=2.3 gnorm=5.13e-1 ema=2.82e-1
+  [ZClip] gradient spike at step 92: z=3.4 gnorm=7.13e-1 ema=2.89e-1
+  [ZClip] gradient spike at step 99: z=3.8 gnorm=6.87e-1 ema=2.44e-1
+  [noise-scale] step=100 B_noise=0.1538 (window=100)
+  [800/14165 batches] step=100 loss=6.9836 lr=5.00e-5 tok/s=5259 mfu=16.5% gnorm=3.92e-1 gpu=13241/24081MB step=982ms eta=10409s
+  [eval] step=100 val_loss=6.7063 val_ppl=817.52 (250 batches)
+  [best-model] step=100 saved to ./checkpoints/albor-distill-v3/model-best.apr
+  [ZClip] gradient spike at step 104: z=3.2 gnorm=6.90e-1 ema=2.64e-1
+  [ZClip] gradient spike at step 105: z=2.8 gnorm=6.92e-1 ema=2.65e-1
+  [ZClip] gradient spike at step 106: z=2.3 gnorm=6.46e-1 ema=2.87e-1
+  [ZClip] gradient spike at step 109: z=2.9 gnorm=6.41e-1 ema=2.72e-1
+  [900/14165 batches] step=112 loss=6.7198 lr=5.60e-5 tok/s=4560 mfu=14.3% gnorm=1.90e-1 gpu=13241/24081MB step=753ms eta=11915s
+  [ZClip] gradient spike at step 114: z=2.9 gnorm=6.29e-1 ema=2.76e-1
+  [ZClip] gradient spike at step 114: z=3.2 gnorm=8.72e-1 ema=3.06e-1
+  [ZClip] gradient spike at step 117: z=3.9 gnorm=1.29e0 ema=3.06e-1
+  [ZClip] gradient spike at step 123: z=2.1 gnorm=5.09e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 124: z=3.4 gnorm=8.41e-1 ema=2.58e-1
+  [1000/14165 batches] step=125 loss=6.6474 lr=6.25e-5 tok/s=4622 mfu=14.5% gnorm=1.69e-1 gpu=13241/24081MB step=995ms eta=11667s
+  [ZClip] gradient spike at step 133: z=3.6 gnorm=7.24e-1 ema=2.46e-1
+  [1100/14165 batches] step=137 loss=6.6553 lr=6.85e-5 tok/s=4674 mfu=14.7% gnorm=1.59e-1 gpu=13241/24081MB step=745ms eta=11450s
+  [ZClip] gradient spike at step 137: z=3.0 gnorm=5.85e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 141: z=2.3 gnorm=4.15e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 142: z=3.7 gnorm=6.86e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 143: z=2.4 gnorm=6.03e-1 ema=2.68e-1
+  [ZClip] gradient spike at step 147: z=2.0 gnorm=4.63e-1 ema=2.52e-1
+  [1200/14165 batches] step=150 loss=6.8522 lr=7.50e-5 tok/s=4718 mfu=14.8% gnorm=1.71e-1 gpu=13241/24081MB step=984ms eta=11256s
+  [ZClip] gradient spike at step 150: z=3.6 gnorm=6.92e-1 ema=2.49e-1
+  [ZClip] gradient spike at step 152: z=2.3 gnorm=5.11e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 152: z=2.6 gnorm=6.12e-1 ema=2.64e-1
+  [ZClip] gradient spike at step 154: z=3.7 gnorm=9.46e-1 ema=2.77e-1
+  [ZClip] gradient spike at step 156: z=2.8 gnorm=7.48e-1 ema=2.76e-1
+  [ZClip] gradient spike at step 161: z=2.2 gnorm=5.09e-1 ema=2.48e-1
+  [1300/14165 batches] step=162 loss=6.6406 lr=8.10e-5 tok/s=4758 mfu=14.9% gnorm=2.65e-1 gpu=13241/24081MB step=749ms eta=11076s
+  [ZClip] gradient spike at step 168: z=3.2 gnorm=6.23e-1 ema=2.51e-1
+  [ZClip] gradient spike at step 169: z=3.2 gnorm=7.30e-1 ema=2.62e-1
+  [ZClip] gradient spike at step 172: z=2.5 gnorm=6.13e-1 ema=2.79e-1
+  [ZClip] gradient spike at step 173: z=2.3 gnorm=5.94e-1 ema=2.90e-1
+  [1400/14165 batches] step=175 loss=6.3294 lr=8.75e-5 tok/s=4790 mfu=15.0% gnorm=1.41e-1 gpu=13241/24081MB step=988ms eta=10915s
+  [ZClip] gradient spike at step 176: z=3.2 gnorm=7.01e-1 ema=2.67e-1
+  [ZClip] gradient spike at step 179: z=2.9 gnorm=6.22e-1 ema=2.67e-1
+  [ZClip] gradient spike at step 183: z=3.6 gnorm=7.46e-1 ema=2.61e-1
+  [ZClip] gradient spike at step 183: z=2.6 gnorm=6.84e-1 ema=2.76e-1
+  [ZClip] gradient spike at step 184: z=2.4 gnorm=7.18e-1 ema=2.96e-1
+  [1500/14165 batches] step=187 loss=6.8675 lr=9.35e-5 tok/s=4821 mfu=15.1% gnorm=4.17e-1 gpu=13241/24081MB step=753ms eta=10761s
+  [ZClip] gradient spike at step 188: z=3.2 gnorm=7.35e-1 ema=2.68e-1
+  [ZClip] gradient spike at step 192: z=2.1 gnorm=5.32e-1 ema=2.70e-1
+  [ZClip] gradient spike at step 194: z=2.6 gnorm=6.44e-1 ema=2.81e-1
+  [ZClip] gradient spike at step 199: z=3.8 gnorm=7.70e-1 ema=2.45e-1
+  [noise-scale] step=200 B_noise=0.2235 (window=100)
+  [1600/14165 batches] step=200 loss=6.4767 lr=1.00e-4 tok/s=4846 mfu=15.2% gnorm=2.12e-1 gpu=13241/24081MB step=989ms eta=10620s
+  [eval] step=200 val_loss=6.6458 val_ppl=769.53 (250 batches)
+  [best-model] step=200 saved to ./checkpoints/albor-distill-v3/model-best.apr
+  [ZClip] gradient spike at step 202: z=2.2 gnorm=4.86e-1 ema=2.51e-1
+  [ZClip] gradient spike at step 204: z=3.0 gnorm=5.92e-1 ema=2.58e-1
+  [ZClip] gradient spike at step 205: z=3.0 gnorm=6.82e-1 ema=2.71e-1
+  [ZClip] gradient spike at step 206: z=2.2 gnorm=5.68e-1 ema=2.74e-1
+  [ZClip] gradient spike at step 210: z=3.4 gnorm=6.93e-1 ema=2.63e-1
+  [ZClip] gradient spike at step 210: z=2.8 gnorm=7.20e-1 ema=2.84e-1
+  [ZClip] gradient spike at step 211: z=2.3 gnorm=6.96e-1 ema=3.06e-1
+  [1700/14165 batches] step=212 loss=7.0784 lr=1.00e-4 tok/s=4531 mfu=14.2% gnorm=2.10e-1 gpu=13241/24081MB step=750ms eta=11268s
+  [ZClip] gradient spike at step 219: z=3.5 gnorm=6.72e-1 ema=2.54e-1
+  [1800/14165 batches] step=225 loss=6.8575 lr=1.00e-4 tok/s=4569 mfu=14.3% gnorm=1.93e-1 gpu=13241/24081MB step=905ms eta=11084s
+  [ZClip] gradient spike at step 226: z=3.7 gnorm=7.08e-1 ema=2.57e-1
+  [ZClip] gradient spike at step 229: z=2.5 gnorm=5.80e-1 ema=2.74e-1
+  [ZClip] gradient spike at step 230: z=2.6 gnorm=6.72e-1 ema=3.00e-1
+  [ZClip] gradient spike at step 233: z=2.9 gnorm=6.96e-1 ema=2.91e-1
+  [ZClip] gradient spike at step 237: z=2.0 gnorm=4.54e-1 ema=2.53e-1
+  [1900/14165 batches] step=237 loss=6.7734 lr=1.00e-4 tok/s=4605 mfu=14.5% gnorm=4.54e-1 gpu=13241/24081MB step=740ms eta=10909s
+  [ZClip] gradient spike at step 241: z=2.5 gnorm=4.42e-1 ema=2.51e-1
+  [ZClip] gradient spike at step 243: z=3.0 gnorm=5.18e-1 ema=2.47e-1
+  [ZClip] gradient spike at step 243: z=3.5 gnorm=7.92e-1 ema=2.74e-1
+  [ZClip] gradient spike at step 249: z=2.4 gnorm=5.68e-1 ema=2.60e-1
+  [ZClip] gradient spike at step 249: z=2.1 gnorm=5.67e-1 ema=2.76e-1
+  [2000/14165 batches] step=250 loss=6.6211 lr=1.00e-4 tok/s=4638 mfu=14.6% gnorm=2.03e-1 gpu=13241/24081MB step=902ms eta=10744s
+  [ZClip] gradient spike at step 252: z=3.0 gnorm=6.15e-1 ema=2.58e-1
+  [ZClip] gradient spike at step 253: z=3.0 gnorm=7.26e-1 ema=2.84e-1
+  [ZClip] gradient spike at step 255: z=2.4 gnorm=5.70e-1 ema=2.64e-1
+  [ZClip] gradient spike at step 259: z=2.7 gnorm=5.45e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 260: z=3.3 gnorm=7.10e-1 ema=2.63e-1
+  [ZClip] gradient spike at step 260: z=2.1 gnorm=5.80e-1 ema=2.69e-1
+  [ZClip] gradient spike at step 261: z=2.5 gnorm=6.64e-1 ema=2.85e-1
+  [2100/14165 batches] step=262 loss=6.8365 lr=1.00e-4 tok/s=4668 mfu=14.7% gnorm=1.67e-1 gpu=13241/24081MB step=744ms eta=10587s
+  [ZClip] gradient spike at step 263: z=2.1 gnorm=5.52e-1 ema=2.71e-1
+  [ZClip] gradient spike at step 266: z=2.2 gnorm=4.82e-1 ema=2.47e-1
+  [ZClip] gradient spike at step 272: z=2.6 gnorm=4.05e-1 ema=2.32e-1
+  [2200/14165 batches] step=275 loss=6.5032 lr=9.99e-5 tok/s=4695 mfu=14.7% gnorm=1.57e-1 gpu=13241/24081MB step=897ms eta=10439s
+  [ZClip] gradient spike at step 275: z=3.5 gnorm=5.54e-1 ema=2.35e-1
+  [ZClip] gradient spike at step 277: z=3.0 gnorm=5.84e-1 ema=2.59e-1
+  [ZClip] gradient spike at step 278: z=4.2 gnorm=1.55e0 ema=3.20e-1
+  [ZClip] gradient spike at step 280: z=2.6 gnorm=1.01e0 ema=3.22e-1
+  [ZClip] gradient spike at step 281: z=2.3 gnorm=1.03e0 ema=3.61e-1
+  [2300/14165 batches] step=287 loss=6.4454 lr=9.99e-5 tok/s=4720 mfu=14.8% gnorm=1.67e-1 gpu=13241/24081MB step=748ms eta=10295s
+  [ZClip] gradient spike at step 288: z=3.0 gnorm=6.40e-1 ema=2.59e-1
+  [ZClip] gradient spike at step 289: z=2.8 gnorm=6.60e-1 ema=2.68e-1
+  [ZClip] gradient spike at step 290: z=2.1 gnorm=6.54e-1 ema=2.98e-1
+  [ZClip] gradient spike at step 295: z=3.3 gnorm=6.76e-1 ema=2.53e-1
+  [ZClip] gradient spike at step 297: z=2.0 gnorm=4.95e-1 ema=2.60e-1
+  [noise-scale] step=300 B_noise=0.2241 (window=100)
+  [2400/14165 batches] step=300 loss=6.7186 lr=9.99e-5 tok/s=4743 mfu=14.9% gnorm=2.48e-1 gpu=13241/24081MB step=907ms eta=10160s
+  [eval] step=300 val_loss=6.6108 val_ppl=743.09 (250 batches) predicted_ppl=581.8 at step 5000 (slope=0.0869)
+  [ZClip] gradient spike at step 300: z=2.7 gnorm=5.45e-1 ema=2.55e-1
+  [best-model] step=300 saved to ./checkpoints/albor-distill-v3/model-best.apr
+  [ZClip] gradient spike at step 304: z=2.2 gnorm=4.34e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 306: z=3.6 gnorm=7.11e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 309: z=3.3 gnorm=6.49e-1 ema=2.55e-1
+  [ZClip] gradient spike at step 310: z=3.1 gnorm=7.47e-1 ema=2.82e-1
+  [2500/14165 batches] step=312 loss=6.6385 lr=9.99e-5 tok/s=4537 mfu=14.2% gnorm=3.57e-1 gpu=13241/24081MB step=736ms eta=10530s
+  [ZClip] gradient spike at step 316: z=2.8 gnorm=5.37e-1 ema=2.54e-1
+  [ZClip] gradient spike at step 317: z=2.6 gnorm=5.50e-1 ema=2.60e-1
+  [ZClip] gradient spike at step 318: z=2.5 gnorm=5.29e-1 ema=2.47e-1
+  [2600/14165 batches] step=325 loss=6.5683 lr=9.98e-5 tok/s=4564 mfu=14.3% gnorm=1.81e-1 gpu=13241/24081MB step=901ms eta=10380s
+  [ZClip] gradient spike at step 325: z=3.5 gnorm=6.10e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 329: z=2.8 gnorm=4.99e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 332: z=2.8 gnorm=4.36e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 335: z=2.5 gnorm=4.08e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 336: z=2.9 gnorm=5.12e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 336: z=2.4 gnorm=4.96e-1 ema=2.54e-1
+  [2700/14165 batches] step=337 loss=6.7228 lr=9.98e-5 tok/s=4589 mfu=14.4% gnorm=2.62e-1 gpu=13241/24081MB step=745ms eta=10234s
+  [ZClip] gradient spike at step 341: z=2.9 gnorm=4.56e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 341: z=2.2 gnorm=4.21e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 342: z=3.3 gnorm=6.69e-1 ema=2.54e-1
+  [ZClip] gradient spike at step 343: z=2.3 gnorm=6.07e-1 ema=2.84e-1
+  [ZClip] gradient spike at step 346: z=3.1 gnorm=6.80e-1 ema=2.62e-1
+  [ZClip] gradient spike at step 346: z=2.6 gnorm=6.89e-1 ema=2.85e-1
+  [2800/14165 batches] step=350 loss=6.5561 lr=9.98e-5 tok/s=4612 mfu=14.5% gnorm=2.61e-1 gpu=13241/24081MB step=909ms eta=10093s
+  [ZClip] gradient spike at step 352: z=2.4 gnorm=4.68e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 358: z=3.5 gnorm=5.13e-1 ema=2.36e-1
+  [ZClip] gradient spike at step 359: z=2.5 gnorm=4.53e-1 ema=2.42e-1
+  [2900/14165 batches] step=362 loss=6.2900 lr=9.97e-5 tok/s=4635 mfu=14.6% gnorm=2.35e-1 gpu=13241/24081MB step=743ms eta=9955s
+  [ZClip] gradient spike at step 362: z=2.7 gnorm=4.53e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 363: z=2.9 gnorm=5.22e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 368: z=3.0 gnorm=5.24e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 373: z=3.6 gnorm=6.14e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 374: z=2.5 gnorm=4.82e-1 ema=2.34e-1
+  [3000/14165 batches] step=375 loss=6.4760 lr=9.97e-5 tok/s=4656 mfu=14.6% gnorm=1.56e-1 gpu=13241/24081MB step=892ms eta=9822s
+  [ZClip] gradient spike at step 375: z=2.3 gnorm=4.76e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 377: z=2.3 gnorm=4.51e-1 ema=2.37e-1
+  [ZClip] gradient spike at step 380: z=2.4 gnorm=4.06e-1 ema=2.24e-1
+  [ZClip] gradient spike at step 382: z=2.3 gnorm=3.83e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 384: z=2.2 gnorm=3.90e-1 ema=2.18e-1
+  [ZClip] gradient spike at step 384: z=2.1 gnorm=3.99e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 384: z=2.3 gnorm=4.45e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 385: z=2.2 gnorm=4.54e-1 ema=2.37e-1
+  [3100/14165 batches] step=387 loss=6.9413 lr=9.96e-5 tok/s=4676 mfu=14.7% gnorm=1.52e-1 gpu=13241/24081MB step=743ms eta=9693s
+  [ZClip] gradient spike at step 387: z=2.2 gnorm=4.25e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 388: z=3.1 gnorm=5.77e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 390: z=3.1 gnorm=6.35e-1 ema=2.52e-1
+  [ZClip] gradient spike at step 392: z=2.8 gnorm=6.17e-1 ema=2.59e-1
+  [ZClip] gradient spike at step 398: z=2.3 gnorm=3.88e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 398: z=2.4 gnorm=4.22e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 399: z=3.1 gnorm=5.79e-1 ema=2.42e-1
+  [noise-scale] step=400 B_noise=0.1770 (window=100)
+  [3200/14165 batches] step=400 loss=6.5393 lr=9.96e-5 tok/s=4694 mfu=14.7% gnorm=1.74e-1 gpu=13241/24081MB step=906ms eta=9569s
+  [eval] step=400 val_loss=6.6050 val_ppl=738.81 (250 batches) predicted_ppl=604.2 at step 5000 (slope=0.0764)
+  [best-model] step=400 saved to ./checkpoints/albor-distill-v3/model-best.apr
+  [ZClip] gradient spike at step 401: z=3.4 gnorm=6.37e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 403: z=3.3 gnorm=7.11e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 406: z=2.2 gnorm=4.77e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 409: z=2.5 gnorm=4.85e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 410: z=3.3 gnorm=6.92e-1 ema=2.60e-1
+  [3300/14165 batches] step=412 loss=6.4965 lr=9.95e-5 tok/s=4541 mfu=14.3% gnorm=1.74e-1 gpu=13241/24081MB step=747ms eta=9799s
+  [ZClip] gradient spike at step 413: z=2.8 gnorm=5.63e-1 ema=2.52e-1
+  [ZClip] gradient spike at step 415: z=2.2 gnorm=4.57e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 422: z=2.9 gnorm=4.44e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 423: z=3.5 gnorm=6.71e-1 ema=2.49e-1
+  [ZClip] gradient spike at step 424: z=2.6 gnorm=5.74e-1 ema=2.49e-1
+  [3400/14165 batches] step=425 loss=6.4465 lr=9.95e-5 tok/s=4561 mfu=14.3% gnorm=2.39e-1 gpu=13241/24081MB step=915ms eta=9667s
+  [ZClip] gradient spike at step 425: z=2.1 gnorm=5.20e-1 ema=2.57e-1
+  [ZClip] gradient spike at step 427: z=2.3 gnorm=5.44e-1 ema=2.54e-1
+  [ZClip] gradient spike at step 430: z=2.6 gnorm=5.07e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 431: z=3.8 gnorm=9.86e-1 ema=2.74e-1
+  [ZClip] gradient spike at step 433: z=2.3 gnorm=6.23e-1 ema=2.49e-1
+  [ZClip] gradient spike at step 437: z=2.5 gnorm=5.29e-1 ema=2.38e-1
+  [3500/14165 batches] step=437 loss=6.7287 lr=9.94e-5 tok/s=4581 mfu=14.4% gnorm=5.29e-1 gpu=13241/24081MB step=736ms eta=9537s
+  [ZClip] gradient spike at step 440: z=2.1 gnorm=5.12e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 444: z=2.3 gnorm=4.71e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 444: z=2.3 gnorm=5.05e-1 ema=2.53e-1
+  [ZClip] gradient spike at step 448: z=4.0 gnorm=9.88e-1 ema=2.57e-1
+  [3600/14165 batches] step=450 loss=6.6089 lr=9.93e-5 tok/s=4600 mfu=14.4% gnorm=5.68e-1 gpu=13241/24081MB step=884ms eta=9407s
+  [ZClip] gradient spike at step 451: z=2.3 gnorm=6.10e-1 ema=2.53e-1
+  [ZClip] gradient spike at step 459: z=3.2 gnorm=4.81e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 460: z=3.1 gnorm=5.28e-1 ema=2.28e-1
+  [3700/14165 batches] step=462 loss=6.3902 lr=9.93e-5 tok/s=4620 mfu=14.5% gnorm=1.77e-1 gpu=13241/24081MB step=740ms eta=9278s
+  [ZClip] gradient spike at step 462: z=2.8 gnorm=5.31e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 463: z=2.3 gnorm=5.23e-1 ema=2.49e-1
+  [ZClip] gradient spike at step 469: z=2.6 gnorm=4.30e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 469: z=3.0 gnorm=5.36e-1 ema=2.37e-1
+  [ZClip] gradient spike at step 470: z=4.0 gnorm=1.12e0 ema=2.73e-1
+  [ZClip] gradient spike at step 474: z=2.0 gnorm=5.30e-1 ema=2.45e-1
+  [3800/14165 batches] step=475 loss=6.8907 lr=9.92e-5 tok/s=4639 mfu=14.6% gnorm=4.72e-1 gpu=13261/24081MB step=882ms eta=9152s
+  [ZClip] gradient spike at step 479: z=3.6 gnorm=9.73e-1 ema=2.89e-1
+  [ZClip] gradient spike at step 482: z=2.4 gnorm=5.95e-1 ema=2.62e-1
+  [ZClip] gradient spike at step 483: z=2.4 gnorm=6.03e-1 ema=2.68e-1
+  [3900/14165 batches] step=487 loss=6.5752 lr=9.91e-5 tok/s=4657 mfu=14.6% gnorm=3.00e-1 gpu=13261/24081MB step=732ms eta=9028s
+  [ZClip] gradient spike at step 487: z=2.4 gnorm=4.44e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 489: z=2.5 gnorm=4.72e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 491: z=3.3 gnorm=6.15e-1 ema=2.52e-1
+  [ZClip] gradient spike at step 492: z=3.0 gnorm=6.81e-1 ema=2.68e-1
+  [ZClip] gradient spike at step 496: z=2.2 gnorm=4.32e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 498: z=2.9 gnorm=4.70e-1 ema=2.17e-1
+  [noise-scale] step=500 B_noise=0.1744 (window=100)
+  [4000/14165 batches] step=500 loss=6.7587 lr=9.90e-5 tok/s=4675 mfu=14.7% gnorm=2.51e-1 gpu=13261/24081MB step=885ms eta=8907s
+  [verify] checkpoint OK (1904 MB)
+  [checkpoint] step=500 saved to ./checkpoints/albor-distill-v3/model-step-500.apr
+  [eval] step=500 val_loss=6.5779 val_ppl=719.04 (250 batches) predicted_ppl=602.6 at step 5000 (slope=0.0771)
+  [ZClip] gradient spike at step 500: z=2.2 gnorm=4.32e-1 ema=2.22e-1
+  [best-model] step=500 saved to ./checkpoints/albor-distill-v3/model-best.apr
+  [ZClip] gradient spike at step 502: z=2.5 gnorm=4.42e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 503: z=3.2 gnorm=6.38e-1 ema=2.49e-1
+  [ZClip] gradient spike at step 507: z=2.7 gnorm=5.21e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 509: z=3.3 gnorm=6.07e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 511: z=2.3 gnorm=4.47e-1 ema=2.20e-1
+  [4100/14165 batches] step=512 loss=6.5567 lr=9.90e-5 tok/s=4558 mfu=14.3% gnorm=2.04e-1 gpu=13261/24081MB step=732ms eta=9044s
+  [ZClip] gradient spike at step 513: z=2.0 gnorm=4.37e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 514: z=2.4 gnorm=5.08e-1 ema=2.52e-1
+  [ZClip] gradient spike at step 517: z=2.4 gnorm=4.01e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 518: z=3.8 gnorm=8.01e-1 ema=2.37e-1
+  [ZClip] gradient spike at step 520: z=2.7 gnorm=6.32e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 522: z=2.2 gnorm=5.29e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 524: z=3.1 gnorm=6.84e-1 ema=2.50e-1
+  [4200/14165 batches] step=525 loss=6.7849 lr=9.89e-5 tok/s=4577 mfu=14.4% gnorm=3.19e-1 gpu=13261/24081MB step=878ms eta=8918s
+  [ZClip] gradient spike at step 528: z=2.6 gnorm=5.11e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 530: z=3.9 gnorm=9.92e-1 ema=2.58e-1
+  [ZClip] gradient spike at step 536: z=3.1 gnorm=6.02e-1 ema=2.29e-1
+  [4300/14165 batches] step=537 loss=6.6851 lr=9.88e-5 tok/s=4594 mfu=14.4% gnorm=2.82e-1 gpu=13261/24081MB step=722ms eta=8795s
+  [ZClip] gradient spike at step 539: z=2.7 gnorm=5.27e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 539: z=2.8 gnorm=6.18e-1 ema=2.65e-1
+  [ZClip] gradient spike at step 541: z=2.3 gnorm=5.73e-1 ema=2.78e-1
+  [ZClip] gradient spike at step 541: z=2.5 gnorm=6.54e-1 ema=2.87e-1
+  [ZClip] gradient spike at step 543: z=2.6 gnorm=7.14e-1 ema=2.84e-1
+  [ZClip] gradient spike at step 546: z=2.2 gnorm=4.73e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 548: z=2.2 gnorm=4.37e-1 ema=2.20e-1
+  [4400/14165 batches] step=550 loss=6.3361 lr=9.87e-5 tok/s=4611 mfu=14.5% gnorm=1.91e-1 gpu=13261/24081MB step=877ms eta=8674s
+  [ZClip] gradient spike at step 550: z=2.3 gnorm=4.56e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 550: z=2.9 gnorm=6.10e-1 ema=2.47e-1
+  [ZClip] gradient spike at step 554: z=3.1 gnorm=5.09e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 557: z=3.6 gnorm=6.15e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 557: z=2.1 gnorm=4.74e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 558: z=2.9 gnorm=6.76e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 559: z=2.7 gnorm=6.59e-1 ema=2.55e-1
+  [4500/14165 batches] step=562 loss=6.4107 lr=9.86e-5 tok/s=4628 mfu=14.5% gnorm=4.61e-1 gpu=13261/24081MB step=723ms eta=8555s
+  [ZClip] gradient spike at step 563: z=2.8 gnorm=6.11e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 568: z=2.3 gnorm=4.05e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 569: z=2.7 gnorm=4.87e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 572: z=2.1 gnorm=3.90e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 574: z=4.1 gnorm=8.92e-1 ema=2.46e-1
+  [4600/14165 batches] step=575 loss=6.4064 lr=9.85e-5 tok/s=4644 mfu=14.6% gnorm=5.60e-1 gpu=13261/24081MB step=879ms eta=8437s
+  [ZClip] gradient spike at step 575: z=2.0 gnorm=6.15e-1 ema=2.75e-1
+  [ZClip] gradient spike at step 576: z=2.3 gnorm=6.27e-1 ema=2.56e-1
+  [ZClip] gradient spike at step 580: z=4.0 gnorm=1.28e0 ema=2.79e-1
+  [4700/14165 batches] step=587 loss=6.3182 lr=9.84e-5 tok/s=4659 mfu=14.6% gnorm=1.47e-1 gpu=13261/24081MB step=732ms eta=8321s
+  [ZClip] gradient spike at step 589: z=3.1 gnorm=4.97e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 589: z=3.1 gnorm=6.14e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 594: z=2.4 gnorm=3.88e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 595: z=3.2 gnorm=5.55e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 596: z=4.0 gnorm=1.14e0 ema=2.74e-1
+  [noise-scale] step=600 B_noise=0.3495 (window=100)
+  [4800/14165 batches] step=600 loss=6.4051 lr=9.83e-5 tok/s=4674 mfu=14.7% gnorm=2.56e-1 gpu=13261/24081MB step=874ms eta=8207s
+  [eval] step=600 val_loss=6.5827 val_ppl=722.49 (250 batches) predicted_ppl=614.2 at step 5000 (slope=0.0715)
+  [ZClip] gradient spike at step 601: z=2.0 gnorm=6.11e-1 ema=2.85e-1
+  [ZClip] gradient spike at step 609: z=4.1 gnorm=1.01e0 ema=2.53e-1
+  [ZClip] gradient spike at step 610: z=2.4 gnorm=7.26e-1 ema=2.66e-1
+  [4900/14165 batches] step=612 loss=6.7227 lr=9.82e-5 tok/s=4577 mfu=14.4% gnorm=1.59e-1 gpu=13261/24081MB step=744ms eta=8292s
+  [ZClip] gradient spike at step 614: z=2.2 gnorm=5.63e-1 ema=2.56e-1
+  [ZClip] gradient spike at step 618: z=2.1 gnorm=4.55e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 621: z=2.2 gnorm=4.29e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 621: z=2.1 gnorm=4.43e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 624: z=2.5 gnorm=4.41e-1 ema=2.22e-1
+  [5000/14165 batches] step=625 loss=6.4259 lr=9.81e-5 tok/s=4591 mfu=14.4% gnorm=2.30e-1 gpu=13241/24081MB step=894ms eta=8177s
+  [ZClip] gradient spike at step 626: z=2.9 gnorm=5.17e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 627: z=3.0 gnorm=5.92e-1 ema=2.46e-1
+  [ZClip] gradient spike at step 629: z=2.2 gnorm=4.87e-1 ema=2.47e-1
+  [ZClip] gradient spike at step 630: z=2.8 gnorm=5.74e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 632: z=2.2 gnorm=4.66e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 633: z=2.4 gnorm=5.43e-1 ema=2.57e-1
+  [ZClip] gradient spike at step 634: z=2.0 gnorm=4.64e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 635: z=2.7 gnorm=5.99e-1 ema=2.54e-1
+  [5100/14165 batches] step=637 loss=6.6349 lr=9.80e-5 tok/s=4605 mfu=14.5% gnorm=1.55e-1 gpu=13241/24081MB step=736ms eta=8063s
+  [ZClip] gradient spike at step 639: z=3.6 gnorm=6.69e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 643: z=2.6 gnorm=4.82e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 645: z=3.7 gnorm=8.80e-1 ema=2.53e-1
+  [5200/14165 batches] step=650 loss=6.8973 lr=9.78e-5 tok/s=4619 mfu=14.5% gnorm=2.64e-1 gpu=13241/24081MB step=892ms eta=7951s
+  [ZClip] gradient spike at step 652: z=2.0 gnorm=4.36e-1 ema=2.35e-1
+  [ZClip] gradient spike at step 655: z=3.2 gnorm=6.62e-1 ema=2.57e-1
+  [ZClip] gradient spike at step 657: z=2.8 gnorm=6.69e-1 ema=2.68e-1
+  [ZClip] gradient spike at step 658: z=2.5 gnorm=6.45e-1 ema=2.61e-1
+  [5300/14165 batches] step=662 loss=6.5958 lr=9.77e-5 tok/s=4632 mfu=14.5% gnorm=1.55e-1 gpu=13241/24081MB step=733ms eta=7840s
+  [ZClip] gradient spike at step 664: z=2.4 gnorm=4.66e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 665: z=2.5 gnorm=5.17e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 665: z=2.9 gnorm=6.41e-1 ema=2.52e-1
+  [ZClip] gradient spike at step 670: z=2.2 gnorm=4.73e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 670: z=2.2 gnorm=5.25e-1 ema=2.56e-1
+  [5400/14165 batches] step=675 loss=6.5166 lr=9.76e-5 tok/s=4645 mfu=14.6% gnorm=2.44e-1 gpu=13241/24081MB step=888ms eta=7729s
+  [ZClip] gradient spike at step 675: z=3.4 gnorm=5.90e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 676: z=2.1 gnorm=4.90e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 678: z=3.9 gnorm=1.03e0 ema=2.57e-1
+  [ZClip] gradient spike at step 680: z=3.4 gnorm=1.08e0 ema=2.77e-1
+  [ZClip] gradient spike at step 686: z=3.2 gnorm=6.55e-1 ema=2.44e-1
+  [5500/14165 batches] step=687 loss=6.5273 lr=9.75e-5 tok/s=4658 mfu=14.6% gnorm=1.48e-1 gpu=13241/24081MB step=731ms eta=7620s
+  [ZClip] gradient spike at step 690: z=3.2 gnorm=5.67e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 693: z=3.1 gnorm=5.31e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 696: z=3.5 gnorm=6.88e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 699: z=2.1 gnorm=4.65e-1 ema=2.41e-1
+  [noise-scale] step=700 B_noise=0.1963 (window=100)
+  [5600/14165 batches] step=700 loss=6.8419 lr=9.73e-5 tok/s=4670 mfu=14.7% gnorm=1.88e-1 gpu=13241/24081MB step=892ms eta=7512s
+  [eval] step=700 val_loss=6.5578 val_ppl=704.71 (250 batches) predicted_ppl=612.6 at step 5000 (slope=0.0722)
+  [ZClip] gradient spike at step 700: z=2.5 gnorm=5.30e-1 ema=2.44e-1
+  [best-model] step=700 saved to ./checkpoints/albor-distill-v3/model-best.apr
+  [ZClip] gradient spike at step 703: z=2.5 gnorm=5.03e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 703: z=3.9 gnorm=1.13e0 ema=2.77e-1
+  [ZClip] gradient spike at step 709: z=2.4 gnorm=5.30e-1 ema=2.37e-1
+  [ZClip] gradient spike at step 711: z=2.4 gnorm=5.11e-1 ema=2.29e-1
+  [5700/14165 batches] step=712 loss=6.6083 lr=9.72e-5 tok/s=4586 mfu=14.4% gnorm=3.16e-1 gpu=13241/24081MB step=722ms eta=7561s
+  [ZClip] gradient spike at step 715: z=2.7 gnorm=4.49e-1 ema=2.18e-1
+  [ZClip] gradient spike at step 717: z=2.2 gnorm=4.23e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 723: z=3.5 gnorm=5.45e-1 ema=2.18e-1
+  [5800/14165 batches] step=725 loss=6.3945 lr=9.71e-5 tok/s=4599 mfu=14.4% gnorm=2.33e-1 gpu=13241/24081MB step=896ms eta=7451s
+  [ZClip] gradient spike at step 726: z=3.6 gnorm=6.62e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 727: z=2.2 gnorm=5.01e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 730: z=2.1 gnorm=4.37e-1 ema=2.37e-1
+  [ZClip] gradient spike at step 732: z=3.2 gnorm=6.05e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 732: z=2.8 gnorm=6.66e-1 ema=2.65e-1
+  [ZClip] gradient spike at step 733: z=3.6 gnorm=1.08e0 ema=2.82e-1
+  [ZClip] gradient spike at step 736: z=2.2 gnorm=6.52e-1 ema=2.61e-1
+  [5900/14165 batches] step=737 loss=6.6417 lr=9.69e-5 tok/s=4611 mfu=14.5% gnorm=1.79e-1 gpu=13241/24081MB step=743ms eta=7342s
+  [ZClip] gradient spike at step 742: z=2.7 gnorm=5.35e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 743: z=3.5 gnorm=8.56e-1 ema=2.74e-1
+  [ZClip] gradient spike at step 749: z=2.2 gnorm=4.00e-1 ema=2.11e-1
+  [6000/14165 batches] step=750 loss=6.5090 lr=9.68e-5 tok/s=4623 mfu=14.5% gnorm=2.63e-1 gpu=13241/24081MB step=872ms eta=7234s
+  [ZClip] gradient spike at step 751: z=3.9 gnorm=7.78e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 753: z=2.1 gnorm=4.60e-1 ema=2.13e-1
+  [ZClip] gradient spike at step 755: z=3.0 gnorm=6.21e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 760: z=2.5 gnorm=4.32e-1 ema=2.12e-1
+  [6100/14165 batches] step=762 loss=6.5428 lr=9.67e-5 tok/s=4635 mfu=14.6% gnorm=1.38e-1 gpu=13241/24081MB step=731ms eta=7127s
+  [ZClip] gradient spike at step 764: z=4.2 gnorm=1.11e0 ema=2.34e-1
+  [ZClip] gradient spike at step 767: z=2.4 gnorm=5.95e-1 ema=2.19e-1
+  [6200/14165 batches] step=775 loss=6.6062 lr=9.65e-5 tok/s=4646 mfu=14.6% gnorm=1.47e-1 gpu=13241/24081MB step=887ms eta=7022s
+  [ZClip] gradient spike at step 776: z=3.6 gnorm=5.48e-1 ema=2.09e-1
+  [ZClip] gradient spike at step 777: z=3.0 gnorm=5.88e-1 ema=2.34e-1
+  [ZClip] gradient spike at step 779: z=2.4 gnorm=4.78e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 782: z=2.1 gnorm=4.34e-1 ema=2.35e-1
+  [ZClip] gradient spike at step 783: z=2.9 gnorm=5.80e-1 ema=2.38e-1
+  [6300/14165 batches] step=787 loss=6.5271 lr=9.64e-5 tok/s=4658 mfu=14.6% gnorm=1.63e-1 gpu=13241/24081MB step=728ms eta=6917s
+  [ZClip] gradient spike at step 788: z=2.4 gnorm=4.54e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 789: z=3.6 gnorm=7.53e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 790: z=3.6 gnorm=1.08e0 ema=2.68e-1
+  [ZClip] gradient spike at step 797: z=3.1 gnorm=6.16e-1 ema=2.41e-1
+  [noise-scale] step=800 B_noise=0.3404 (window=100)
+  [6400/14165 batches] step=800 loss=6.5335 lr=9.62e-5 tok/s=4668 mfu=14.7% gnorm=1.52e-1 gpu=13241/24081MB step=901ms eta=6813s
+  [eval] step=800 val_loss=6.5329 val_ppl=687.42 (250 batches) predicted_ppl=605.4 at step 5000 (slope=0.0760)
+  [best-model] step=800 saved to ./checkpoints/albor-distill-v3/model-best.apr
+  [ZClip] gradient spike at step 801: z=2.2 gnorm=4.89e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 802: z=2.3 gnorm=4.91e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 805: z=2.6 gnorm=4.85e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 805: z=2.6 gnorm=5.47e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 806: z=2.1 gnorm=4.98e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 808: z=2.6 gnorm=5.05e-1 ema=2.36e-1
+  [ZClip] gradient spike at step 812: z=2.2 gnorm=4.35e-1 ema=2.23e-1
+  [6500/14165 batches] step=812 loss=6.2801 lr=9.60e-5 tok/s=4595 mfu=14.4% gnorm=1.92e-1 gpu=13241/24081MB step=736ms eta=6833s
+  [ZClip] gradient spike at step 816: z=2.4 gnorm=3.91e-1 ema=2.04e-1
+  [ZClip] gradient spike at step 820: z=2.7 gnorm=3.61e-1 ema=2.00e-1
+  [ZClip] gradient spike at step 823: z=2.8 gnorm=3.64e-1 ema=2.01e-1
+  [ZClip] gradient spike at step 824: z=4.2 gnorm=1.01e0 ema=2.42e-1
+  [ZClip] gradient spike at step 824: z=2.3 gnorm=7.50e-1 ema=2.70e-1
+  [6600/14165 batches] step=825 loss=6.4964 lr=9.59e-5 tok/s=4606 mfu=14.5% gnorm=1.37e-1 gpu=13241/24081MB step=881ms eta=6728s
+  [ZClip] gradient spike at step 832: z=2.7 gnorm=4.55e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 833: z=3.7 gnorm=8.05e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 837: z=2.4 gnorm=4.28e-1 ema=2.10e-1
+  [6700/14165 batches] step=837 loss=6.4788 lr=9.57e-5 tok/s=4617 mfu=14.5% gnorm=4.28e-1 gpu=13241/24081MB step=730ms eta=6623s
+  [ZClip] gradient spike at step 840: z=3.6 gnorm=6.57e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 842: z=2.6 gnorm=5.12e-1 ema=2.36e-1
+  [ZClip] gradient spike at step 842: z=2.7 gnorm=6.33e-1 ema=2.62e-1
+  [ZClip] gradient spike at step 847: z=2.0 gnorm=4.30e-1 ema=2.42e-1
+  [6800/14165 batches] step=850 loss=6.5338 lr=9.55e-5 tok/s=4627 mfu=14.5% gnorm=2.57e-1 gpu=13241/24081MB step=881ms eta=6520s
+  [ZClip] gradient spike at step 850: z=2.5 gnorm=4.26e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 851: z=2.6 gnorm=4.69e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 852: z=2.3 gnorm=4.57e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 855: z=2.3 gnorm=4.17e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 856: z=3.7 gnorm=7.89e-1 ema=2.53e-1
+  [ZClip] gradient spike at step 857: z=2.3 gnorm=6.09e-1 ema=2.68e-1
+  [ZClip] gradient spike at step 859: z=2.7 gnorm=6.73e-1 ema=2.64e-1
+  [ZClip] gradient spike at step 861: z=2.5 gnorm=6.05e-1 ema=2.55e-1
+  [6900/14165 batches] step=862 loss=6.4971 lr=9.54e-5 tok/s=4637 mfu=14.6% gnorm=3.09e-1 gpu=13241/24081MB step=727ms eta=6417s
+  [ZClip] gradient spike at step 868: z=3.1 gnorm=5.80e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 869: z=2.5 gnorm=5.09e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 870: z=2.5 gnorm=5.64e-1 ema=2.61e-1
+  [ZClip] gradient spike at step 871: z=2.1 gnorm=5.46e-1 ema=2.71e-1
+  [7000/14165 batches] step=875 loss=6.3132 lr=9.52e-5 tok/s=4647 mfu=14.6% gnorm=1.99e-1 gpu=13241/24081MB step=881ms eta=6315s
+  [ZClip] gradient spike at step 876: z=2.3 gnorm=3.82e-1 ema=2.04e-1
+  [ZClip] gradient spike at step 876: z=3.1 gnorm=5.54e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 880: z=2.7 gnorm=5.26e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 880: z=3.0 gnorm=6.66e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 885: z=2.9 gnorm=5.35e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 886: z=2.2 gnorm=4.68e-1 ema=2.35e-1
+  [7100/14165 batches] step=887 loss=6.8973 lr=9.50e-5 tok/s=4657 mfu=14.6% gnorm=1.91e-1 gpu=13241/24081MB step=727ms eta=6214s
+  [ZClip] gradient spike at step 887: z=2.3 gnorm=4.66e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 889: z=2.0 gnorm=4.00e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 891: z=3.2 gnorm=5.19e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 895: z=2.8 gnorm=4.17e-1 ema=2.03e-1
+  [noise-scale] step=900 B_noise=0.1117 (window=100)
+  [7200/14165 batches] step=900 loss=6.5877 lr=9.48e-5 tok/s=4667 mfu=14.6% gnorm=2.59e-1 gpu=13241/24081MB step=882ms eta=6113s
+  [eval] step=900 val_loss=6.5230 val_ppl=680.61 (250 batches) predicted_ppl=600.8 at step 5000 (slope=0.0784)
+  [ZClip] gradient spike at step 900: z=3.2 gnorm=4.78e-1 ema=2.22e-1
+  [best-model] step=900 saved to ./checkpoints/albor-distill-v3/model-best.apr
+  [ZClip] gradient spike at step 902: z=2.2 gnorm=3.78e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 904: z=2.7 gnorm=4.94e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 905: z=2.3 gnorm=4.98e-1 ema=2.56e-1
+  [ZClip] gradient spike at step 911: z=3.2 gnorm=5.82e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 911: z=3.7 gnorm=9.81e-1 ema=2.84e-1
+  [7300/14165 batches] step=912 loss=6.5157 lr=9.47e-5 tok/s=4600 mfu=14.4% gnorm=2.17e-1 gpu=13241/24081MB step=731ms eta=6112s
+  [ZClip] gradient spike at step 913: z=2.2 gnorm=6.28e-1 ema=2.68e-1
+  [ZClip] gradient spike at step 920: z=3.0 gnorm=5.14e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 921: z=2.2 gnorm=4.28e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 923: z=2.5 gnorm=4.68e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 924: z=3.1 gnorm=6.36e-1 ema=2.36e-1
+  [7400/14165 batches] step=925 loss=6.7904 lr=9.45e-5 tok/s=4610 mfu=14.5% gnorm=2.26e-1 gpu=13241/24081MB step=887ms eta=6010s
+  [ZClip] gradient spike at step 929: z=3.4 gnorm=5.70e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 931: z=2.9 gnorm=5.50e-1 ema=2.34e-1
+  [ZClip] gradient spike at step 934: z=3.2 gnorm=5.57e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 936: z=3.0 gnorm=5.44e-1 ema=2.27e-1
+  [7500/14165 batches] step=937 loss=6.6726 lr=9.43e-5 tok/s=4620 mfu=14.5% gnorm=2.12e-1 gpu=13241/24081MB step=739ms eta=5909s
+  [ZClip] gradient spike at step 938: z=2.9 gnorm=5.36e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 939: z=2.1 gnorm=5.13e-1 ema=2.64e-1
+  [ZClip] gradient spike at step 948: z=3.4 gnorm=5.24e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 949: z=2.4 gnorm=4.44e-1 ema=2.27e-1
+  [7600/14165 batches] step=950 loss=6.3546 lr=9.41e-5 tok/s=4629 mfu=14.5% gnorm=3.27e-1 gpu=13241/24081MB step=893ms eta=5809s
+  [ZClip] gradient spike at step 952: z=2.1 gnorm=3.71e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 954: z=2.2 gnorm=3.67e-1 ema=2.11e-1
+  [ZClip] gradient spike at step 955: z=2.6 gnorm=4.71e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 956: z=2.1 gnorm=4.26e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 960: z=2.2 gnorm=3.57e-1 ema=2.13e-1
+  [ZClip] gradient spike at step 961: z=2.6 gnorm=3.82e-1 ema=2.03e-1
+  [7700/14165 batches] step=962 loss=6.5462 lr=9.39e-5 tok/s=4638 mfu=14.6% gnorm=1.59e-1 gpu=13241/24081MB step=736ms eta=5709s
+  [ZClip] gradient spike at step 962: z=2.9 gnorm=4.36e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 963: z=2.0 gnorm=3.77e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 963: z=2.3 gnorm=4.20e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 966: z=2.7 gnorm=4.43e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 967: z=2.8 gnorm=5.29e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 971: z=3.0 gnorm=5.07e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 972: z=2.7 gnorm=5.01e-1 ema=2.34e-1
+  [ZClip] gradient spike at step 973: z=2.3 gnorm=4.91e-1 ema=2.43e-1
+  [7800/14165 batches] step=975 loss=6.6128 lr=9.37e-5 tok/s=4647 mfu=14.6% gnorm=1.44e-1 gpu=13241/24081MB step=879ms eta=5610s
+  [ZClip] gradient spike at step 976: z=2.5 gnorm=4.54e-1 ema=2.18e-1
+  [ZClip] gradient spike at step 976: z=2.1 gnorm=4.37e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 977: z=2.9 gnorm=5.96e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 978: z=2.7 gnorm=5.53e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 980: z=3.0 gnorm=5.85e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 984: z=2.8 gnorm=4.64e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 985: z=3.2 gnorm=5.87e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 987: z=2.0 gnorm=4.51e-1 ema=2.39e-1
+  [7900/14165 batches] step=987 loss=6.5490 lr=9.35e-5 tok/s=4656 mfu=14.6% gnorm=2.41e-1 gpu=13241/24081MB step=733ms eta=5511s
+  [ZClip] gradient spike at step 989: z=2.1 gnorm=3.94e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 991: z=2.8 gnorm=4.43e-1 ema=2.13e-1
+  [ZClip] gradient spike at step 993: z=2.0 gnorm=3.61e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 993: z=3.4 gnorm=6.25e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 997: z=2.2 gnorm=4.29e-1 ema=2.28e-1
+  [noise-scale] step=1000 B_noise=0.1559 (window=100)
+  [8000/14165 batches] step=1000 loss=6.4858 lr=9.33e-5 tok/s=4665 mfu=14.6% gnorm=2.72e-1 gpu=13241/24081MB step=897ms eta=5414s
+  [verify] checkpoint OK (1904 MB)
+  [checkpoint] step=1000 saved to ./checkpoints/albor-distill-v3/model-step-1000.apr
+  [eval] step=1000 val_loss=6.5241 val_ppl=681.36 (250 batches) predicted_ppl=600.7 at step 5000 (slope=0.0785)
+  [ZClip] gradient spike at step 1005: z=4.0 gnorm=6.34e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 1008: z=2.3 gnorm=4.53e-1 ema=2.35e-1
+  [8100/14165 batches] step=1012 loss=6.4005 lr=9.31e-5 tok/s=4604 mfu=14.5% gnorm=1.48e-1 gpu=13241/24081MB step=727ms eta=5395s
+  [ZClip] gradient spike at step 1013: z=3.2 gnorm=4.79e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 1014: z=2.8 gnorm=5.28e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 1017: z=2.1 gnorm=4.07e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 1019: z=2.2 gnorm=3.99e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 1020: z=2.7 gnorm=4.78e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 1022: z=3.7 gnorm=8.15e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 1023: z=3.6 gnorm=9.51e-1 ema=2.61e-1
+  [8200/14165 batches] step=1025 loss=6.5543 lr=9.29e-5 tok/s=4613 mfu=14.5% gnorm=1.64e-1 gpu=13241/24081MB step=875ms eta=5296s
+  [ZClip] gradient spike at step 1028: z=3.8 gnorm=9.74e-1 ema=2.60e-1
+  [ZClip] gradient spike at step 1032: z=2.2 gnorm=4.98e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 1034: z=2.9 gnorm=5.74e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 1035: z=2.7 gnorm=6.15e-1 ema=2.45e-1
+  [8300/14165 batches] step=1037 loss=6.2263 lr=9.27e-5 tok/s=4622 mfu=14.5% gnorm=2.00e-1 gpu=13241/24081MB step=733ms eta=5198s
+  [ZClip] gradient spike at step 1037: z=3.1 gnorm=6.84e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 1041: z=3.7 gnorm=7.80e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1043: z=2.4 gnorm=5.86e-1 ema=2.49e-1
+  [ZClip] gradient spike at step 1048: z=3.9 gnorm=8.99e-1 ema=2.38e-1
+  [8400/14165 batches] step=1050 loss=6.0658 lr=9.25e-5 tok/s=4630 mfu=14.5% gnorm=1.73e-1 gpu=13241/24081MB step=881ms eta=5100s
+  [ZClip] gradient spike at step 1051: z=2.6 gnorm=6.22e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 1056: z=2.2 gnorm=4.98e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 1057: z=2.9 gnorm=6.44e-1 ema=2.62e-1
+  [ZClip] gradient spike at step 1059: z=2.6 gnorm=6.03e-1 ema=2.47e-1
+  [8500/14165 batches] step=1062 loss=6.6579 lr=9.23e-5 tok/s=4639 mfu=14.6% gnorm=1.75e-1 gpu=13241/24081MB step=726ms eta=5002s
+  [ZClip] gradient spike at step 1068: z=2.9 gnorm=4.42e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 1068: z=3.7 gnorm=7.54e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 1071: z=2.3 gnorm=4.80e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1074: z=3.3 gnorm=6.13e-1 ema=2.34e-1
+  [8600/14165 batches] step=1075 loss=6.5932 lr=9.20e-5 tok/s=4647 mfu=14.6% gnorm=2.49e-1 gpu=13261/24081MB step=884ms eta=4905s
+  [ZClip] gradient spike at step 1077: z=3.0 gnorm=5.73e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 1081: z=2.8 gnorm=4.77e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1083: z=3.0 gnorm=5.23e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1085: z=3.0 gnorm=5.37e-1 ema=2.18e-1
+  [8700/14165 batches] step=1087 loss=6.3472 lr=9.18e-5 tok/s=4655 mfu=14.6% gnorm=2.48e-1 gpu=13261/24081MB step=722ms eta=4808s
+  [ZClip] gradient spike at step 1087: z=2.6 gnorm=4.71e-1 ema=2.18e-1
+  [ZClip] gradient spike at step 1087: z=2.9 gnorm=5.97e-1 ema=2.37e-1
+  [ZClip] gradient spike at step 1089: z=2.3 gnorm=5.54e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 1090: z=2.2 gnorm=4.82e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 1091: z=2.7 gnorm=5.94e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 1092: z=2.3 gnorm=5.70e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 1096: z=2.2 gnorm=4.34e-1 ema=2.18e-1
+  [noise-scale] step=1100 B_noise=0.2410 (window=100)
+  [8800/14165 batches] step=1100 loss=6.6860 lr=9.16e-5 tok/s=4663 mfu=14.6% gnorm=2.13e-1 gpu=13261/24081MB step=884ms eta=4712s
+  [eval] step=1100 val_loss=6.5200 val_ppl=678.56 (250 batches) predicted_ppl=601.5 at step 5000 (slope=0.0781)
+  [best-model] step=1100 saved to ./checkpoints/albor-distill-v3/model-best.apr
+  [ZClip] gradient spike at step 1103: z=3.0 gnorm=4.25e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 1106: z=2.7 gnorm=4.00e-1 ema=2.24e-1
+  [ZClip] gradient spike at step 1106: z=2.2 gnorm=3.96e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 1108: z=3.1 gnorm=5.05e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 1111: z=2.0 gnorm=3.66e-1 ema=2.17e-1
+  [8900/14165 batches] step=1112 loss=6.7225 lr=9.14e-5 tok/s=4609 mfu=14.5% gnorm=2.19e-1 gpu=13261/24081MB step=730ms eta=4679s
+  [ZClip] gradient spike at step 1115: z=3.9 gnorm=6.61e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 1117: z=2.3 gnorm=5.06e-1 ema=2.35e-1
+  [ZClip] gradient spike at step 1118: z=2.6 gnorm=5.70e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 1118: z=2.4 gnorm=6.08e-1 ema=2.61e-1
+  [9000/14165 batches] step=1125 loss=6.3280 lr=9.11e-5 tok/s=4617 mfu=14.5% gnorm=2.14e-1 gpu=13261/24081MB step=876ms eta=4582s
+  [ZClip] gradient spike at step 1125: z=3.6 gnorm=6.63e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 1128: z=4.0 gnorm=9.10e-1 ema=2.34e-1
+  [ZClip] gradient spike at step 1131: z=2.8 gnorm=6.16e-1 ema=2.34e-1
+  [ZClip] gradient spike at step 1135: z=3.1 gnorm=6.23e-1 ema=2.33e-1
+  [9100/14165 batches] step=1137 loss=6.4732 lr=9.09e-5 tok/s=4625 mfu=14.5% gnorm=1.72e-1 gpu=13241/24081MB step=715ms eta=4486s
+  [ZClip] gradient spike at step 1142: z=3.2 gnorm=4.28e-1 ema=1.89e-1
+  [ZClip] gradient spike at step 1145: z=3.5 gnorm=4.93e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 1145: z=2.2 gnorm=4.10e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 1147: z=2.1 gnorm=3.78e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1149: z=2.2 gnorm=4.04e-1 ema=2.28e-1
+  [9200/14165 batches] step=1150 loss=6.7494 lr=9.06e-5 tok/s=4633 mfu=14.5% gnorm=1.85e-1 gpu=13241/24081MB step=878ms eta=4390s
+  [ZClip] gradient spike at step 1151: z=2.4 gnorm=4.34e-1 ema=2.37e-1
+  [ZClip] gradient spike at step 1152: z=2.2 gnorm=4.47e-1 ema=2.51e-1
+  [ZClip] gradient spike at step 1152: z=2.2 gnorm=4.92e-1 ema=2.60e-1
+  [ZClip] gradient spike at step 1156: z=2.9 gnorm=5.34e-1 ema=2.37e-1
+  [9300/14165 batches] step=1162 loss=6.3977 lr=9.04e-5 tok/s=4640 mfu=14.6% gnorm=1.64e-1 gpu=13241/24081MB step=734ms eta=4294s
+  [ZClip] gradient spike at step 1167: z=2.3 gnorm=2.98e-1 ema=1.94e-1
+  [ZClip] gradient spike at step 1167: z=3.0 gnorm=3.80e-1 ema=2.04e-1
+  [ZClip] gradient spike at step 1169: z=2.7 gnorm=3.87e-1 ema=2.07e-1
+  [ZClip] gradient spike at step 1172: z=2.4 gnorm=3.26e-1 ema=1.96e-1
+  [ZClip] gradient spike at step 1173: z=2.1 gnorm=3.24e-1 ema=2.02e-1
+  [9400/14165 batches] step=1175 loss=6.9428 lr=9.02e-5 tok/s=4648 mfu=14.6% gnorm=2.01e-1 gpu=13241/24081MB step=891ms eta=4199s
+  [ZClip] gradient spike at step 1175: z=2.2 gnorm=3.22e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 1176: z=2.3 gnorm=3.35e-1 ema=2.02e-1
+  [ZClip] gradient spike at step 1178: z=3.4 gnorm=4.96e-1 ema=2.13e-1
+  [ZClip] gradient spike at step 1180: z=2.4 gnorm=3.74e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 1180: z=3.4 gnorm=5.79e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1180: z=2.1 gnorm=4.86e-1 ema=2.34e-1
+  [ZClip] gradient spike at step 1181: z=2.6 gnorm=5.86e-1 ema=2.37e-1
+  [ZClip] gradient spike at step 1187: z=2.0 gnorm=3.53e-1 ema=2.09e-1
+  [9500/14165 batches] step=1187 loss=6.6733 lr=8.99e-5 tok/s=4655 mfu=14.6% gnorm=3.53e-1 gpu=13241/24081MB step=730ms eta=4105s
+  [ZClip] gradient spike at step 1189: z=2.8 gnorm=4.23e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1189: z=3.1 gnorm=5.42e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 1192: z=3.1 gnorm=5.29e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1194: z=2.7 gnorm=5.92e-1 ema=2.62e-1
+  [ZClip] gradient spike at step 1196: z=2.2 gnorm=5.25e-1 ema=2.52e-1
+  [ZClip] gradient spike at step 1196: z=2.2 gnorm=5.56e-1 ema=2.68e-1
+  [ZClip] gradient spike at step 1197: z=2.4 gnorm=6.55e-1 ema=2.70e-1
+  [noise-scale] step=1200 B_noise=0.2306 (window=100)
+  [9600/14165 batches] step=1200 loss=6.7643 lr=8.97e-5 tok/s=4662 mfu=14.6% gnorm=2.32e-1 gpu=13241/24081MB step=892ms eta=4011s
+  [eval] step=1200 val_loss=6.5436 val_ppl=694.77 (250 batches) predicted_ppl=608.9 at step 5000 (slope=0.0738)
+  [ZClip] gradient spike at step 1202: z=3.0 gnorm=5.87e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 1206: z=2.6 gnorm=4.70e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 1211: z=3.7 gnorm=6.44e-1 ema=2.27e-1
+  [9700/14165 batches] step=1212 loss=6.2892 lr=8.94e-5 tok/s=4613 mfu=14.5% gnorm=1.45e-1 gpu=13241/24081MB step=713ms eta=3965s
+  [ZClip] gradient spike at step 1213: z=2.3 gnorm=4.76e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1214: z=2.3 gnorm=5.14e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 1217: z=3.2 gnorm=5.95e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 1221: z=3.1 gnorm=5.19e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 1222: z=2.7 gnorm=5.02e-1 ema=2.32e-1
+  [9800/14165 batches] step=1225 loss=6.4200 lr=8.92e-5 tok/s=4620 mfu=14.5% gnorm=2.13e-1 gpu=13241/24081MB step=882ms eta=3870s
+  [ZClip] gradient spike at step 1229: z=3.2 gnorm=5.51e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 1230: z=2.6 gnorm=5.13e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 1233: z=3.3 gnorm=6.05e-1 ema=2.29e-1
+  [9900/14165 batches] step=1237 loss=6.7134 lr=8.89e-5 tok/s=4628 mfu=14.5% gnorm=1.92e-1 gpu=13241/24081MB step=732ms eta=3775s
+  [ZClip] gradient spike at step 1239: z=4.0 gnorm=8.09e-1 ema=2.36e-1
+  [ZClip] gradient spike at step 1240: z=2.0 gnorm=5.17e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 1243: z=2.7 gnorm=5.61e-1 ema=2.36e-1
+  [ZClip] gradient spike at step 1244: z=2.7 gnorm=6.22e-1 ema=2.48e-1
+  [10000/14165 batches] step=1250 loss=6.1357 lr=8.87e-5 tok/s=4635 mfu=14.6% gnorm=2.18e-1 gpu=13241/24081MB step=893ms eta=3681s
+  [ZClip] gradient spike at step 1251: z=3.9 gnorm=9.19e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 1253: z=2.3 gnorm=5.77e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 1255: z=3.7 gnorm=9.49e-1 ema=2.51e-1
+  [ZClip] gradient spike at step 1259: z=2.1 gnorm=4.58e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 1260: z=2.7 gnorm=5.88e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 1261: z=2.5 gnorm=6.32e-1 ema=2.55e-1
+  [10100/14165 batches] step=1262 loss=6.1162 lr=8.84e-5 tok/s=4642 mfu=14.6% gnorm=5.24e-1 gpu=13241/24081MB step=727ms eta=3587s
+  [ZClip] gradient spike at step 1264: z=2.3 gnorm=4.76e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 1267: z=2.3 gnorm=4.60e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 1268: z=2.2 gnorm=4.68e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 1273: z=2.1 gnorm=4.26e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 1275: z=2.3 gnorm=4.38e-1 ema=2.20e-1
+  [10200/14165 batches] step=1275 loss=6.5108 lr=8.81e-5 tok/s=4649 mfu=14.6% gnorm=4.38e-1 gpu=13241/24081MB step=881ms eta=3493s
+  [ZClip] gradient spike at step 1278: z=2.4 gnorm=3.71e-1 ema=1.98e-1
+  [ZClip] gradient spike at step 1278: z=2.1 gnorm=3.72e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 1279: z=2.3 gnorm=4.07e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 1280: z=2.5 gnorm=4.72e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1282: z=2.1 gnorm=4.07e-1 ema=2.18e-1
+  [ZClip] gradient spike at step 1283: z=3.4 gnorm=7.37e-1 ema=2.51e-1
+  [ZClip] gradient spike at step 1283: z=2.2 gnorm=5.70e-1 ema=2.53e-1
+  [ZClip] gradient spike at step 1284: z=2.0 gnorm=5.86e-1 ema=2.72e-1
+  [10300/14165 batches] step=1287 loss=6.2512 lr=8.79e-5 tok/s=4656 mfu=14.6% gnorm=1.17e-1 gpu=13241/24081MB step=731ms eta=3400s
+  [ZClip] gradient spike at step 1290: z=2.4 gnorm=4.25e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1290: z=2.1 gnorm=4.26e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 1290: z=2.9 gnorm=6.03e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 1291: z=2.5 gnorm=5.89e-1 ema=2.46e-1
+  [ZClip] gradient spike at step 1291: z=2.5 gnorm=6.25e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 1296: z=2.1 gnorm=4.20e-1 ema=2.21e-1
+  [noise-scale] step=1300 B_noise=0.2048 (window=100)
+  [10400/14165 batches] step=1300 loss=6.3796 lr=8.76e-5 tok/s=4662 mfu=14.6% gnorm=3.06e-1 gpu=13241/24081MB step=885ms eta=3308s
+  [eval] step=1300 val_loss=6.5229 val_ppl=680.58 (250 batches) predicted_ppl=611.4 at step 5000 (slope=0.0724)
+  [ZClip] gradient spike at step 1300: z=3.0 gnorm=5.17e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 1302: z=2.2 gnorm=4.38e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1302: z=3.6 gnorm=8.07e-1 ema=2.60e-1
+  [ZClip] gradient spike at step 1304: z=2.1 gnorm=5.50e-1 ema=2.63e-1
+  [ZClip] gradient spike at step 1308: z=3.2 gnorm=6.02e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 1311: z=2.3 gnorm=4.38e-1 ema=2.23e-1
+  [10500/14165 batches] step=1312 loss=6.5230 lr=8.73e-5 tok/s=4617 mfu=14.5% gnorm=2.42e-1 gpu=13241/24081MB step=721ms eta=3252s
+  [ZClip] gradient spike at step 1316: z=3.6 gnorm=6.49e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 1319: z=2.8 gnorm=5.29e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 1319: z=2.4 gnorm=5.52e-1 ema=2.47e-1
+  [ZClip] gradient spike at step 1319: z=2.3 gnorm=5.79e-1 ema=2.60e-1
+  [ZClip] gradient spike at step 1322: z=2.3 gnorm=4.75e-1 ema=2.26e-1
+  [10600/14165 batches] step=1325 loss=6.1558 lr=8.70e-5 tok/s=4624 mfu=14.5% gnorm=2.17e-1 gpu=13241/24081MB step=892ms eta=3158s
+  [ZClip] gradient spike at step 1325: z=2.7 gnorm=5.02e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 1330: z=3.3 gnorm=5.08e-1 ema=2.04e-1
+  [ZClip] gradient spike at step 1331: z=2.6 gnorm=4.89e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 1332: z=2.1 gnorm=4.38e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 1334: z=2.7 gnorm=5.91e-1 ema=2.54e-1
+  [10700/14165 batches] step=1337 loss=6.2960 lr=8.68e-5 tok/s=4630 mfu=14.5% gnorm=1.86e-1 gpu=13241/24081MB step=732ms eta=3065s
+  [ZClip] gradient spike at step 1338: z=4.1 gnorm=1.01e0 ema=2.37e-1
+  [ZClip] gradient spike at step 1338: z=2.8 gnorm=9.23e-1 ema=2.72e-1
+  [ZClip] gradient spike at step 1342: z=2.5 gnorm=6.64e-1 ema=2.54e-1
+  [ZClip] gradient spike at step 1344: z=2.2 gnorm=5.60e-1 ema=2.62e-1
+  [ZClip] gradient spike at step 1345: z=3.7 gnorm=1.10e0 ema=2.78e-1
+  [10800/14165 batches] step=1350 loss=6.6430 lr=8.65e-5 tok/s=4637 mfu=14.6% gnorm=1.62e-1 gpu=13241/24081MB step=886ms eta=2973s
+  [ZClip] gradient spike at step 1350: z=2.4 gnorm=5.55e-1 ema=2.46e-1
+  [ZClip] gradient spike at step 1353: z=2.9 gnorm=6.14e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 1356: z=2.1 gnorm=4.49e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 1358: z=2.0 gnorm=4.03e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 1361: z=2.8 gnorm=4.27e-1 ema=2.13e-1
+  [10900/14165 batches] step=1362 loss=6.6029 lr=8.62e-5 tok/s=4643 mfu=14.6% gnorm=2.07e-1 gpu=13359/24081MB step=727ms eta=2881s
+  [ZClip] gradient spike at step 1363: z=3.4 gnorm=5.09e-1 ema=2.18e-1
+  [ZClip] gradient spike at step 1365: z=2.5 gnorm=4.65e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 1370: z=3.0 gnorm=4.84e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1371: z=3.1 gnorm=5.57e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 1373: z=2.4 gnorm=4.30e-1 ema=2.12e-1
+  [11000/14165 batches] step=1375 loss=6.1248 lr=8.59e-5 tok/s=4648 mfu=14.6% gnorm=2.00e-1 gpu=13361/24081MB step=930ms eta=2789s
+  [ZClip] gradient spike at step 1375: z=2.6 gnorm=4.43e-1 ema=2.11e-1
+  [ZClip] gradient spike at step 1379: z=3.5 gnorm=5.80e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 1380: z=2.4 gnorm=4.60e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1385: z=2.5 gnorm=4.03e-1 ema=2.08e-1
+  [11100/14165 batches] step=1387 loss=6.7692 lr=8.57e-5 tok/s=4654 mfu=14.6% gnorm=3.20e-1 gpu=13367/24081MB step=800ms eta=2698s
+  [ZClip] gradient spike at step 1387: z=3.6 gnorm=6.28e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1390: z=2.2 gnorm=4.31e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 1390: z=2.5 gnorm=5.15e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 1395: z=2.7 gnorm=4.52e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 1396: z=2.8 gnorm=5.02e-1 ema=2.22e-1
+  [noise-scale] step=1400 B_noise=0.1813 (window=100)
+  [11200/14165 batches] step=1400 loss=6.6009 lr=8.54e-5 tok/s=4657 mfu=14.6% gnorm=2.04e-1 gpu=13395/24081MB step=942ms eta=2608s
+  [eval] step=1400 val_loss=6.4893 val_ppl=658.09 (250 batches) predicted_ppl=608.0 at step 5000 (slope=0.0744)
+  [WARN] Scaling law predicts only 7.6% improvement by step 5000 (val_ppl 658.1 → 608.0). Consider: more data, larger model, or stopping.
+  [best-model] step=1400 saved to ./checkpoints/albor-distill-v3/model-best.apr
+  [ZClip] gradient spike at step 1402: z=2.3 gnorm=3.61e-1 ema=1.99e-1
+  [ZClip] gradient spike at step 1404: z=3.4 gnorm=5.74e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 1406: z=2.7 gnorm=4.94e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 1407: z=2.6 gnorm=5.08e-1 ema=2.34e-1
+  [ZClip] gradient spike at step 1409: z=2.2 gnorm=4.52e-1 ema=2.24e-1
+  [ZClip] gradient spike at step 1410: z=2.5 gnorm=4.81e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 1410: z=2.1 gnorm=4.52e-1 ema=2.28e-1
+  [11300/14165 batches] step=1412 loss=6.5689 lr=8.51e-5 tok/s=4607 mfu=14.5% gnorm=1.94e-1 gpu=13412/24081MB step=759ms eta=2547s
+  [ZClip] gradient spike at step 1412: z=2.2 gnorm=4.56e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 1413: z=2.9 gnorm=5.75e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 1416: z=2.9 gnorm=5.09e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 1420: z=2.3 gnorm=3.80e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1424: z=3.4 gnorm=5.01e-1 ema=2.40e-1
+  [11400/14165 batches] step=1425 loss=6.4802 lr=8.48e-5 tok/s=4611 mfu=14.5% gnorm=1.85e-1 gpu=13412/24081MB step=941ms eta=2456s
+  [ZClip] gradient spike at step 1425: z=3.6 gnorm=6.65e-1 ema=2.53e-1
+  [ZClip] gradient spike at step 1427: z=2.5 gnorm=5.38e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 1428: z=2.1 gnorm=4.89e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 1433: z=3.3 gnorm=5.86e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 1434: z=2.7 gnorm=5.90e-1 ema=2.54e-1
+  [ZClip] gradient spike at step 1436: z=3.7 gnorm=9.36e-1 ema=2.69e-1
+  [11500/14165 batches] step=1437 loss=6.2837 lr=8.45e-5 tok/s=4615 mfu=14.5% gnorm=1.79e-1 gpu=14158/24081MB step=816ms eta=2365s
+  [ZClip] gradient spike at step 1441: z=3.4 gnorm=7.62e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 1442: z=2.9 gnorm=7.17e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 1445: z=2.3 gnorm=5.33e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 1446: z=2.4 gnorm=5.79e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 1446: z=2.3 gnorm=6.03e-1 ema=2.54e-1
+  [11600/14165 batches] step=1450 loss=6.6985 lr=8.42e-5 tok/s=4618 mfu=14.5% gnorm=1.36e-1 gpu=13400/24081MB step=951ms eta=2275s
+  [ZClip] gradient spike at step 1450: z=3.6 gnorm=9.70e-1 ema=2.87e-1
+  [ZClip] gradient spike at step 1454: z=2.3 gnorm=5.13e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 1458: z=2.5 gnorm=4.41e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 1460: z=2.8 gnorm=4.48e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 1462: z=2.2 gnorm=3.75e-1 ema=2.09e-1
+  [11700/14165 batches] step=1462 loss=6.4277 lr=8.39e-5 tok/s=4623 mfu=14.5% gnorm=3.75e-1 gpu=13400/24081MB step=766ms eta=2184s
+  [ZClip] gradient spike at step 1465: z=2.0 gnorm=3.55e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 1466: z=2.2 gnorm=3.70e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 1467: z=2.5 gnorm=4.12e-1 ema=2.09e-1
+  [ZClip] gradient spike at step 1467: z=3.1 gnorm=5.67e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1474: z=3.7 gnorm=5.79e-1 ema=2.04e-1
+  [11800/14165 batches] step=1475 loss=6.4256 lr=8.36e-5 tok/s=4627 mfu=14.5% gnorm=1.57e-1 gpu=13385/24081MB step=952ms eta=2094s
+  [ZClip] gradient spike at step 1475: z=2.3 gnorm=4.42e-1 ema=2.08e-1
+  [ZClip] gradient spike at step 1477: z=2.0 gnorm=3.80e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 1481: z=2.7 gnorm=4.01e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 1483: z=2.8 gnorm=4.14e-1 ema=2.02e-1
+  [ZClip] gradient spike at step 1485: z=2.1 gnorm=3.59e-1 ema=2.05e-1
+  [11900/14165 batches] step=1487 loss=6.4156 lr=8.33e-5 tok/s=4630 mfu=14.5% gnorm=2.06e-1 gpu=13385/24081MB step=787ms eta=2004s
+  [ZClip] gradient spike at step 1488: z=3.7 gnorm=5.65e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 1489: z=3.3 gnorm=6.68e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 1492: z=2.7 gnorm=5.42e-1 ema=2.37e-1
+  [ZClip] gradient spike at step 1492: z=3.0 gnorm=6.40e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 1493: z=2.9 gnorm=7.75e-1 ema=2.69e-1
+  [ZClip] gradient spike at step 1494: z=2.4 gnorm=6.88e-1 ema=2.69e-1
+  [noise-scale] step=1500 B_noise=0.2988 (window=100)
+  [12000/14165 batches] step=1500 loss=6.8694 lr=8.30e-5 tok/s=4634 mfu=14.5% gnorm=1.44e-1 gpu=13385/24081MB step=937ms eta=1914s
+  [verify] checkpoint OK (1904 MB)
+  [checkpoint] step=1500 saved to ./checkpoints/albor-distill-v3/model-step-1500.apr
+  [eval] step=1500 val_loss=6.4959 val_ppl=662.43 (250 batches) predicted_ppl=607.4 at step 5000 (slope=0.0748)
+  [WARN] Scaling law predicts only 8.3% improvement by step 5000 (val_ppl 662.4 → 607.4). Consider: more data, larger model, or stopping.
+  [ZClip] gradient spike at step 1500: z=2.8 gnorm=5.06e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 1501: z=2.4 gnorm=4.64e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 1502: z=2.1 gnorm=4.00e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1504: z=2.5 gnorm=4.36e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1505: z=2.3 gnorm=4.31e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 1506: z=3.3 gnorm=6.45e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 1507: z=2.6 gnorm=5.43e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 1508: z=2.7 gnorm=6.09e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 1510: z=2.8 gnorm=5.71e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 1512: z=2.6 gnorm=5.52e-1 ema=2.29e-1
+  [12100/14165 batches] step=1512 loss=6.4880 lr=8.27e-5 tok/s=4590 mfu=14.4% gnorm=1.71e-1 gpu=13385/24081MB step=778ms eta=1843s
+  [ZClip] gradient spike at step 1514: z=2.7 gnorm=5.29e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1520: z=2.3 gnorm=3.56e-1 ema=2.06e-1
+  [ZClip] gradient spike at step 1522: z=2.1 gnorm=3.44e-1 ema=2.07e-1
+  [ZClip] gradient spike at step 1523: z=2.5 gnorm=3.82e-1 ema=2.09e-1
+  [ZClip] gradient spike at step 1524: z=3.4 gnorm=5.62e-1 ema=2.26e-1
+  [12200/14165 batches] step=1525 loss=6.4027 lr=8.23e-5 tok/s=4594 mfu=14.4% gnorm=1.69e-1 gpu=13385/24081MB step=950ms eta=1752s
+  [ZClip] gradient spike at step 1525: z=2.1 gnorm=4.34e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 1529: z=2.3 gnorm=3.87e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 1533: z=3.4 gnorm=5.47e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1534: z=3.1 gnorm=6.14e-1 ema=2.36e-1
+  [ZClip] gradient spike at step 1534: z=2.1 gnorm=5.39e-1 ema=2.51e-1
+  [ZClip] gradient spike at step 1536: z=3.0 gnorm=7.12e-1 ema=2.54e-1
+  [12300/14165 batches] step=1537 loss=6.6491 lr=8.20e-5 tok/s=4598 mfu=14.4% gnorm=4.70e-1 gpu=13389/24081MB step=771ms eta=1661s
+  [ZClip] gradient spike at step 1538: z=2.4 gnorm=6.37e-1 ema=2.58e-1
+  [ZClip] gradient spike at step 1541: z=2.1 gnorm=5.22e-1 ema=2.64e-1
+  [ZClip] gradient spike at step 1542: z=2.5 gnorm=6.04e-1 ema=2.70e-1
+  [ZClip] gradient spike at step 1547: z=2.1 gnorm=4.63e-1 ema=2.48e-1
+  [ZClip] gradient spike at step 1549: z=3.0 gnorm=6.09e-1 ema=2.51e-1
+  [12400/14165 batches] step=1550 loss=6.6576 lr=8.17e-5 tok/s=4602 mfu=14.4% gnorm=1.75e-1 gpu=13389/24081MB step=939ms eta=1571s
+  [ZClip] gradient spike at step 1551: z=2.7 gnorm=5.71e-1 ema=2.51e-1
+  [ZClip] gradient spike at step 1553: z=2.1 gnorm=4.34e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 1553: z=2.4 gnorm=5.29e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 1561: z=3.4 gnorm=4.87e-1 ema=2.04e-1
+  [ZClip] gradient spike at step 1562: z=2.9 gnorm=5.20e-1 ema=2.22e-1
+  [12500/14165 batches] step=1562 loss=6.2149 lr=8.14e-5 tok/s=4606 mfu=14.5% gnorm=1.84e-1 gpu=13389/24081MB step=783ms eta=1481s
+  [ZClip] gradient spike at step 1563: z=3.0 gnorm=5.69e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1564: z=2.6 gnorm=5.49e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1567: z=2.3 gnorm=4.31e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 1569: z=2.2 gnorm=3.87e-1 ema=2.11e-1
+  [ZClip] gradient spike at step 1572: z=2.2 gnorm=3.45e-1 ema=2.06e-1
+  [ZClip] gradient spike at step 1572: z=2.9 gnorm=4.42e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 1575: z=3.5 gnorm=5.85e-1 ema=2.15e-1
+  [12600/14165 batches] step=1575 loss=5.7321 lr=8.11e-5 tok/s=4608 mfu=14.5% gnorm=5.85e-1 gpu=13389/24081MB step=965ms eta=1391s
+  [ZClip] gradient spike at step 1580: z=3.3 gnorm=5.48e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 1581: z=3.1 gnorm=5.69e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 1584: z=2.1 gnorm=4.82e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 1587: z=3.2 gnorm=6.25e-1 ema=2.35e-1
+  [12700/14165 batches] step=1587 loss=6.4615 lr=8.08e-5 tok/s=4612 mfu=14.5% gnorm=2.35e-1 gpu=13389/24081MB step=782ms eta=1301s
+  [ZClip] gradient spike at step 1590: z=2.9 gnorm=6.20e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 1595: z=2.2 gnorm=4.19e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 1595: z=3.0 gnorm=5.65e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 1596: z=2.8 gnorm=5.97e-1 ema=2.54e-1
+  [noise-scale] step=1600 B_noise=0.1982 (window=100)
+  [12800/14165 batches] step=1600 loss=6.2389 lr=8.04e-5 tok/s=4615 mfu=14.5% gnorm=1.61e-1 gpu=13385/24081MB step=961ms eta=1211s
+  [eval] step=1600 val_loss=6.5033 val_ppl=667.33 (250 batches) predicted_ppl=608.7 at step 5000 (slope=0.0739)
+  [WARN] Scaling law predicts only 8.8% improvement by step 5000 (val_ppl 667.3 → 608.7). Consider: more data, larger model, or stopping.
+  [ZClip] gradient spike at step 1601: z=3.2 gnorm=5.90e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 1602: z=2.7 gnorm=5.74e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 1606: z=3.9 gnorm=9.43e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 1612: z=3.7 gnorm=9.31e-1 ema=2.81e-1
+  [12900/14165 batches] step=1612 loss=6.7023 lr=8.01e-5 tok/s=4575 mfu=14.4% gnorm=1.64e-1 gpu=13385/24081MB step=765ms eta=1133s
+  [ZClip] gradient spike at step 1615: z=2.6 gnorm=6.17e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 1625: z=3.4 gnorm=4.60e-1 ema=2.02e-1
+  [13000/14165 batches] step=1625 loss=6.5966 lr=7.98e-5 tok/s=4578 mfu=14.4% gnorm=4.60e-1 gpu=13385/24081MB step=943ms eta=1042s
+  [ZClip] gradient spike at step 1625: z=3.0 gnorm=5.32e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1626: z=2.6 gnorm=5.27e-1 ema=2.34e-1
+  [ZClip] gradient spike at step 1627: z=2.9 gnorm=6.32e-1 ema=2.47e-1
+  [ZClip] gradient spike at step 1628: z=2.4 gnorm=5.94e-1 ema=2.59e-1
+  [ZClip] gradient spike at step 1629: z=2.1 gnorm=5.75e-1 ema=2.65e-1
+  [ZClip] gradient spike at step 1632: z=2.4 gnorm=5.27e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 1633: z=2.3 gnorm=5.38e-1 ema=2.46e-1
+  [13100/14165 batches] step=1637 loss=6.3060 lr=7.95e-5 tok/s=4582 mfu=14.4% gnorm=1.72e-1 gpu=13385/24081MB step=776ms eta=952s
+  [ZClip] gradient spike at step 1640: z=2.1 gnorm=3.66e-1 ema=2.08e-1
+  [ZClip] gradient spike at step 1643: z=2.5 gnorm=3.78e-1 ema=2.09e-1
+  [ZClip] gradient spike at step 1644: z=2.7 gnorm=4.20e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 1645: z=2.9 gnorm=4.64e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 1646: z=2.2 gnorm=4.44e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 1648: z=2.3 gnorm=4.30e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 1649: z=3.1 gnorm=5.36e-1 ema=2.18e-1
+  [13200/14165 batches] step=1650 loss=6.4967 lr=7.91e-5 tok/s=4586 mfu=14.4% gnorm=1.79e-1 gpu=13880/24081MB step=970ms eta=862s
+  [ZClip] gradient spike at step 1650: z=2.8 gnorm=5.19e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1651: z=3.6 gnorm=9.07e-1 ema=2.55e-1
+  [ZClip] gradient spike at step 1657: z=2.9 gnorm=5.02e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 1657: z=2.2 gnorm=4.68e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1660: z=2.7 gnorm=4.72e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1661: z=2.3 gnorm=4.32e-1 ema=2.21e-1
+  [13300/14165 batches] step=1662 loss=6.3397 lr=7.88e-5 tok/s=4589 mfu=14.4% gnorm=2.01e-1 gpu=13385/24081MB step=787ms eta=772s
+  [ZClip] gradient spike at step 1662: z=2.3 gnorm=4.16e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1668: z=3.3 gnorm=4.21e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 1669: z=3.2 gnorm=5.01e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1673: z=3.6 gnorm=5.96e-1 ema=2.34e-1
+  [ZClip] gradient spike at step 1674: z=2.8 gnorm=5.80e-1 ema=2.46e-1
+  [13400/14165 batches] step=1675 loss=6.1848 lr=7.85e-5 tok/s=4593 mfu=14.4% gnorm=2.09e-1 gpu=13385/24081MB step=952ms eta=682s
+  [ZClip] gradient spike at step 1675: z=2.8 gnorm=6.53e-1 ema=2.57e-1
+  [ZClip] gradient spike at step 1675: z=2.1 gnorm=5.73e-1 ema=2.63e-1
+  [ZClip] gradient spike at step 1677: z=2.2 gnorm=6.34e-1 ema=2.76e-1
+  [ZClip] gradient spike at step 1681: z=2.3 gnorm=4.75e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1681: z=2.8 gnorm=6.16e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 1686: z=2.2 gnorm=4.62e-1 ema=2.29e-1
+  [13500/14165 batches] step=1687 loss=6.7090 lr=7.81e-5 tok/s=4597 mfu=14.4% gnorm=1.56e-1 gpu=13385/24081MB step=776ms eta=593s
+  [ZClip] gradient spike at step 1690: z=2.2 gnorm=3.71e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 1690: z=3.0 gnorm=5.22e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 1692: z=2.0 gnorm=3.99e-1 ema=2.08e-1
+  [ZClip] gradient spike at step 1694: z=3.0 gnorm=5.29e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 1695: z=2.2 gnorm=4.77e-1 ema=2.41e-1
+  [noise-scale] step=1700 B_noise=0.1442 (window=100)
+  [13600/14165 batches] step=1700 loss=6.6856 lr=7.78e-5 tok/s=4600 mfu=14.4% gnorm=1.52e-1 gpu=13385/24081MB step=950ms eta=503s
+  [eval] step=1700 val_loss=6.4943 val_ppl=661.34 (250 batches) predicted_ppl=609.1 at step 5000 (slope=0.0737)
+  [WARN] Scaling law predicts only 7.9% improvement by step 5000 (val_ppl 661.3 → 609.1). Consider: more data, larger model, or stopping.
+  [ZClip] gradient spike at step 1700: z=3.7 gnorm=6.33e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1703: z=2.4 gnorm=4.45e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1704: z=2.0 gnorm=3.99e-1 ema=2.18e-1
+  [ZClip] gradient spike at step 1708: z=2.7 gnorm=4.12e-1 ema=2.09e-1
+  [ZClip] gradient spike at step 1711: z=2.1 gnorm=3.09e-1 ema=1.94e-1
+  [ZClip] gradient spike at step 1712: z=2.5 gnorm=3.63e-1 ema=2.02e-1
+  [13700/14165 batches] step=1712 loss=6.6195 lr=7.75e-5 tok/s=4562 mfu=14.3% gnorm=1.78e-1 gpu=13385/24081MB step=781ms eta=418s
+  [ZClip] gradient spike at step 1713: z=2.8 gnorm=4.02e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 1714: z=3.6 gnorm=6.22e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1716: z=2.1 gnorm=4.54e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 1723: z=3.8 gnorm=5.55e-1 ema=2.08e-1
+  [13800/14165 batches] step=1725 loss=6.3270 lr=7.71e-5 tok/s=4565 mfu=14.3% gnorm=2.47e-1 gpu=13385/24081MB step=943ms eta=327s
+  [ZClip] gradient spike at step 1725: z=3.4 gnorm=6.08e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 1726: z=2.7 gnorm=6.07e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 1728: z=2.2 gnorm=5.01e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 1730: z=3.6 gnorm=7.90e-1 ema=2.37e-1
+  [ZClip] gradient spike at step 1734: z=2.9 gnorm=6.40e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 1735: z=2.3 gnorm=5.41e-1 ema=2.51e-1
+  [13900/14165 batches] step=1737 loss=6.4330 lr=7.68e-5 tok/s=4569 mfu=14.3% gnorm=2.75e-1 gpu=13385/24081MB step=772ms eta=238s
+  [ZClip] gradient spike at step 1739: z=2.5 gnorm=5.38e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 1741: z=2.6 gnorm=5.07e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 1743: z=2.3 gnorm=4.31e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 1746: z=3.1 gnorm=5.15e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 1747: z=2.3 gnorm=4.34e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 1749: z=3.4 gnorm=6.13e-1 ema=2.25e-1
+  [14000/14165 batches] step=1750 loss=6.4065 lr=7.64e-5 tok/s=4572 mfu=14.4% gnorm=4.00e-1 gpu=13385/24081MB step=938ms eta=148s
+  [ZClip] gradient spike at step 1750: z=3.9 gnorm=1.26e0 ema=2.75e-1
+  [ZClip] gradient spike at step 1757: z=2.5 gnorm=6.14e-1 ema=2.59e-1
+  [14100/14165 batches] step=1762 loss=6.9935 lr=7.61e-5 tok/s=4575 mfu=14.4% gnorm=1.35e-1 gpu=13385/24081MB step=787ms eta=58s
+  [ZClip] gradient spike at step 1764: z=3.1 gnorm=4.32e-1 ema=2.08e-1
+  [ZClip] gradient spike at step 1767: z=3.0 gnorm=5.14e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1768: z=3.4 gnorm=7.17e-1 ema=2.37e-1
+Epoch 1/5: loss=6.591686, perplexity=729.01, time=12674.5s
+  [1/14165 batches] step=1770 loss=6.8697 lr=7.58e-5 tok/s=5337 mfu=16.8% gnorm=2.74e-1 gpu=13385/24081MB step=767ms eta=10871s
+  [ZClip] gradient spike at step 1772: z=2.2 gnorm=4.32e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1776: z=3.9 gnorm=7.85e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1778: z=2.1 gnorm=5.49e-1 ema=2.56e-1
+  [100/14165 batches] step=1783 loss=5.9485 lr=7.55e-5 tok/s=5101 mfu=16.0% gnorm=1.75e-1 gpu=13385/24081MB step=778ms eta=11293s
+  [ZClip] gradient spike at step 1784: z=3.2 gnorm=5.11e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 1786: z=2.3 gnorm=4.23e-1 ema=2.09e-1
+  [ZClip] gradient spike at step 1788: z=3.1 gnorm=5.33e-1 ema=2.08e-1
+  [ZClip] gradient spike at step 1788: z=2.8 gnorm=5.94e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1789: z=2.4 gnorm=5.46e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 1791: z=2.1 gnorm=5.10e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 1794: z=2.4 gnorm=4.44e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 1794: z=2.7 gnorm=5.52e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1795: z=3.0 gnorm=7.50e-1 ema=2.65e-1
+  [200/14165 batches] step=1795 loss=6.8876 lr=7.51e-5 tok/s=5106 mfu=16.0% gnorm=1.90e-1 gpu=13385/24081MB step=779ms eta=11202s
+  [ZClip] gradient spike at step 1796: z=2.2 gnorm=6.25e-1 ema=2.64e-1
+  [ZClip] gradient spike at step 1799: z=2.2 gnorm=5.20e-1 ema=2.46e-1
+  [noise-scale] step=1800 B_noise=0.2827 (window=100)
+  [eval] step=1800 val_loss=6.5362 val_ppl=689.69 (250 batches) predicted_ppl=615.3 at step 5000 (slope=0.0698)
+  [ZClip] gradient spike at step 1801: z=2.1 gnorm=4.98e-1 ema=2.60e-1
+  [300/14165 batches] step=1808 loss=6.2683 lr=7.48e-5 tok/s=3488 mfu=11.0% gnorm=1.88e-1 gpu=13389/24081MB step=800ms eta=16281s
+  [ZClip] gradient spike at step 1808: z=3.4 gnorm=5.69e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1809: z=3.1 gnorm=6.22e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 1814: z=2.5 gnorm=4.06e-1 ema=2.09e-1
+  [ZClip] gradient spike at step 1814: z=3.4 gnorm=6.22e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 1817: z=2.4 gnorm=4.29e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 1818: z=2.1 gnorm=3.85e-1 ema=2.09e-1
+  [400/14165 batches] step=1820 loss=6.3655 lr=7.44e-5 tok/s=3790 mfu=11.9% gnorm=1.80e-1 gpu=13389/24081MB step=789ms eta=14878s
+  [ZClip] gradient spike at step 1821: z=2.3 gnorm=3.90e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 1826: z=2.7 gnorm=3.80e-1 ema=2.04e-1
+  [ZClip] gradient spike at step 1827: z=2.6 gnorm=3.92e-1 ema=2.09e-1
+  [ZClip] gradient spike at step 1827: z=3.2 gnorm=5.26e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 1830: z=3.3 gnorm=5.65e-1 ema=2.18e-1
+  [500/14165 batches] step=1833 loss=5.8699 lr=7.41e-5 tok/s=4000 mfu=12.6% gnorm=1.63e-1 gpu=13389/24081MB step=777ms eta=13993s
+  [ZClip] gradient spike at step 1834: z=3.5 gnorm=5.94e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 1835: z=2.8 gnorm=5.53e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 1841: z=2.1 gnorm=3.75e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 1843: z=2.5 gnorm=4.25e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 1844: z=3.4 gnorm=6.52e-1 ema=2.39e-1
+  [600/14165 batches] step=1845 loss=6.4561 lr=7.37e-5 tok/s=4162 mfu=13.1% gnorm=1.55e-1 gpu=13393/24081MB step=768ms eta=13350s
+  [ZClip] gradient spike at step 1846: z=2.1 gnorm=4.28e-1 ema=2.24e-1
+  [ZClip] gradient spike at step 1847: z=2.8 gnorm=5.41e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 1848: z=2.4 gnorm=4.81e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 1850: z=2.5 gnorm=4.45e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 1851: z=2.6 gnorm=5.02e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 1852: z=3.7 gnorm=9.20e-1 ema=2.53e-1
+  [ZClip] gradient spike at step 1857: z=2.5 gnorm=5.23e-1 ema=2.24e-1
+  [700/14165 batches] step=1858 loss=6.6264 lr=7.33e-5 tok/s=4285 mfu=13.5% gnorm=4.32e-1 gpu=13393/24081MB step=769ms eta=12871s
+  [ZClip] gradient spike at step 1859: z=2.8 gnorm=6.17e-1 ema=2.38e-1
+  [ZClip] gradient spike at step 1863: z=3.1 gnorm=5.95e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 1865: z=2.3 gnorm=4.74e-1 ema=2.27e-1
+  [800/14165 batches] step=1870 loss=6.6276 lr=7.30e-5 tok/s=4383 mfu=13.8% gnorm=3.32e-1 gpu=13393/24081MB step=762ms eta=12491s
+  [ZClip] gradient spike at step 1871: z=2.3 gnorm=3.78e-1 ema=2.08e-1
+  [ZClip] gradient spike at step 1874: z=3.5 gnorm=4.98e-1 ema=2.02e-1
+  [ZClip] gradient spike at step 1875: z=3.9 gnorm=8.27e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1877: z=2.5 gnorm=6.43e-1 ema=2.43e-1
+  [ZClip] gradient spike at step 1877: z=3.2 gnorm=1.02e0 ema=2.85e-1
+  [900/14165 batches] step=1883 loss=5.9663 lr=7.26e-5 tok/s=4460 mfu=14.0% gnorm=1.52e-1 gpu=13393/24081MB step=769ms eta=12183s
+  [ZClip] gradient spike at step 1884: z=3.8 gnorm=8.29e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1894: z=2.0 gnorm=3.84e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 1895: z=2.2 gnorm=3.87e-1 ema=2.06e-1
+  [1000/14165 batches] step=1895 loss=6.2769 lr=7.23e-5 tok/s=4525 mfu=14.2% gnorm=3.87e-1 gpu=13390/24081MB step=762ms eta=11916s
+  [ZClip] gradient spike at step 1897: z=2.4 gnorm=4.01e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 1898: z=2.2 gnorm=3.91e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 1899: z=2.3 gnorm=4.22e-1 ema=2.18e-1
+  [noise-scale] step=1900 B_noise=0.1346 (window=100)
+  [eval] step=1900 val_loss=6.4894 val_ppl=658.10 (250 batches) predicted_ppl=615.3 at step 5000 (slope=0.0698)
+  [WARN] Scaling law predicts only 6.5% improvement by step 5000 (val_ppl 658.1 → 615.3). Consider: more data, larger model, or stopping.
+  [ZClip] gradient spike at step 1900: z=3.2 gnorm=6.11e-1 ema=2.40e-1
+  [ZClip] gradient spike at step 1902: z=3.4 gnorm=8.01e-1 ema=2.70e-1
+  [ZClip] gradient spike at step 1907: z=2.8 gnorm=4.80e-1 ema=2.17e-1
+  [1100/14165 batches] step=1908 loss=6.7659 lr=7.19e-5 tok/s=4119 mfu=12.9% gnorm=1.69e-1 gpu=13386/24081MB step=773ms eta=12993s
+  [ZClip] gradient spike at step 1909: z=2.4 gnorm=4.14e-1 ema=2.08e-1
+  [ZClip] gradient spike at step 1910: z=2.5 gnorm=4.58e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 1912: z=2.1 gnorm=4.35e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 1912: z=3.0 gnorm=6.34e-1 ema=2.45e-1
+  [ZClip] gradient spike at step 1916: z=2.4 gnorm=4.57e-1 ema=2.23e-1
+  [1200/14165 batches] step=1920 loss=6.5831 lr=7.15e-5 tok/s=4191 mfu=13.2% gnorm=1.83e-1 gpu=13386/24081MB step=762ms eta=12671s
+  [ZClip] gradient spike at step 1923: z=3.4 gnorm=5.01e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 1925: z=2.2 gnorm=3.75e-1 ema=2.11e-1
+  [ZClip] gradient spike at step 1925: z=3.1 gnorm=5.33e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1929: z=3.2 gnorm=5.49e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 1931: z=3.7 gnorm=7.78e-1 ema=2.29e-1
+  [1300/14165 batches] step=1933 loss=6.5931 lr=7.11e-5 tok/s=4254 mfu=13.4% gnorm=2.00e-1 gpu=13386/24081MB step=775ms eta=12387s
+  [ZClip] gradient spike at step 1936: z=3.6 gnorm=6.42e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 1942: z=2.6 gnorm=4.00e-1 ema=2.01e-1
+  [ZClip] gradient spike at step 1943: z=4.0 gnorm=8.81e-1 ema=2.27e-1
+  [1400/14165 batches] step=1945 loss=6.3533 lr=7.08e-5 tok/s=4309 mfu=13.5% gnorm=1.95e-1 gpu=13386/24081MB step=759ms eta=12133s
+  [ZClip] gradient spike at step 1947: z=2.8 gnorm=5.61e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1951: z=3.0 gnorm=5.67e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1952: z=2.0 gnorm=4.38e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 1953: z=2.3 gnorm=4.74e-1 ema=2.24e-1
+  [1500/14165 batches] step=1958 loss=6.8320 lr=7.04e-5 tok/s=4359 mfu=13.7% gnorm=2.71e-1 gpu=13386/24081MB step=751ms eta=11901s
+  [ZClip] gradient spike at step 1958: z=3.0 gnorm=4.87e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 1959: z=2.2 gnorm=4.19e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 1961: z=2.9 gnorm=5.24e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1964: z=2.4 gnorm=4.32e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1967: z=2.3 gnorm=3.89e-1 ema=2.09e-1
+  [1600/14165 batches] step=1970 loss=6.2585 lr=7.00e-5 tok/s=4403 mfu=13.8% gnorm=2.93e-1 gpu=13386/24081MB step=771ms eta=11689s
+  [ZClip] gradient spike at step 1971: z=2.9 gnorm=4.37e-1 ema=2.04e-1
+  [ZClip] gradient spike at step 1975: z=2.0 gnorm=3.14e-1 ema=2.01e-1
+  [ZClip] gradient spike at step 1977: z=2.0 gnorm=3.28e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 1977: z=2.6 gnorm=4.19e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 1977: z=3.3 gnorm=6.12e-1 ema=2.35e-1
+  [ZClip] gradient spike at step 1979: z=2.4 gnorm=5.09e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 1981: z=2.6 gnorm=5.33e-1 ema=2.30e-1
+  [1700/14165 batches] step=1983 loss=6.6103 lr=6.96e-5 tok/s=4443 mfu=13.9% gnorm=3.29e-1 gpu=13386/24081MB step=758ms eta=11493s
+  [ZClip] gradient spike at step 1983: z=3.0 gnorm=6.02e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 1984: z=2.6 gnorm=5.88e-1 ema=2.36e-1
+  [ZClip] gradient spike at step 1987: z=2.6 gnorm=5.12e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 1989: z=2.3 gnorm=4.70e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 1992: z=2.7 gnorm=4.90e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 1993: z=2.7 gnorm=5.36e-1 ema=2.26e-1
+  [1800/14165 batches] step=1995 loss=6.7133 lr=6.93e-5 tok/s=4479 mfu=14.1% gnorm=2.44e-1 gpu=13386/24081MB step=767ms eta=11308s
+  [ZClip] gradient spike at step 1997: z=3.1 gnorm=5.21e-1 ema=2.28e-1
+  [noise-scale] step=2000 B_noise=0.1599 (window=100)
+  [verify] checkpoint OK (1904 MB)
+  [checkpoint] step=2000 saved to ./checkpoints/albor-distill-v3/model-step-2000.apr
+  [eval] step=2000 val_loss=6.5004 val_ppl=665.43 (250 batches) predicted_ppl=616.8 at step 5000 (slope=0.0688)
+  [WARN] Scaling law predicts only 7.3% improvement by step 5000 (val_ppl 665.4 → 616.8). Consider: more data, larger model, or stopping.
+  [ZClip] gradient spike at step 2000: z=3.1 gnorm=5.60e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 2002: z=3.7 gnorm=9.42e-1 ema=2.63e-1
+  [1900/14165 batches] step=2008 loss=6.6910 lr=6.89e-5 tok/s=4242 mfu=13.3% gnorm=3.62e-1 gpu=13386/24081MB step=758ms eta=11844s
+  [ZClip] gradient spike at step 2012: z=2.8 gnorm=4.51e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 2012: z=3.1 gnorm=6.03e-1 ema=2.35e-1
+  [ZClip] gradient spike at step 2020: z=2.9 gnorm=4.55e-1 ema=2.14e-1
+  [2000/14165 batches] step=2020 loss=6.0673 lr=6.85e-5 tok/s=4282 mfu=13.4% gnorm=1.77e-1 gpu=13386/24081MB step=752ms eta=11637s
+  [ZClip] gradient spike at step 2022: z=3.6 gnorm=6.06e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 2026: z=2.8 gnorm=4.88e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 2027: z=3.9 gnorm=9.34e-1 ema=2.29e-1
+  [2100/14165 batches] step=2033 loss=6.4876 lr=6.81e-5 tok/s=4317 mfu=13.6% gnorm=1.62e-1 gpu=13389/24081MB step=785ms eta=11447s
+  [ZClip] gradient spike at step 2034: z=3.5 gnorm=6.51e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 2040: z=2.1 gnorm=3.53e-1 ema=2.09e-1
+  [ZClip] gradient spike at step 2041: z=2.2 gnorm=3.69e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 2043: z=2.5 gnorm=3.95e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 2045: z=3.6 gnorm=5.83e-1 ema=2.17e-1
+  [2200/14165 batches] step=2045 loss=6.5105 lr=6.78e-5 tok/s=4349 mfu=13.7% gnorm=3.29e-1 gpu=13400/24081MB step=777ms eta=11269s
+  [ZClip] gradient spike at step 2051: z=2.8 gnorm=4.33e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 2052: z=2.2 gnorm=4.09e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 2053: z=2.1 gnorm=4.01e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 2053: z=3.2 gnorm=6.49e-1 ema=2.58e-1
+  [ZClip] gradient spike at step 2057: z=3.2 gnorm=6.24e-1 ema=2.37e-1
+  [2300/14165 batches] step=2058 loss=6.5693 lr=6.74e-5 tok/s=4372 mfu=13.7% gnorm=1.52e-1 gpu=13425/24081MB step=816ms eta=11116s
+  [ZClip] gradient spike at step 2059: z=2.8 gnorm=5.80e-1 ema=2.34e-1
+  [ZClip] gradient spike at step 2060: z=2.7 gnorm=6.06e-1 ema=2.36e-1
+  [ZClip] gradient spike at step 2061: z=2.2 gnorm=5.42e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 2067: z=2.2 gnorm=3.81e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 2067: z=3.2 gnorm=6.03e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 2070: z=3.2 gnorm=6.19e-1 ema=2.27e-1
+  [2400/14165 batches] step=2070 loss=5.9751 lr=6.70e-5 tok/s=4393 mfu=13.8% gnorm=1.76e-1 gpu=13425/24081MB step=791ms eta=10969s
+  [ZClip] gradient spike at step 2072: z=3.1 gnorm=7.09e-1 ema=2.58e-1
+  [ZClip] gradient spike at step 2075: z=3.2 gnorm=6.55e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 2078: z=3.6 gnorm=8.22e-1 ema=2.47e-1
+  [ZClip] gradient spike at step 2082: z=2.1 gnorm=4.62e-1 ema=2.30e-1
+  [2500/14165 batches] step=2083 loss=6.3509 lr=6.66e-5 tok/s=4417 mfu=13.9% gnorm=1.92e-1 gpu=13425/24081MB step=757ms eta=10818s
+  [ZClip] gradient spike at step 2085: z=2.1 gnorm=4.10e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 2087: z=2.2 gnorm=4.22e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 2088: z=2.2 gnorm=3.98e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 2090: z=2.4 gnorm=4.30e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 2091: z=2.1 gnorm=3.97e-1 ema=2.24e-1
+  [ZClip] gradient spike at step 2093: z=2.2 gnorm=3.75e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 2094: z=2.0 gnorm=3.55e-1 ema=2.11e-1
+  [2600/14165 batches] step=2095 loss=6.0079 lr=6.62e-5 tok/s=4445 mfu=14.0% gnorm=1.29e-1 gpu=13425/24081MB step=751ms eta=10658s
+  [ZClip] gradient spike at step 2097: z=2.4 gnorm=3.30e-1 ema=1.96e-1
+  [ZClip] gradient spike at step 2098: z=2.0 gnorm=3.26e-1 ema=2.02e-1
+  [ZClip] gradient spike at step 2098: z=2.4 gnorm=3.69e-1 ema=2.08e-1
+  [noise-scale] step=2100 B_noise=0.0997 (window=100)
+  [eval] step=2100 val_loss=6.4909 val_ppl=659.10 (250 batches) predicted_ppl=617.5 at step 5000 (slope=0.0684)
+  [WARN] Scaling law predicts only 6.3% improvement by step 5000 (val_ppl 659.1 → 617.5). Consider: more data, larger model, or stopping.
+  [ZClip] gradient spike at step 2100: z=2.3 gnorm=3.45e-1 ema=2.01e-1
+  [ZClip] gradient spike at step 2100: z=3.0 gnorm=4.68e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 2101: z=2.1 gnorm=4.11e-1 ema=2.24e-1
+  [ZClip] gradient spike at step 2101: z=2.5 gnorm=4.83e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 2107: z=3.8 gnorm=6.49e-1 ema=2.18e-1
+  [2700/14165 batches] step=2108 loss=6.5674 lr=6.58e-5 tok/s=4286 mfu=13.5% gnorm=1.66e-1 gpu=13351/24081MB step=746ms eta=10958s
+  [ZClip] gradient spike at step 2110: z=2.9 gnorm=5.18e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 2111: z=3.4 gnorm=7.16e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 2113: z=2.8 gnorm=6.18e-1 ema=2.44e-1
+  [ZClip] gradient spike at step 2119: z=2.4 gnorm=4.22e-1 ema=2.16e-1
+  [2800/14165 batches] step=2120 loss=6.3088 lr=6.55e-5 tok/s=4316 mfu=13.5% gnorm=1.24e-1 gpu=13347/24081MB step=758ms eta=10787s
+  [ZClip] gradient spike at step 2121: z=2.6 gnorm=4.22e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 2123: z=2.3 gnorm=3.74e-1 ema=2.08e-1
+  [ZClip] gradient spike at step 2125: z=3.4 gnorm=5.60e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 2126: z=2.4 gnorm=5.01e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 2131: z=2.8 gnorm=4.47e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 2131: z=2.0 gnorm=3.88e-1 ema=2.22e-1
+  [2900/14165 batches] step=2133 loss=6.8652 lr=6.50e-5 tok/s=4344 mfu=13.6% gnorm=3.31e-1 gpu=13347/24081MB step=753ms eta=10623s
+  [ZClip] gradient spike at step 2134: z=2.7 gnorm=4.61e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 2135: z=2.6 gnorm=4.71e-1 ema=2.28e-1
+  [ZClip] gradient spike at step 2136: z=3.2 gnorm=6.21e-1 ema=2.36e-1
+  [ZClip] gradient spike at step 2136: z=2.4 gnorm=5.73e-1 ema=2.46e-1
+  [ZClip] gradient spike at step 2140: z=2.8 gnorm=5.83e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 2141: z=3.2 gnorm=7.65e-1 ema=2.48e-1
+  [3000/14165 batches] step=2145 loss=6.1315 lr=6.47e-5 tok/s=4371 mfu=13.7% gnorm=1.07e-1 gpu=13347/24081MB step=759ms eta=10463s
+  [ZClip] gradient spike at step 2151: z=3.2 gnorm=5.26e-1 ema=2.18e-1
+  [ZClip] gradient spike at step 2153: z=3.3 gnorm=5.86e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 2153: z=3.9 gnorm=1.10e0 ema=2.69e-1
+  [3100/14165 batches] step=2158 loss=6.5212 lr=6.43e-5 tok/s=4396 mfu=13.8% gnorm=1.96e-1 gpu=13293/24081MB step=762ms eta=10309s
+  [ZClip] gradient spike at step 2158: z=2.4 gnorm=6.05e-1 ema=2.49e-1
+  [ZClip] gradient spike at step 2160: z=3.5 gnorm=9.12e-1 ema=2.49e-1
+  [ZClip] gradient spike at step 2167: z=2.7 gnorm=5.02e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 2167: z=2.2 gnorm=5.02e-1 ema=2.35e-1
+  [ZClip] gradient spike at step 2168: z=3.7 gnorm=9.32e-1 ema=2.65e-1
+  [3200/14165 batches] step=2170 loss=6.6084 lr=6.39e-5 tok/s=4422 mfu=13.9% gnorm=1.55e-1 gpu=13293/24081MB step=736ms eta=10157s
+  [ZClip] gradient spike at step 2171: z=3.1 gnorm=7.65e-1 ema=2.50e-1
+  [ZClip] gradient spike at step 2173: z=2.2 gnorm=6.01e-1 ema=2.58e-1
+  [ZClip] gradient spike at step 2179: z=3.3 gnorm=5.85e-1 ema=2.14e-1
+  [3300/14165 batches] step=2183 loss=7.0293 lr=6.35e-5 tok/s=4443 mfu=13.9% gnorm=2.01e-1 gpu=13369/24081MB step=773ms eta=10016s
+  [ZClip] gradient spike at step 2183: z=2.9 gnorm=4.98e-1 ema=2.24e-1
+  [ZClip] gradient spike at step 2184: z=2.2 gnorm=4.60e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 2184: z=2.4 gnorm=5.35e-1 ema=2.42e-1
+  [ZClip] gradient spike at step 2191: z=3.2 gnorm=4.91e-1 ema=2.08e-1
+  [ZClip] gradient spike at step 2191: z=3.0 gnorm=5.61e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 2192: z=2.5 gnorm=5.82e-1 ema=2.40e-1
+  [3400/14165 batches] step=2195 loss=6.3230 lr=6.31e-5 tok/s=4461 mfu=14.0% gnorm=1.49e-1 gpu=13369/24081MB step=762ms eta=9885s
+  [ZClip] gradient spike at step 2199: z=2.5 gnorm=3.77e-1 ema=1.97e-1
+  [ZClip] gradient spike at step 2199: z=3.4 gnorm=5.68e-1 ema=2.16e-1
+  [noise-scale] step=2200 B_noise=0.1907 (window=100)
+  [eval] step=2200 val_loss=6.5010 val_ppl=665.82 (250 batches) predicted_ppl=619.3 at step 5000 (slope=0.0672)
+  [WARN] Scaling law predicts only 7.0% improvement by step 5000 (val_ppl 665.8 → 619.3). Consider: more data, larger model, or stopping.
+  [ZClip] gradient spike at step 2200: z=4.0 gnorm=1.13e0 ema=2.63e-1
+  [ZClip] gradient spike at step 2203: z=3.2 gnorm=9.33e-1 ema=2.74e-1
+  [3500/14165 batches] step=2208 loss=6.4454 lr=6.27e-5 tok/s=4335 mfu=13.6% gnorm=1.76e-1 gpu=13369/24081MB step=748ms eta=10076s
+  [ZClip] gradient spike at step 2212: z=2.5 gnorm=3.90e-1 ema=2.04e-1
+  [ZClip] gradient spike at step 2214: z=2.8 gnorm=4.52e-1 ema=2.07e-1
+  [ZClip] gradient spike at step 2215: z=2.1 gnorm=4.27e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 2216: z=2.7 gnorm=5.11e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 2218: z=3.0 gnorm=7.08e-1 ema=2.65e-1
+  [3600/14165 batches] step=2220 loss=6.3275 lr=6.23e-5 tok/s=4357 mfu=13.7% gnorm=4.25e-1 gpu=13369/24081MB step=772ms eta=9932s
+  [ZClip] gradient spike at step 2221: z=2.6 gnorm=6.16e-1 ema=2.61e-1
+  [ZClip] gradient spike at step 2222: z=2.3 gnorm=6.48e-1 ema=2.86e-1
+  [ZClip] gradient spike at step 2222: z=3.0 gnorm=9.63e-1 ema=3.20e-1
+  [ZClip] gradient spike at step 2228: z=2.5 gnorm=4.55e-1 ema=2.18e-1
+  [ZClip] gradient spike at step 2229: z=2.9 gnorm=5.86e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 2230: z=2.7 gnorm=5.63e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 2230: z=2.6 gnorm=6.32e-1 ema=2.49e-1
+  [ZClip] gradient spike at step 2231: z=2.4 gnorm=6.13e-1 ema=2.49e-1
+  [3700/14165 batches] step=2233 loss=6.4281 lr=6.19e-5 tok/s=4377 mfu=13.7% gnorm=1.57e-1 gpu=13348/24081MB step=753ms eta=9793s
+  [ZClip] gradient spike at step 2235: z=2.2 gnorm=4.68e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 2237: z=2.6 gnorm=4.56e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 2238: z=2.9 gnorm=5.42e-1 ema=2.17e-1
+  [ZClip] gradient spike at step 2239: z=2.9 gnorm=6.00e-1 ema=2.24e-1
+  [ZClip] gradient spike at step 2241: z=2.5 gnorm=5.22e-1 ema=2.27e-1
+  [ZClip] gradient spike at step 2243: z=2.7 gnorm=5.98e-1 ema=2.50e-1
+  [3800/14165 batches] step=2245 loss=6.1843 lr=6.15e-5 tok/s=4397 mfu=13.8% gnorm=1.61e-1 gpu=13345/24081MB step=744ms eta=9655s
+  [ZClip] gradient spike at step 2246: z=3.9 gnorm=1.09e0 ema=2.73e-1
+  [ZClip] gradient spike at step 2251: z=2.6 gnorm=5.29e-1 ema=2.12e-1
+  [ZClip] gradient spike at step 2254: z=3.0 gnorm=5.60e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 2256: z=2.2 gnorm=4.73e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 2257: z=3.7 gnorm=9.03e-1 ema=2.60e-1
+  [3900/14165 batches] step=2258 loss=6.4504 lr=6.11e-5 tok/s=4416 mfu=13.9% gnorm=1.43e-1 gpu=13345/24081MB step=758ms eta=9521s
+  [ZClip] gradient spike at step 2260: z=2.8 gnorm=6.27e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 2262: z=2.3 gnorm=5.39e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 2264: z=2.2 gnorm=4.97e-1 ema=2.39e-1
+  [ZClip] gradient spike at step 2268: z=3.0 gnorm=4.67e-1 ema=2.11e-1
+  [ZClip] gradient spike at step 2269: z=2.5 gnorm=4.33e-1 ema=2.11e-1
+  [ZClip] gradient spike at step 2270: z=2.5 gnorm=4.58e-1 ema=2.20e-1
+  [4000/14165 batches] step=2270 loss=6.6785 lr=6.07e-5 tok/s=4434 mfu=13.9% gnorm=2.17e-1 gpu=13345/24081MB step=756ms eta=9389s
+  [ZClip] gradient spike at step 2271: z=2.4 gnorm=4.37e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 2274: z=2.1 gnorm=3.94e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 2276: z=3.2 gnorm=5.46e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 2278: z=2.3 gnorm=4.45e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 2281: z=4.1 gnorm=1.01e0 ema=2.38e-1
+  [4100/14165 batches] step=2283 loss=6.2209 lr=6.03e-5 tok/s=4451 mfu=14.0% gnorm=2.17e-1 gpu=13287/24081MB step=770ms eta=9261s
+  [ZClip] gradient spike at step 2285: z=2.1 gnorm=4.86e-1 ema=2.33e-1
+  [ZClip] gradient spike at step 2289: z=2.8 gnorm=5.65e-1 ema=2.36e-1
+  [ZClip] gradient spike at step 2290: z=2.6 gnorm=5.62e-1 ema=2.41e-1
+  [ZClip] gradient spike at step 2294: z=2.2 gnorm=3.68e-1 ema=2.01e-1
+  [4200/14165 batches] step=2295 loss=6.5480 lr=5.99e-5 tok/s=4468 mfu=14.0% gnorm=1.23e-1 gpu=13287/24081MB step=766ms eta=9135s
+  [ZClip] gradient spike at step 2296: z=2.8 gnorm=4.21e-1 ema=2.02e-1
+  [ZClip] gradient spike at step 2296: z=2.5 gnorm=4.56e-1 ema=2.15e-1
+  [ZClip] gradient spike at step 2296: z=3.1 gnorm=6.43e-1 ema=2.36e-1
+  [noise-scale] step=2300 B_noise=0.2105 (window=100)
+  [eval] step=2300 val_loss=6.4945 val_ppl=661.51 (250 batches) predicted_ppl=620.5 at step 5000 (slope=0.0663)
+  [WARN] Scaling law predicts only 6.2% improvement by step 5000 (val_ppl 661.5 → 620.5). Consider: more data, larger model, or stopping.
+  [ZClip] gradient spike at step 2301: z=2.3 gnorm=4.11e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 2302: z=2.0 gnorm=4.07e-1 ema=2.26e-1
+  [ZClip] gradient spike at step 2304: z=2.2 gnorm=3.61e-1 ema=2.04e-1
+  [ZClip] gradient spike at step 2304: z=3.3 gnorm=5.81e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 2305: z=2.4 gnorm=5.33e-1 ema=2.35e-1
+  [4300/14165 batches] step=2308 loss=6.2570 lr=5.95e-5 tok/s=4364 mfu=13.7% gnorm=1.79e-1 gpu=13287/24081MB step=760ms eta=9258s
+  [ZClip] gradient spike at step 2309: z=2.3 gnorm=3.96e-1 ema=2.23e-1
+  [ZClip] gradient spike at step 2311: z=2.8 gnorm=4.75e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 2312: z=2.4 gnorm=4.74e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 2313: z=2.2 gnorm=5.10e-1 ema=2.46e-1
+  [ZClip] gradient spike at step 2316: z=3.0 gnorm=6.15e-1 ema=2.31e-1
+  [ZClip] gradient spike at step 2318: z=3.0 gnorm=6.03e-1 ema=2.24e-1
+  [4400/14165 batches] step=2320 loss=6.4246 lr=5.91e-5 tok/s=4382 mfu=13.8% gnorm=1.91e-1 gpu=13239/24081MB step=740ms eta=9127s
+  [ZClip] gradient spike at step 2322: z=2.3 gnorm=4.06e-1 ema=2.03e-1
+  [ZClip] gradient spike at step 2324: z=2.4 gnorm=3.95e-1 ema=2.00e-1
+  [ZClip] gradient spike at step 2325: z=2.0 gnorm=3.80e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 2326: z=2.4 gnorm=4.25e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 2327: z=2.2 gnorm=4.24e-1 ema=2.25e-1
+  [ZClip] gradient spike at step 2328: z=2.4 gnorm=4.30e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 2328: z=3.1 gnorm=6.02e-1 ema=2.37e-1
+  [4500/14165 batches] step=2333 loss=6.5387 lr=5.87e-5 tok/s=4399 mfu=13.8% gnorm=2.30e-1 gpu=13239/24081MB step=742ms eta=8999s
+  [ZClip] gradient spike at step 2333: z=2.1 gnorm=4.24e-1 ema=2.32e-1
+  [ZClip] gradient spike at step 2335: z=2.3 gnorm=4.16e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 2335: z=2.3 gnorm=4.35e-1 ema=2.21e-1
+  [ZClip] gradient spike at step 2336: z=2.0 gnorm=4.15e-1 ema=2.22e-1
+  [ZClip] gradient spike at step 2340: z=3.4 gnorm=5.84e-1 ema=2.20e-1
+  [ZClip] gradient spike at step 2341: z=3.0 gnorm=6.41e-1 ema=2.30e-1
+  [ZClip] gradient spike at step 2342: z=2.2 gnorm=4.81e-1 ema=2.16e-1
+  [ZClip] gradient spike at step 2344: z=2.6 gnorm=5.53e-1 ema=2.25e-1
+  [4600/14165 batches] step=2345 loss=6.1845 lr=5.83e-5 tok/s=4415 mfu=13.9% gnorm=2.10e-1 gpu=13754/24081MB step=774ms eta=8874s
+  [ZClip] gradient spike at step 2350: z=2.0 gnorm=3.24e-1 ema=1.99e-1
+  [ZClip] gradient spike at step 2350: z=3.1 gnorm=4.70e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 2355: z=4.1 gnorm=8.58e-1 ema=2.26e-1
+  [4700/14165 batches] step=2358 loss=6.0890 lr=5.79e-5 tok/s=4431 mfu=13.9% gnorm=2.22e-1 gpu=13239/24081MB step=773ms eta=8750s
+  [ZClip] gradient spike at step 2361: z=3.7 gnorm=7.33e-1 ema=2.29e-1
+  [ZClip] gradient spike at step 2364: z=2.5 gnorm=4.84e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 2365: z=2.2 gnorm=4.51e-1 ema=2.22e-1
+  [4800/14165 batches] step=2370 loss=6.5271 lr=5.75e-5 tok/s=4446 mfu=14.0% gnorm=1.91e-1 gpu=13239/24081MB step=757ms eta=8628s
+  [ZClip] gradient spike at step 2371: z=3.3 gnorm=4.85e-1 ema=2.08e-1
+  [ZClip] gradient spike at step 2372: z=2.4 gnorm=4.14e-1 ema=2.10e-1
+  [ZClip] gradient spike at step 2373: z=2.1 gnorm=4.05e-1 ema=2.14e-1
+  [ZClip] gradient spike at step 2377: z=2.6 gnorm=3.90e-1 ema=2.04e-1
+  [ZClip] gradient spike at step 2379: z=2.1 gnorm=3.31e-1 ema=1.95e-1
+  [ZClip] gradient spike at step 2380: z=3.2 gnorm=5.39e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 2382: z=2.9 gnorm=5.15e-1 ema=2.19e-1
+  [ZClip] gradient spike at step 2383: z=2.7 gnorm=5.91e-1 ema=2.42e-1
+  [4900/14165 batches] step=2383 loss=6.0567 lr=5.71e-5 tok/s=4460 mfu=14.0% gnorm=1.45e-1 gpu=13239/24081MB step=764ms eta=8508s
+  [ZClip] gradient spike at step 2387: z=2.6 gnorm=4.24e-1 ema=2.07e-1
+  [ZClip] gradient spike at step 2389: z=4.2 gnorm=1.15e0 ema=2.41e-1
+  [5000/14165 batches] step=2395 loss=6.4488 lr=5.67e-5 tok/s=4474 mfu=14.0% gnorm=2.72e-1 gpu=13239/24081MB step=761ms eta=8390s
+  [ZClip] gradient spike at step 2398: z=2.1 gnorm=4.06e-1 ema=2.19e-1
+  [noise-scale] step=2400 B_noise=0.3104 (window=100)
+  [eval] step=2400 val_loss=6.5038 val_ppl=667.71 (250 batches) predicted_ppl=622.6 at step 5000 (slope=0.0649)
+  [WARN] Scaling law predicts only 6.8% improvement by step 5000 (val_ppl 667.7 → 622.6). Consider: more data, larger model, or stopping.
+  [early-stop] No improvement for 10 evals (patience=10). Best val_loss=6.4893. Stopping.
+Total training time: 17387.7s
+
+✓ Transformer training complete (CUDA)
+  Final loss: 6.498838
+  Best loss: 6.241083
+  Steps completed: 2400
+
+Saving model weights to ./checkpoints/albor-distill-v3/model.apr...
+✓ Model weights saved (1996706564 bytes, APR)
+✓ config.json saved (realizar-compatible)
+Saving metadata to ./checkpoints/albor-distill-v3/final_model.json...
+✓ Model saved successfully
+
+
+  [1;32mDONE[0m Pre-training completed
