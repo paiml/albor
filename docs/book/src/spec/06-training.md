@@ -232,7 +232,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.70 | ~7 days | **RUNNING** — 8.3K tok/s, 24.0% MFU. Phase change steps 4K-5K: val_ppl 812→499→**426** (sustained acceleration). Outperforming v9 by 10% at step 5K (v9: 472). Predicted ppl=135 at step 155K (slope=0.38). Step 5K checkpoint saved. |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.70 | ~7 days | **RUNNING** — 8.3K tok/s, 24.0% MFU. Phase change at step 4K-5K: val_ppl 812→499→426. Step 6K regressed to 455 (noisy, v9 also oscillated). Predicted ppl=129 at step 155K. Waiting for 2nd phase change (v9 step 7K). Step 5K checkpoint saved. |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
@@ -243,6 +243,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 3000 | 715 | 812 | +13.6% | plateau |
 | 4000 | 667 | **499** | **−25.2%** | **phase change** |
 | 5000 | 472 | **426** | **−9.8%** | accelerating |
+| 6000 | 410 | 455 | +11.0% | noisy — v9 also oscillated here |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -272,10 +273,11 @@ Step 5000 actual val_ppl=426 (projected was ~447) — slightly better than predi
 | 13,250 | ~129 | — | v9@14,000 (v9's best) | 434M |
 | 14,000+ | < 129 | — | **v9 exhausted data here** | 459M+ |
 
-The trainer's own prediction at step 5K is val_ppl=135 at step 155K (slope=0.38). This
-is more conservative than the v9-shifted projection but still represents a significant
-improvement over v9's final ppl=129. The true value will depend on whether v13 continues
-to outpace v9 as training deepens.
+Step 6000 actual: val_ppl=455 (projected ~410 from v9-shift). The regression from 426→455
+mirrors v9's noisy behavior in this range (v9: 472→475→440→447→410 over steps 5K-6K). The
+trainer's prediction at step 6K is val_ppl=129 at step 155K (slope=0.39). The second phase
+change (corresponding to v9 step 7000: 415→287) should arrive at v13 step 6250-7000 if the
+offset-750 model holds.
 
 v9 plateaued at ppl=129 because it ran out of data (490M tokens = 7% Chinchilla-optimal).
 v13 has **10x more data** (5.08B tokens = 73% Chinchilla). After matching v9's best at
