@@ -232,7 +232,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→6.2 | ~7 days | **RUNNING** — 8.3K tok/s, 24.0% MFU. **Phase change confirmed at step 4000**: val_ppl 812→499 (38.6% drop in 1K steps). Outperforming v9 (val_ppl=667 at same step) by 25%. Predicted ppl=242 at step 155K. ALB-118 verified (438 optimizer tensors, 4.9 GB checkpoint). |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.70 | ~7 days | **RUNNING** — 8.3K tok/s, 24.0% MFU. Phase change steps 4K-5K: val_ppl 812→499→**426** (sustained acceleration). Outperforming v9 by 10% at step 5K (v9: 472). Predicted ppl=135 at step 155K (slope=0.38). Step 5K checkpoint saved. |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
@@ -242,7 +242,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 2000 | 699 | 829 | +18.6% | warmup end |
 | 3000 | 715 | 812 | +13.6% | plateau |
 | 4000 | 667 | **499** | **−25.2%** | **phase change** |
-| 5000 | 472 | pending | — | — |
+| 5000 | 472 | **426** | **−9.8%** | accelerating |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -261,16 +261,21 @@ drop by ~500 steps, which is typical for generalization following memorization.
 0.28-0.32. Occasional z>4.0 spikes (gnorm ~1.2) are healthy — they indicate the model
 is actively exploring weight space during the phase transition.
 
-**v13 convergence projection**: v13's phase change matches v9's step-4750 value (ppl=499)
-but arrives 750 steps earlier. If the trajectory continues with the same offset:
+**v13 convergence projection**: v13 is consistently ~750 steps ahead of v9's trajectory.
+Step 5000 actual val_ppl=426 (projected was ~447) — slightly better than predicted.
 
-| v13 step | Projected val_ppl | Based on v9 step | Tokens seen |
-|----------|-------------------|------------------|-------------|
-| 5,000 | ~447 | v9@5,750 | 164M |
-| 6,250 | ~287 | v9@7,000 (2nd phase change) | 205M |
-| 10,000 | ~174 | v9@10,750 | 328M |
-| 13,250 | ~129 | v9@14,000 (v9's best) | 434M |
-| 14,000+ | < 129 | **v9 exhausted data here** | 459M+ |
+| v13 step | Projected val_ppl | Actual | Based on v9 step | Tokens seen |
+|----------|-------------------|--------|------------------|-------------|
+| 5,000 | ~447 | **426** | v9@5,750 | 164M |
+| 6,250 | ~287 | — | v9@7,000 (2nd phase change) | 205M |
+| 10,000 | ~174 | — | v9@10,750 | 328M |
+| 13,250 | ~129 | — | v9@14,000 (v9's best) | 434M |
+| 14,000+ | < 129 | — | **v9 exhausted data here** | 459M+ |
+
+The trainer's own prediction at step 5K is val_ppl=135 at step 155K (slope=0.38). This
+is more conservative than the v9-shifted projection but still represents a significant
+improvement over v9's final ppl=129. The true value will depend on whether v13 continues
+to outpace v9 as training deepens.
 
 v9 plateaued at ppl=129 because it ran out of data (490M tokens = 7% Chinchilla-optimal).
 v13 has **10x more data** (5.08B tokens = 73% Chinchilla). After matching v9's best at

@@ -199,7 +199,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | v10 | 5058 | 166M | 660 | KILLED (plateau) | ALB-118: fresh GPU optimizer + low LR (1e-4) |
 | v11 | 8150 | 267M | 750 | KILLED (plateau) | ALB-118: fresh GPU optimizer + same LR (3e-4) |
 | v12 | 37 | 1.2M | 5639 | KILLED | ALB-118: resume loaded embed optimizer only, full-LR step destroyed weights |
-| v13 | running | 5.08B target | **499** (step 4K) | **RUNNING** | Phase change at step 4000: val_ppl 812→499 (−38.6%). Outperforming v9 by 25% at same step (v9: 667). RoPE backward (ALB-119) producing better Q/K projections. Predicted ppl=242 at step 155K. 8.3K tok/s, 24.0% MFU. |
+| v13 | running | 5.08B target | **426** (step 5K) | **RUNNING** | Sustained acceleration: val_ppl 812→499→426 (steps 3K→4K→5K). Outperforming v9 by 10% at step 5K (v9: 472). Predicted ppl=135 at step 155K. Step 5K checkpoint saved. 8.3K tok/s, 24.0% MFU. |
 | distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
