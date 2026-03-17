@@ -232,7 +232,22 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→— | ~7 days | **RUNNING** — restarted 2× after ALB-119 (batched RoPE forward + missing backward). 8.2K tok/s, 23.8% MFU. 73% Chinchilla-optimal. RoPE backward fix: `batched_rope_neox_backward()` applies R^T(−θ) so Q/K projection backward receives unrotated gradients. |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→6.2 | ~7 days | **RUNNING** — 8.3K tok/s, 24.0% MFU at step 3500. val_ppl: 800→829→812 (steps 1K/2K/3K). Noisy early plateau matches v9 pattern (v9 was 781→699→715 at same steps). v9's phase change at step ~4500 (645→499) is the benchmark to watch. ALB-118 verified (438 optimizer tensors, 4.9 GB checkpoint). |
+
+**v9 vs v13 convergence comparison** (first 5000 steps):
+
+| Step | v9 val_ppl | v13 val_ppl | v9 note | v13 note |
+|------|-----------|------------|---------|----------|
+| 1000 | 781 | 800 | mid-warmup | mid-warmup |
+| 2000 | 699 | 829 | warmup end | warmup end |
+| 3000 | 715 | 812 | noisy | noisy |
+| 4000 | 667 | pending | — | — |
+| 5000 | 472 | pending | **phase change** | — |
+
+v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
+(position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
+is expected — the model must learn position-independent W_q/W_k rather than absorbing
+rotation. The critical test is whether v13 hits a similar phase change at steps 4000-5000.
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
