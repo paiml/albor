@@ -226,7 +226,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→6.54 | ~12 days | **RUNNING** — val_ppl=813 at step 2000. 5.1K tok/s, 14.9% MFU. 73% Chinchilla-optimal. |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→— | ~7 days | **RUNNING** — restarted after ALB-119 fix (batched RoPE). 8.5K tok/s, 24.6% MFU. 73% Chinchilla-optimal. |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
