@@ -1,0 +1,77 @@
+# configs/train/pretrain-350m-v11.yaml — v11: Full epoch from v9 weights
+#
+# v9 stopped at step 14,950 (490M tokens) with val_ppl=129.
+# v10 FAILED: fresh optimizer + lower LR (1e-4) → val_ppl plateaued at 660.
+#
+# Root cause (Ibrahim et al. 2024): LR must re-warm to original peak.
+# Fresh optimizer is fine if LR re-warms (Gupta et al. 2023).
+#
+# v11 fixes: same peak LR as v9 (3e-4), re-warm over 500 steps.
+# Full epoch = 153K steps = 5.0B tokens (vs v9's 490M = 7% of Chinchilla-optimal).
+# Expected: val_ppl 30-50 at convergence (~12 days on 4090).
+#
+# Architecture: 350M LLaMA-style (same as v9)
+# Data: codeparrot-clean 5.3B tokens (19 train shards)
+# Starting weights: v9 best checkpoint (val_ppl=129)
+#
+# Token budget: 155,000 steps × 32,768 tokens/step = 5.08B tokens
+# Total tokens seen (v9 + v11): 490M + 5.08B = 5.57B tokens (~80% Chinchilla)
+# Expected: ~5K tok/s, ~12 days
+
+model:
+  path: "./checkpoints/albor-base-350m-v9/model-best.apr"
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
+
+data:
+  train: "data/pretokenized-1024-v3/train/"
+  val: "data/pretokenized-1024-v3/val/"
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 500
+  gradient_accumulation: 8
+  output_dir: "./checkpoints/albor-base-350m-v11"
+  save_interval: 5000
+  eval_interval: 1000
+  patience: 30
+  max_steps: 155000
+
+monitoring:
+  terminal:
+    enabled: false
+  tracking:
+    enabled: false
+  system:
+    enabled: false
+
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded — Andon stop"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion — Andon stop"

@@ -16,7 +16,7 @@
 | Batch size (global) | 32K tokens/step | batch=4 × ga=8 × seq_len=1024 (v9 config) |
 | Micro-batch (4090) | 4 | GPU-resident (batch=8 OOM at seq≥1024) |
 | Gradient accumulation | 8 (ALB-091) | GPU-resident accumulation via `GpuGradientAccumulator` — zero D2H during micro-batch loop |
-| Total training tokens | Target 655M (v5); 5.3B available | 20,000 steps × 32K tokens/step; data: codeparrot-clean pretokenized-1024-v3 |
+| Total training tokens | Target 5.08B (v13); 5.3B available | 155,000 steps × 32K tokens/step; data: codeparrot-clean pretokenized-1024-v3. 73% Chinchilla-optimal (7B for 350M). |
 | Mixed precision | fp16 (CUDA) | Hardware-appropriate |
 
 ### 6.2 Training Config: `configs/train/pretrain-350m-v9.yaml`
@@ -82,8 +82,60 @@ training:
 - **APR checkpoints**: Atomic single-file with optimizer state (ALB-096), resume verified (ALB-097)
 - **RMSNorm backward**: grad_gamma computed + accum zeroed (ALB-092)
 
+**Current config** (v13 — full epoch from scratch):
+
+```yaml
+# configs/train/pretrain-350m-v13.yaml — from scratch, 5.08B tokens
+# v10-v12 proved continuation from v9 is broken (ALB-118: GPU optimizer not checkpointed)
+# v13 trains from random init for a full epoch — 73% Chinchilla-optimal
+
+model:
+  path: "."                                    # Random init (no pre-trained weights)
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
+
+optimizer:
+  lr: 3.0e-4                                  # Same as v9 (Chinchilla-recommended)
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  lr_scheduler: "cosine"
+  warmup_steps: 2000                           # 1.3% of total (standard for long runs)
+  gradient_accumulation: 8                     # 32K tokens/step
+  save_interval: 5000                          # ~1.9 GB per checkpoint, ~31 saved
+  eval_interval: 1000                          # ~33M tokens between evals
+  patience: 30                                 # Generous for long run
+  max_steps: 155000                            # 155K × 32K = 5.08B tokens
+```
+
+**Scaling law rationale (v13)**: Chinchilla-optimal for 350M is ~7B tokens
+(20 tokens/param). v9 saw only 490M tokens (7%) — val_ppl=129 was promising but
+far from converged. v13 targets 5.08B tokens (73% Chinchilla), expecting
+val_ppl 30-50 at convergence based on Cerebras-GPT scaling curves.
+
+**Why not continue from v9?** Three attempts (v10-v12) all failed:
+- v10: fresh optimizer + lower LR → plateau at val_ppl=660
+- v11: fresh optimizer + same LR (re-warming) → plateau at val_ppl=750
+- v12: resume with embed optimizer state → val_ppl=5639 (one full-LR step destroyed weights)
+
+Root cause: APR checkpoints only save CPU embedding optimizer state. The GPU
+block AdamW (24 blocks × m/v moments = 99%+ of parameters) is never
+checkpointed (ALB-118). Fresh GPU optimizer moments make continuation training
+impossible — the optimizer can't navigate the loss landscape from v9's learned
+weight configuration without its curvature estimates.
+
 **Legacy configs**: v1-v8 — see gap register (§11) for per-version history and
-why each was superseded.
+why each was superseded. v9 was the best single run (val_ppl=129).
 
 **Note on YAML numeric formatting**: YAML supports underscore notation natively
 (`32_768`, `1_000_000`) for human-readable large numbers. All albor configs use
@@ -169,7 +221,12 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v6 (seq=1024, batch=4, ga=8, codeparrot-5.3B) | 2,000 | 10.40→6.50 | ~4.5h | **KILLED** — strategic pivot to distillation. val_ppl=776, 6.5K tok/s. |
 | 350M v7 (seq=1024, batch=4, ga=8, codeparrot-5.3B) | 550 | 10.40→6.62 | ~1h | **KILLED** for checkpoint code fixes. 6.9K tok/s. Checkpoint at step 500, but resume broken (ALB-097: tied LM head not saved). |
 | 350M v8 (seq=1024, batch=4, ga=8, codeparrot-5.3B, APR) | 5,337 | 10.40→6.40 | ~5h | **KILLED** — no RoPE (ALB-106). 7.8K tok/s, 24.6% MFU. All steps wasted: model trained without positional awareness. |
-| 350M v9 (seq=1024, batch=4, ga=8, codeparrot-5.3B, ALB-106 RoPE) | 14,950 | 10.40→4.79 | ~3h | **STOPPED** — val_ppl=133 at step 14750. 8.2K tok/s, 23.8% MFU. First run with RoPE. Massive improvement over v8 (val_ppl=879 without RoPE). Base model sufficient for distillation (Stage 2). |
+| 350M v9 (seq=1024, batch=4, ga=8, codeparrot-5.3B, ALB-106 RoPE) | 14,950 | 10.40→4.79 | ~3h | **STOPPED** — val_ppl=129 at step 14000. 8.2K tok/s, 23.8% MFU. First run with RoPE. Only 490M tokens (7% Chinchilla-optimal). |
+| 350M v10 (continue v9, lr=1e-4, fresh optim) | 5,058 | 6.65→6.50 | ~1.5h | **KILLED** (plateau) — val_ppl=660, never recovered. ALB-118: fresh GPU optimizer + lower LR. |
+| 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
+| 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
+| distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→6.54 | ~12 days | **RUNNING** — val_ppl=813 at step 2000. 5.1K tok/s, 14.9% MFU. 73% Chinchilla-optimal. |
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
@@ -209,11 +266,11 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 | Eval frequency | Every 250 steps (`eval_interval: 250`, ALB-087) |
 | Best-model tracking | `model-best.safetensors` — updated when val_loss improves (ALB-087) |
 | Early stopping | `patience: 10` — stop after 10 evals (2,500 steps) without val_loss improvement (ALB-087) |
-| Content | Model weights + optimizer state in single APR file (~1.8 GB), config.json |
+| Content | Model weights + CPU embed optimizer state in single APR file (~1.9 GB), config.json. **ALB-118**: GPU block optimizer (24 blocks × AdamW m/v) NOT checkpointed — continuation training broken. |
 | Pruning | Automatic — keeps latest + best only, old checkpoints deleted |
 | Disk usage | ~8.4 GB peak (3 checkpoints: current + best + in-flight) |
 | Storage | Local NVMe RAID-0, checkpoints directory in repo |
-| Resume | From latest APR checkpoint on crash (weights + optimizer state + step counter). ALB-097: LM head always saved (tied weights untied on save). |
+| Resume | From latest APR checkpoint on crash (weights + CPU embed optimizer + step counter). ALB-097: LM head always saved. **Limitation (ALB-118)**: GPU block AdamW m/v not checkpointed; resume restores weights but not GPU optimizer moments — continuation from pre-trained weights degrades model (v10-v12 post-mortem). |
 | Shape format | 2D `[out, in]` shapes (ALB-086) — HuggingFace compatible |
 | Export | `apr publish --format safetensors` for HuggingFace |
 

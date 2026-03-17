@@ -182,6 +182,23 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-115 | aprender [#480](https://github.com/paiml/aprender/issues/480) | apr (aprender) | apr-cli realizar imports not gated behind feature flags | High | **FIXED** | 25 source files imported `realizar` unconditionally. `--no-default-features --features training` failed with 40 errors on aarch64. Fix: `#[cfg(feature = "inference")]` on all realizar imports, added `training-gpu` feature. Binary verified on GB10 aarch64: `apr 0.4.11 (1471cb11)`. (§4.16) |
 | ALB-116 | — | trueno-gpu | SM_120 (Blackwell) PTX support for GB10 GPU training | Medium | **VERIFIED** | trueno-gpu emits PTX for SM_89 (Ada Lovelace). GB10 has SM_121 (Blackwell). All 47+ PTX kernels JIT via `cuModuleLoadData` fallback (initial SM_121 target fails with result 300, retried without explicit target). Verified: 5-step CUDA training produces loss=9.41→9.09, gnorm=3.6-4.1, 169 tok/s. Forward+backward+optimizer all correct. Previous loss=0.0 was ALB-117 (stale checkpoint, not PTX issue). |
 | ALB-117 | [entrenar#273](https://github.com/paiml/entrenar/issues/273) | entrenar | model_path checkpoint step leaks into fresh training | High | **FIXED** | `load_transformer_model()` returned checkpoint step from model_path APR filename (e.g., 14500 from `model-step-14500.apr`) when loading initial weights. With `max_steps < step`, training exited immediately — zero forward/backward steps, `loss=0.000000`. Fix: override step to 0 when loading from model_path (not output_dir resume). Contract: `fresh-training-step-v1.yaml`. (`entrenar@0bc2c74`) |
+| ALB-118 | — | entrenar | GPU block optimizer state not checkpointed — continuation training broken | Critical | OPEN | APR checkpoints save CPU embedding optimizer m/v moments (`__training__.embed_optimizer.*`) but NOT GPU-resident `CudaGradWorkspace` AdamW state for 24 transformer blocks (99%+ of parameters). Result: v10 (fresh optim + low LR → plateau ppl=660), v11 (fresh optim + same LR → plateau ppl=750), v12 (resume path → ppl=5639 after one full-LR step destroyed weights). All three confirmed: continuation from v9 checkpoint is impossible without GPU optimizer state. Root cause: `prepare_async_apr_save()` only snapshots `embed_optimizer` m/v buffers; `CudaGradWorkspace` m/v never transferred D2H for checkpointing. Fix requires: (1) D2H transfer of per-block m/v buffers at save time (24 blocks × ~62 MB each ≈ 1.5 GB), (2) H2D restore at load time, (3) step counter per block. Acceptance: resume from checkpoint produces same val_ppl within ±5% of pre-save val_ppl. |
+
+### 11.12 Training Run Post-Mortems
+
+| Run | Steps | Tokens | Best val_ppl | Outcome | Root Cause |
+|-----|-------|--------|-------------|---------|------------|
+| v3 | 28K | 917M | 1018 | STOPPED (plateau) | ALB-079 (no cosine LR) + ALB-080 (batch scaling) |
+| v4 | ~578 | 19M | — | KILLED | Insufficient steps diagnosed, data pipeline rebuilt |
+| v6 | 2K | 66M | 776 | KILLED | Pivoted to distillation |
+| v7 | 550 | 18M | — | KILLED | ALB-097 (tied LM head resume bug) |
+| v8 | 5337 | 175M | — | KILLED | ALB-106 (RoPE investigation, later falsified) |
+| v9 | 14950 | 490M | **129** | STOPPED (patience=10) | Only 7% Chinchilla-optimal; early stop on noise |
+| v10 | 5058 | 166M | 660 | KILLED (plateau) | ALB-118: fresh GPU optimizer + low LR (1e-4) |
+| v11 | 8150 | 267M | 750 | KILLED (plateau) | ALB-118: fresh GPU optimizer + same LR (3e-4) |
+| v12 | 37 | 1.2M | 5639 | KILLED | ALB-118: resume loaded embed optimizer only, full-LR step destroyed weights |
+| v13 | running | 5.08B target | 813 (step 2K) | **RUNNING** | From scratch, full epoch, 73% Chinchilla-optimal |
+| distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
 

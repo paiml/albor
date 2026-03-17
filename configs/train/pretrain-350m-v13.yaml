@@ -1,0 +1,75 @@
+# configs/train/pretrain-350m-v13.yaml — v13: Full epoch from scratch
+#
+# v10-v12 all FAILED to continue from v9: GPU block optimizer state is never
+# saved in APR checkpoints (only CPU embedding optimizer). Fresh GPU AdamW
+# moments → model plateaus at val_ppl 660-750, never recovers to v9's 129.
+#
+# v13: Train from scratch for a full epoch. v9 reached val_ppl=129 in only
+# 15K steps (490M tokens = 7% Chinchilla-optimal). With 155K steps (5B tokens,
+# 73% Chinchilla), the model should reach val_ppl well below 100.
+#
+# Architecture: 350M LLaMA-style (same as v9)
+# Data: codeparrot-clean 5.3B tokens (19 train shards)
+# Starting weights: random init
+#
+# Token budget: 155,000 steps × 32,768 tokens/step = 5.08B tokens (73% Chinchilla)
+# Expected: ~5K tok/s, ~12 days
+# Expected convergence: val_ppl 30-50 based on Chinchilla scaling laws
+
+model:
+  path: "."
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
+
+data:
+  train: "data/pretokenized-1024-v3/train/"
+  val: "data/pretokenized-1024-v3/val/"
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 2000
+  gradient_accumulation: 8
+  output_dir: "./checkpoints/albor-base-350m-v13"
+  save_interval: 5000
+  eval_interval: 1000
+  patience: 30
+  max_steps: 155000
+
+monitoring:
+  terminal:
+    enabled: false
+  tracking:
+    enabled: false
+  system:
+    enabled: false
+
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded — Andon stop"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion — Andon stop"
