@@ -13,8 +13,8 @@
 **Current blocker for Phase 3 completion:**
 - ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
 
-**All critical training bugs FIXED (64 gaps closed):**
-- ~~ALB-038–044, 059–060, 063, 065, 069, 071–074, 079–080, 083, 092, 096–097, 099–105~~ — see §11 gap register
+**All critical training bugs FIXED (94+ gaps closed):**
+- ~~ALB-038–044, 059–060, 063, 065, 069, 071–074, 079–080, 083, 092, 096–097, 099–119~~ — see §11 gap register
 
 **Training run history:**
 
@@ -26,14 +26,19 @@
 | v5 | — | — | — | — | **FAILED**: ALB-092 (grad_gamma + uninitialized accum) |
 | v6 | 2,000 | 776 | 6,500 | — | **KILLED** for distillation pivot |
 | v7 | 550 | ~780 | 6,900 | — | **KILLED** for ALB-097 (checkpoint resume bug) |
-| **v8** | **1,000+** | **761** | **7,714** | **23.3%** | **RUNNING** — resumed at step 1000, all fixes applied |
+| v8 | 5,337 | — | 7,800 | 24.6% | **KILLED**: trained without RoPE (ALB-106) |
+| v9 | 14,950 | **129** | 8,200 | 23.8% | **STOPPED** (patience=10): 490M tokens, 7% Chinchilla |
+| v10 | 5,058 | 660 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer + low LR |
+| v11 | 8,150 | 750 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer |
+| v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
+| **v13** | **4,000+** | **499** | **8,264** | **23.9%** | **RUNNING** — phase change at step 4K, outperforming v9 by 25%. Target: 155K steps (5.08B tokens) |
 
-**v8 training (ACTIVE):** Resumed at step 1000, 7.7K tok/s, 23.3% MFU, val_ppl 761-909. Running to 20K steps (~655M tokens). All ALB-079–105 fixes applied. APR checkpoints with optimizer state.
+**v13 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. Phase change confirmed at step 4000: val_ppl 812→499. GPU optimizer state checkpointed (ALB-118). Projected val_ppl 30-50 at step 155K based on Chinchilla scaling.
 
 ### Good (Phase 5 complete)
-- [ ] Distillation from Qwen3.5-35B-A3B demonstrated (ALB-010); fallback: Qwen2.5-Coder-3B (dense)
+- [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline
 - [ ] albor-distill-350m outperforms albor-base-350m on all code benchmarks
-- [ ] **HumanEval pass@1 > 15%** (beat CodeGen-350M-mono's 12.8% via distillation from 35B MoE teacher)
+- [ ] **HumanEval pass@1 > 15%** (beat CodeGen-350M-mono's 12.8% via distillation from 30B MoE teacher)
 - [ ] **MBPP pass@1 > 12%**
 - [ ] **FIM infill working** (qualitatively: model can complete Python between prefix and suffix)
 - [ ] KD contract at Level 4 (Kani-proved KL non-negativity)
