@@ -62,8 +62,10 @@ the model has learned to concentrate probability mass on the correct tokens.
 |------------|---------|----------------|
 | 32,768 | Random baseline (uniform over vocab) | Untrained / step 0 |
 | ~1,000 | Basic token frequency learned | v3 plateau (step 12K-28K) |
-| ~100 | Syntactic patterns and common idioms captured | Target for v4 at ~1B tokens |
-| ~30 | Strong code model — predicts Python structure | Good 350M model |
+| ~500 | Phase change — position encoding learned | v13 step 4K, v9 step 4.75K |
+| ~130 | Sentence-level patterns and common idioms | v9 plateau (step 14K, 490M tokens) |
+| ~50 | Syntactic patterns and code structure captured | v13 target at ~1B tokens |
+| ~30 | Strong code model — predicts Python structure | Good 350M model (Chinchilla-trained) |
 | ~10 | Excellent — narrows predictions to a few candidates | State-of-the-art at this scale |
 
 **Why perplexity, not loss**: Cross-entropy loss (ln(perplexity)) compresses

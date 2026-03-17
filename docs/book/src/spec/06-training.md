@@ -261,6 +261,22 @@ drop by ~500 steps, which is typical for generalization following memorization.
 0.28-0.32. Occasional z>4.0 spikes (gnorm ~1.2) are healthy — they indicate the model
 is actively exploring weight space during the phase transition.
 
+**v13 convergence projection**: v13's phase change matches v9's step-4750 value (ppl=499)
+but arrives 750 steps earlier. If the trajectory continues with the same offset:
+
+| v13 step | Projected val_ppl | Based on v9 step | Tokens seen |
+|----------|-------------------|------------------|-------------|
+| 5,000 | ~447 | v9@5,750 | 164M |
+| 6,250 | ~287 | v9@7,000 (2nd phase change) | 205M |
+| 10,000 | ~174 | v9@10,750 | 328M |
+| 13,250 | ~129 | v9@14,000 (v9's best) | 434M |
+| 14,000+ | < 129 | **v9 exhausted data here** | 459M+ |
+
+v9 plateaued at ppl=129 because it ran out of data (490M tokens = 7% Chinchilla-optimal).
+v13 has **10x more data** (5.08B tokens = 73% Chinchilla). After matching v9's best at
+~step 13K, v13 has 142K remaining steps of fresh data. Chinchilla scaling laws predict
+val_ppl 30-50 for 350M params trained on 5B tokens — 3-4x improvement over v9's plateau.
+
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
 The first 350M full training run (2026-03-02) ran only 43 of 5000 steps because
