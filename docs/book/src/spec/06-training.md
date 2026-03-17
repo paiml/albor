@@ -232,7 +232,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.70 | ~7 days | **RUNNING** — 8.3K tok/s, 24.0% MFU. Phase change at step 4K-5K: val_ppl 812→499→426. Step 6K regressed to 455 (noisy, v9 also oscillated). Predicted ppl=129 at step 155K. Waiting for 2nd phase change (v9 step 7K). Step 5K checkpoint saved. |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.70 | ~7 days | **RUNNING** — 8.3K tok/s, 24.0% MFU. Phase change steps 4K-5K: val_ppl 812→499→426. **Regression** steps 6K-7K: 455→655. Train loss plateaued at ~6.1 since step 4.5K. v9's 2nd phase change (287 at step 7K) did not materialize. Monitoring continues. |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
@@ -244,6 +244,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 4000 | 667 | **499** | **−25.2%** | **phase change** |
 | 5000 | 472 | **426** | **−9.8%** | accelerating |
 | 6000 | 410 | 455 | +11.0% | noisy — v9 also oscillated here |
+| 7000 | **287** | **655** | **+128%** | **regression** — see analysis below |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -253,17 +254,39 @@ than v9's step 4500 transition — and v13 is already 25% better. The RoPE backw
 (ALB-119) appears to be paying dividends: proper gradient flow through the rotation
 produces better Q/K projections once the model escapes the early plateau.
 
-**Loss dynamics (500-step windows)**: The average training loss shows the transition clearly:
-steps 1000-2999 plateau at ~6.66-6.75, then acceleration — steps 3000-3499: 6.47,
-steps 3500-3999: 6.37. The phase change in val_ppl (812→499) lags behind the train loss
-drop by ~500 steps, which is typical for generalization following memorization.
+**Loss dynamics (500-step windows)**: Training loss accelerated from steps 3000-4500
+(avg 6.47→6.05), then **plateaued** at ~6.05-6.16 from step 4500 to 7000+. The
+val_ppl phase change (812→499→426) corresponded to the train loss drop, but the
+subsequent val_ppl regression (426→455→655) coincides with the train loss plateau.
 
-**Gradient norm**: ZClip fires on ~35% of steps (z>2.0 threshold), with gnorm EMA at
-0.28-0.32. Occasional z>4.0 spikes (gnorm ~1.2) are healthy — they indicate the model
-is actively exploring weight space during the phase transition.
+| Step range | Avg train loss | val_ppl trend |
+|-----------|----------------|---------------|
+| 3000-3499 | 6.47 | 812 (plateau) |
+| 3500-3999 | 6.37 | — |
+| 4000-4499 | 6.17 | 499 (phase change) |
+| 4500-4999 | 6.05 | 426 (best) |
+| 5000-5499 | 6.07 | — |
+| 5500-5999 | 6.16 | 455 (regression starts) |
+| 6000-6499 | 6.06 | — |
+| 6500-6999 | 6.15 | 655 (major regression) |
 
-**v13 convergence projection**: v13 is consistently ~750 steps ahead of v9's trajectory.
-Step 5000 actual val_ppl=426 (projected was ~447) — slightly better than predicted.
+**Step 7000 regression analysis**: v13's val_ppl=655 vs v9's val_ppl=287 at the same
+step is a 128% gap. The train loss plateau (flat at ~6.1 since step 4500) suggests the
+model has stopped learning, not that it's diverging. Possible causes:
+1. **LR near peak**: cosine schedule at lr=2.99e-4 (only 0.3% below 3e-4 peak). The
+   model may be oscillating in a loss basin that a lower LR could escape.
+2. **v9-shifted model invalidated**: v9's second phase change at step 7000 may have been
+   driven by v9's implicit position learning (no RoPE). v13's explicit RoPE produces a
+   fundamentally different loss landscape — the same milestones may not transfer.
+3. **Validation noise**: val_ppl computed on 250 batches (1M tokens). v9's eval also had
+   ~15% oscillations (466→415→287) but trended down. v13 may recover at step 8000.
+
+Monitoring continues. If val_ppl does not recover by step 10,000, the run may need
+learning rate adjustment or investigation of the RoPE backward implementation.
+
+**Gradient norm**: ZClip fires on ~34% of steps (z>2.0 threshold), with gnorm EMA at
+0.25-0.32. Max gnorm 1.48 at step 5043. No gradient explosion — the regression is not
+caused by unstable optimization.
 
 | v13 step | Projected val_ppl | Actual | Based on v9 step | Tokens seen |
 |----------|-------------------|--------|------------------|-------------|
