@@ -1,0 +1,81 @@
+# gpu-optimizer-checkpoint-v1.yaml — ALB-118
+#
+# Provable contract for GPU optimizer state checkpoint/resume.
+# Ensures GPU-resident AdamW first/second moment buffers survive
+# checkpoint save/load round-trip for all parameter groups.
+#
+# Motivation: ALB-118 — v10/v11/v12 failed because GPU block optimizer
+# state (18 buffers × 24 blocks + LM head + final norm ≈ 2.3 GB) was
+# not saved in APR checkpoints. Only CPU embedding optimizer was preserved.
+# Result: resume produced fresh zero-initialized AdamW state → loss spike
+# → plateau (v10: ppl=660, v11: ppl=750) or weight destruction (v12: ppl=5639).
+
+metadata:
+  version: "1.0.0"
+  created: "2026-03-17"
+  author: "PAIML Engineering"
+  description: "GPU optimizer state checkpoint/resume contract — prevents ALB-118 class of continuation failures"
+  changelog:
+    - "v1.0.0: Initial from ALB-118 (v10/v11/v12 continuation failures)"
+  references:
+    - "ALB-118: GPU block optimizer state not checkpointed"
+    - "entrenar#287: GitHub issue"
+    - "Kingma & Ba (2014) Adam — first/second moment bias correction requires step count"
+  depends_on:
+    - "training-gpu-kernel-v1"
+
+contracts:
+  - id: C-GPU-OPTIM-CKPT-001
+    name: "GPU optimizer round-trip invariant"
+    description: |
+      For every GPU-resident optimizer buffer (m/v moments for all parameter
+      groups), the checkpoint save → load round-trip must preserve values
+      within floating-point precision.
+    type: invariant
+    equation: |
+      ∀ layer ∈ [0, num_layers),
+      ∀ param ∈ {w_q, w_k, w_v, w_o, w_gate, w_up, w_down, input_norm, post_attn_norm},
+      ∀ moment ∈ {m, v}:
+        |loaded[layer][param][moment] - saved[layer][param][moment]| < ε
+      where ε = f32 machine epsilon
+    acceptance: |
+      Round-trip test: save checkpoint at step N, load it, compare all optimizer
+      buffers element-wise. Max absolute error < 1e-6 for all buffers.
+    falsification:
+      - "Resume from checkpoint produces loss within ±5% of pre-save loss at same step"
+      - "Inspect APR file for __training__.block_optimizer.{layer}.{m,v}.{weight} tensors"
+      - "Verify tensor count: 18 * num_layers + 4 (LM head m/v + final norm m/v) = 436 for 24 layers"
+
+  - id: C-GPU-OPTIM-CKPT-002
+    name: "Checkpoint completeness"
+    description: |
+      APR checkpoint files must contain optimizer state for ALL parameter groups,
+      not just the CPU embedding optimizer.
+    type: invariant
+    equation: |
+      tensor_count("__training__.block_optimizer.*") == 18 * num_layers
+      tensor_count("__training__.lm_head_optimizer.*") == 2
+      tensor_count("__training__.final_norm_optimizer.*") == 2
+      tensor_count("__training__.embed_optimizer.*") >= 2
+    acceptance: |
+      Parse APR checkpoint, count tensors matching each prefix.
+      Total optimizer tensors = 18 * num_layers + 2 + 2 + embed_count.
+    falsification:
+      - "Open APR checkpoint with AprReader, enumerate all __training__.* tensor names"
+      - "Assert 18 × 24 = 432 block optimizer tensors for 24-layer model"
+
+  - id: C-GPU-OPTIM-CKPT-003
+    name: "Resume convergence preservation"
+    description: |
+      Training resumed from a checkpoint must converge at the same rate as
+      uninterrupted training, within noise bounds.
+    type: bound
+    equation: |
+      |val_ppl_resumed(step N+K) - val_ppl_uninterrupted(step N+K)| < 0.05 * val_ppl_uninterrupted(step N+K)
+    acceptance: |
+      Save checkpoint at step N, continue training to step N+K.
+      Load checkpoint at step N, train to step N+K.
+      Compare val_ppl at step N+K: within ±5%.
+    falsification:
+      - "Run 100 steps from checkpoint, compare loss curve to uninterrupted baseline"
+      - "Check that optimizer step counter is correctly restored (bias correction)"
