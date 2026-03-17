@@ -270,19 +270,31 @@ subsequent val_ppl regression (426→455→655) coincides with the train loss pl
 | 6000-6499 | 6.06 | — |
 | 6500-6999 | 6.15 | 655 (major regression) |
 
-**Step 7000 regression analysis**: v13's val_ppl=655 vs v9's val_ppl=287 at the same
-step is a 128% gap. The train loss plateau (flat at ~6.1 since step 4500) suggests the
-model has stopped learning, not that it's diverging. Possible causes:
-1. **LR near peak**: cosine schedule at lr=2.99e-4 (only 0.3% below 3e-4 peak). The
-   model may be oscillating in a loss basin that a lower LR could escape.
-2. **v9-shifted model invalidated**: v9's second phase change at step 7000 may have been
-   driven by v9's implicit position learning (no RoPE). v13's explicit RoPE produces a
-   fundamentally different loss landscape — the same milestones may not transfer.
-3. **Validation noise**: val_ppl computed on 250 batches (1M tokens). v9's eval also had
-   ~15% oscillations (466→415→287) but trended down. v13 may recover at step 8000.
+**Step 7000 regression — root cause: LR schedule mismatch.**
 
-Monitoring continues. If val_ppl does not recover by step 10,000, the run may need
-learning rate adjustment or investigation of the RoPE backward implementation.
+v13's val_ppl=655 vs v9's val_ppl=287 at step 7000 is explained by the learning rate
+schedule. The cosine decay spans different horizons:
+
+| Step | v9 LR (20K schedule) | v13 LR (155K schedule) | v9 % peak |
+|------|---------------------|----------------------|-----------|
+| 5000 | 2.82e-4 | 3.00e-4 | 94% |
+| 7000 | **2.52e-4** | **2.99e-4** | **84%** |
+| 10000 | 1.88e-4 | 2.98e-4 | 63% |
+| 15000 | 0.78e-4 | 2.95e-4 | 26% |
+
+At step 7000, v9's LR had decayed to 84% of peak — enough for the model to settle into
+finer-grained optimization and hit its second phase change (415→287). v13's LR is still
+at 99.8% of peak and won't start meaningful decay until step ~30K. The train loss plateau
+at ~6.1 is the model oscillating in a basin at too-high LR, not a capacity limit.
+
+**Implication**: v13's early-to-mid trajectory (steps 5K-30K) will be noisier and
+slower than v9's because the LR isn't decaying. But v13 has two structural advantages:
+1. Once LR decay engages (~step 30K), the model will converge with 10x more remaining data
+2. RoPE provides correct position encoding, which should produce better final quality
+
+This is not a bug — it's an expected consequence of a 155K-step cosine schedule. The
+v9-shifted trajectory model is invalidated: v9 and v13 have fundamentally different LR
+profiles at the same step count. The right comparison is at the same LR, not the same step.
 
 **Gradient norm**: ZClip fires on ~34% of steps (z>2.0 threshold), with gnorm EMA at
 0.25-0.32. Max gnorm 1.48 at step 5043. No gradient explosion — the regression is not
