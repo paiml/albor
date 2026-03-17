@@ -75,12 +75,18 @@ training:
 ```
 
 **Key changes in v9** (cumulative from v5→v9):
-- **RoPE**: Applied in CUDA forward/backward — positional awareness (ALB-106). All v1-v8 trained without RoPE.
+- **RoPE**: Applied in CUDA forward only — positional awareness (ALB-106). All v1-v8 trained without RoPE. Note: v9 had NO RoPE backward — W_q/W_k absorbed the rotation into learned weights.
 - **Data**: codeparrot-clean 5.3B tokens (pretokenized-1024-v3), val from same distribution
 - **Gradient accumulation**: 8 GPU-resident (ALB-091) — zero D2H during micro-batch loop
 - **Cosine LR decay**: Implemented in CUDA trainer (ALB-079)
 - **APR checkpoints**: Atomic single-file with optimizer state (ALB-096), resume verified (ALB-097)
 - **RMSNorm backward**: grad_gamma computed + accum zeroed (ALB-092)
+
+**Key changes in v13** (vs v9):
+- **RoPE backward**: `batched_rope_neox_backward()` applies R^T(−θ) inverse rotation to grad_Q and grad_K before projection backward (ALB-119). Without this, Q/K weight gradients were computed in the rotated coordinate frame — valid but suboptimal (weights absorb the rotation rather than learning position-independent projections).
+- **Batched RoPE**: Single kernel launch per Q/K per block instead of per-position loop (ALB-119). 49K→48 launches/step.
+- **GPU optimizer checkpoint**: All 2.3 GB of GPU-resident AdamW m/v moments saved in APR checkpoints (ALB-118). Enables safe resume if v13 is interrupted.
+- **Full epoch**: 155K steps = 5.08B tokens (73% Chinchilla-optimal) vs v9's 15K steps = 490M tokens (7%).
 
 **Current config** (v13 — full epoch from scratch):
 
@@ -128,11 +134,11 @@ val_ppl 30-50 at convergence based on Cerebras-GPT scaling curves.
 - v11: fresh optimizer + same LR (re-warming) → plateau at val_ppl=750
 - v12: resume with embed optimizer state → val_ppl=5639 (one full-LR step destroyed weights)
 
-Root cause: APR checkpoints only save CPU embedding optimizer state. The GPU
-block AdamW (24 blocks × m/v moments = 99%+ of parameters) is never
-checkpointed (ALB-118). Fresh GPU optimizer moments make continuation training
-impossible — the optimizer can't navigate the loss landscape from v9's learned
-weight configuration without its curvature estimates.
+Root cause was ALB-118: APR checkpoints only saved CPU embedding optimizer state.
+The GPU block AdamW (24 blocks × 18 m/v buffers ≈ 2.3 GB) was never
+checkpointed. **Now fixed** (`entrenar@784f7b6`): all GPU optimizer state is
+saved as `__training__.block_optimizer.{layer}.{m,v}.{weight}` tensors in APR,
+with D2H at save and H2D at resume. v13 benefits from this protection.
 
 **Legacy configs**: v1-v8 — see gap register (§11) for per-version history and
 why each was superseded. v9 was the best single run (val_ppl=129).
