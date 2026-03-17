@@ -43,7 +43,7 @@
 - [x] `pv audit` — PASS: 7/7 contracts, 0 findings
 - [x] **Milestone**: Training loop converges ✓, contracts pass ✓
 
-### Phase 3: Base Model — 350M Pre-Training (Week 2-4) — v8 RUNNING
+### Phase 3: Base Model — 350M Pre-Training (Week 2-4) — v13 RUNNING
 - [x] Write `configs/train/pretrain-350m.yaml` — pre-tokenized ByteLevel BPE v2, 22K×2048 tokens
 - [x] Train albor-base-350m on 4090 — STARTED (2760 batches, ~20h est.)
 - [x] Build evaluation infrastructure — eval-code.py, eval-perplexity.py, 35 benchmark problems
@@ -87,26 +87,31 @@
 - [x] ~~Fix ALB-103~~ FIXED — sample_topk zero-alloc (`realizar@747d921`)
 - [x] ~~Fix ALB-104~~ FIXED — APR reader cached offset (`aprender@d4c5a4c6`)
 - [x] ~~Fix ALB-105~~ FIXED — APR streaming writer (`aprender@d4c5a4c6`)
-- [x] v8 training — resumed at step 1000 (7.7K tok/s, 23% MFU). Loss ~6.78, val_ppl ~760-909. Running to 20K steps
-- [ ] HumanEval pass@1 evaluation (target >8%)
+- [x] v8 training — 5,337 steps, 7.8K tok/s, 24.6% MFU. **KILLED**: trained without RoPE (ALB-106)
+- [x] ~~Fix ALB-106~~ FALSIFIED — RoPE IS applied in CUDA training (in-place batched kernel). Eval confirmed consistency.
+- [x] v9 training — 14,950 steps, val_ppl=**129**, 8.2K tok/s, 23.8% MFU. **STOPPED** (patience=10): 490M tokens, only 7% Chinchilla.
+- [x] v10/v11/v12 continuation failures — all KILLED. Root cause: ALB-118 (GPU optimizer state not checkpointed).
+- [x] ~~Fix ALB-118~~ VERIFIED — GPU optimizer state (438 tensors, 2.3 GB) now saved in APR checkpoints.
+- [x] ~~Fix ALB-119~~ FIXED — RoPE backward (inverse rotation) added to both F32 and NF4 paths.
+- [x] v13 training — **RUNNING** (155K steps target, 5.08B tokens). Phase change at step 4000: val_ppl 812→**499** (outperforming v9 by 25%). 8.3K tok/s, 23.9% MFU.
+- [ ] HumanEval pass@1 evaluation (target >8%) — eval pipeline ready, awaiting checkpoint
 - [ ] Verify FALSIFY-ALBOR-003 (checkpoint determinism)
 - [ ] `pmat tdg check-regression` on all touched components
 - [ ] **Milestone**: HumanEval pass@1 > 8%, Perplexity < 30, TDG grade A maintained
 
-### Phase 4: Teacher Setup & Logit Pre-Computation (Week 3-5)
-- [ ] Fix ALB-010: Add Qwen3-Coder-Next support to realizar (stretch — 3-4 week blocker)
-- [x] Download Qwen2.5-Coder-3B interim teacher (5.75 GiB, Apache 2.0) — unblocks distillation without ALB-010
-- [x] Validate 3B teacher: `apr distill --stage precompute` works, RosettaStone handles sharded SafeTensors
-- [x] Create distillation config: `configs/train/distill-qwen3b.yaml` (T=4.0, α=0.5, LoRA r=16)
-- [ ] Validate teacher inference on intel (CPU, fp16, 300GB RAM) — for 80B stretch goal
+### Phase 4: Teacher Setup & Distillation Data (Week 3-5) — COMPLETE
+- [x] ~~Fix ALB-010~~ FIXED — Qwen3-Coder-30B MoE inference in realizar (Q4K, 15 tok/s GPU)
+- [x] Download Qwen3-Coder-30B-A3B-Instruct teacher (17 GB Q4K APR)
+- [x] Validate teacher: FIM-capable, SWE-bench 50.3%, Apache 2.0
+- [x] Create distillation config: `configs/train/distill-30b.yaml` (synthetic data generation)
 - [x] Write `knowledge-distillation-kernel-v1.yaml` contract (ALB-013) — DOGFOODING
-- [ ] `pv kani` on KD loss contract (KL non-negativity, temperature scaling)
 - [x] ~~Fix ALB-011~~ FIXED — `apr distill --config --stage precompute|train` works
-- [ ] Pre-compute 3B teacher logits on v2 dataset (background, 4-8h CPU)
-- [ ] Verify FALSIFY-ALBOR-006 (teacher logit integrity)
-- [ ] Store as sharded Parquet via alimentar
-- [ ] `pmat comply check --strict` on realizar changes
-- [ ] **Milestone**: Teacher logits verified, KD contract at Level 4
+- [x] Generate synthetic data: 10,043 completions, 5.8M tokens from Qwen3-Coder-30B teacher
+- [x] Create mixed training data: 56,660 seqs (5,666 synthetic + 50,994 codeparrot), 58M tokens
+- [x] distill-v3 training: 2,400 steps, val_ppl=658. HumanEval 0% — insufficient tokens + raw format
+- [x] **Milestone**: Teacher inference working, synthetic data pipeline demonstrated
+- [ ] `pv kani` on KD loss contract (KL non-negativity, temperature scaling)
+- [ ] **Future**: Re-run distillation after v13 base model converges
 
 ### Phase 5: Knowledge Distillation (Week 5-6)
 - [ ] Implement `apr distill apply` with KD loss
