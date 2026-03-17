@@ -49,7 +49,7 @@
 - [ ] Benchmark trajectory published showing improvement at each stage
 - [ ] **Submitted to Big Code Models Leaderboard** — first sub-1B model on the board
 - [ ] **Q4 model: <50ms/token on CPU, <10ms/token on GPU** (code completion latency)
-- [x] Critical path gaps (ALB-001, 006, 009, 011, 018) closed with upstream fixes; ALB-010 (Qwen3.5-35B-A3B MoE inference) PR #133 MERGED, weight loading remaining
+- [x] Critical path gaps (ALB-001, 006, 009, 011, 018) closed with upstream fixes; ALB-010 (Qwen3-Coder-30B MoE inference) FIXED — Q4K GPU, 15 tok/s, synthetic data pipeline working
 - [ ] Models published on HuggingFace as `paiml/albor-python-*`
 - [ ] Q4 quantized model < 100MB, runs on consumer hardware
 - [ ] **All 8 kernel contracts written and verified** (ALB-013–017, ALB-039–040, ALB-060)

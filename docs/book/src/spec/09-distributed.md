@@ -17,10 +17,10 @@ The natural multi-machine split is **teacher on intel, student on lambda**:
 ┌───────────────────────────────┐                          ┌───────────────────────────┐
 │  intel (300 GB RAM)           │    pre-computed logits    │  lambda (RTX 4090)        │
 │                               │    as sharded Parquet     │                           │
-│  Qwen3-Coder-Next 80B fp16   │ ────────────────────────► │  albor-350M student       │
-│  Full model in CPU RAM        │    (rsync / NFS)          │  KD loss + CE loss        │
-│  realizar CPU inference       │                           │  Full GPU speed training  │
-│  ~5-15 tok/s                  │                           │                           │
+│  Qwen3-Coder-30B Q4K         │ ────────────────────────► │  albor-350M student       │
+│  17 GB on RTX 4090            │    synthetic data (JSONL)  │  CE loss on mixed data    │
+│  realizar GPU inference       │                           │  Full GPU speed training  │
+│  ~15 tok/s                    │                           │                           │
 │                               │ ◄──── checkpoints ─────  │  apr distill apply    │
 │  Concurrent eval runner       │    (rsync / NFS)          │                           │
 └───────────────────────────────┘                           └───────────────────────────┘

@@ -113,7 +113,7 @@ resources:
   teacher-model:
     type: model
     machine: intel
-    name: Qwen/Qwen3-Coder-Next
+    name: Qwen/Qwen3-Coder-30B-A3B-Instruct
     state: present
     cache_dir: /data/albor/models/teacher
     depends_on: [data-dir]

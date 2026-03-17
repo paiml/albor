@@ -29,7 +29,7 @@ part of the stack, produces a benchmarked checkpoint, and may reveal new gaps.
 
 ```
 Stage 1: Pre-train base model         → albor-base
-Stage 2: Distill from Qwen3-Coder-Next → albor-distill
+Stage 2: Distill from Qwen3-Coder-30B → albor-distill
 Stage 3: Instruction fine-tune (LoRA)  → albor-instruct
 Stage 4: Merge with complementary model → albor-merged
 Stage 5: Prune for efficiency          → albor-pruned
@@ -42,7 +42,7 @@ Stage 6: Quantize for deployment       → albor-q4
 
 A tiny, fast, zero-dependency code completion model that runs entirely locally.
 No API calls, no Python runtime, no telemetry, no cloud. Distillation from
-Qwen3-Coder-Next gives it coding capability far above what 350M parameters
+Qwen3-Coder-30B gives it coding capability far above what 350M parameters
 normally achieve.
 
 | Capability | Description |
@@ -276,7 +276,7 @@ pipeline.
 |---------------|----------------------|------|
 | **aprender** (apr) | `pipeline plan/apply`, `tokenize plan/apply`, `distill plan/apply`, `eval plan/apply`, `train plan/apply`, plan/apply contract enforcement | ALB-001, 006, 009, 011, 023, 028 |
 | **alimentar** | `import local`, `mix` with upsampling, FIM transforms, streaming to entrenar | ALB-007, 018, 019, 020 |
-| **realizar** | Qwen3-Coder-Next / DeltaNet / MoE architecture support | ALB-010 |
+| **realizar** | Qwen3-Coder-30B / DeltaNet / MoE architecture support | ALB-010 |
 | **entrenar** | Training engine, model merging, pruning, quantization, LoRA, custom YAML model arch, human-readable config values | ALB-003, 004, 021, 022 |
 | **forjar** | `task` resource type for ML pipeline orchestration, DAG engine for `apr pipeline` | ALB-027 |
 | **presentar** | SQLite experiment viewer, live training TUI, WASM dashboard, `apr experiment` CLI | ALB-024, 025, 026 |
@@ -355,7 +355,7 @@ interfaces only:
    NVIDIA library used for compute. trueno wraps it with a safe Rust API
    (`CublasHandle`, `CublasGemm`) that enforces correct argument order at
    the type level. cuBLAS replaced hand-written PTX GEMMs in ALB-075,
-   improving throughput from 890 tok/s to 6,700 tok/s (7.5x).
+   improving throughput from 890 tok/s to 8,264 tok/s (9.3x, with TF32 tensor cores).
 
 **What this means in practice**: The entire training binary is a single
 statically-linked Rust executable (~15 MB). It has no Python interpreter, no

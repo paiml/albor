@@ -135,7 +135,7 @@ HumanEval, it would sit just below the 1B tier — at 1/3 the parameter count:
 | **albor-distill (target)** | **350M** | **>42** | **>36** | **>65** | **>48** |
 
 *Note: General capability targets are conservative. Albor is 80% Python code
-data with a coding teacher — distillation from Qwen3-Coder-Next will not
+data with a coding teacher — distillation from Qwen3-Coder-30B will not
 improve general reasoning (ARC-E, HellaSwag). The target is OPT-350M parity,
 not Pythia-410M. Code benchmarks are the real scoreboard.*
 

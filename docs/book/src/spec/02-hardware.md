@@ -20,7 +20,7 @@
 | GPU | 2x AMD Radeon Pro W5700X (8 GB GDDR6 each) |
 | GPU Backend | wgpu/Vulkan (ROCm unsupported for RDNA 1 / gfx1010) |
 | FP32 TFLOPS | ~9 per card (~18 total) |
-| Role | **Teacher inference (Qwen3-Coder-Next in CPU RAM), data pipeline, eval** |
+| Role | **Data pipeline, eval. Teacher (Qwen3-Coder-30B) runs on 4090 GPU as Q4K** |
 
 ### 2.3 Network
 - SSH connectivity (`ssh intel`) with ControlMaster multiplexing (forjar FJ-252)
@@ -29,7 +29,9 @@
 ### 2.4 Key Insight: 300 GB RAM Enables CPU-Based Teacher Inference
 
 The intel box's 300 GB RAM fundamentally changes the distillation architecture.
-Qwen3-Coder-Next (80B params) fits entirely in CPU RAM:
+*Originally planned for 80B teacher in CPU RAM. Actual teacher: Qwen3-Coder-30B-A3B (17 GB Q4K, runs on 4090 GPU at 15 tok/s).* The Intel box provides CPU headroom for data processing and eval. The original 80B sizing below is retained for reference:
+
+The originally planned Qwen3-Coder-Next (80B params) would fit in CPU RAM:
 
 | Model Format | Size in RAM | Fits in 300 GB? | Headroom |
 |-------------|-------------|-----------------|----------|

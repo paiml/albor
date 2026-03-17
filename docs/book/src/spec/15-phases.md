@@ -6,7 +6,7 @@
 - [ ] `apr pipeline apply --target cuda-driver --target vulkan-driver --target data-dir` — provision infra
 - [ ] Verify `trueno` wgpu on W5700X via Vulkan (not Metal — Linux)
 - [ ] Verify `trueno` CUDA on 4090
-- [ ] Download Qwen3-Coder-Next to intel box, verify it loads in realizar
+- [x] ~~Download Qwen3-Coder-30B~~ DONE — Q4K APR on lambda (17 GB), 15 tok/s GPU inference
 - [ ] `pmat tdg baseline create` on all stack components
 - [ ] `pv coverage contracts/ --binding` — establish contract coverage baseline
 - [ ] `batuta falsify . --critical-only` — initial falsification assessment
