@@ -1,25 +1,29 @@
 # 4. Distillation: Synthetic Data from Qwen3-Coder-30B
 
-### 4.1 Why Distillation, Not More Pretraining
+### 4.1 Why Distillation After Pretraining
 
-Pure pretraining hit a wall. Eight training runs (v1-v8) on codeparrot-clean
-show the same pattern: loss converges to ~6.5 (val_ppl ~800) then plateaus.
+Early training runs (v1-v8) on codeparrot-clean showed a val_ppl ~800 plateau
+with limited data (655M tokens = 1.9x params). The root cause was Chinchilla
+scaling mismatch: 350M params needs ~7B tokens (20x) for optimal training.
 
-**Root cause: Chinchilla scaling mismatch.**
+**v13 is closing the Chinchilla gap:** Training on 5.08B tokens (73%
+Chinchilla-optimal) broke through the plateau — val_ppl dropped from 812 to
+499 at step 4000, outperforming v9 (which trained on only 490M tokens) by 25%.
+Chinchilla scaling predicts val_ppl 30-50 at 5B tokens for 350M params.
 
-| Parameter | Albor | Chinchilla Optimal |
-|-----------|-------|-------------------|
-| Model size | 350M | 350M |
-| Training tokens | 655M (20K steps) | ~7B (20x params) |
-| Ratio (tokens/params) | 1.9x | 20x |
+| Parameter | v9 (early) | v13 (current) | Chinchilla Optimal |
+|-----------|-----------|---------------|-------------------|
+| Model size | 350M | 350M | 350M |
+| Training tokens | 490M (15K steps) | 5.08B (155K steps) | ~7B |
+| Ratio (tokens/params) | 1.4x | 14.5x | 20x |
+| Best val_ppl | 129 (data-limited) | 499 (step 4K, improving) | ~30-50 (predicted) |
 
-We're 10x undertrained. More steps on the same data would overfit, not
-improve. More data requires 10x the GPU time (~10 days on a single 4090).
-
-**Distillation is the efficient path**: a strong teacher can transfer knowledge
-in far fewer tokens than pure pretraining requires. phi-1 (1.3B) achieved
-51% HumanEval using synthetic data from GPT-3.5 — dramatically better than
-any model of that size trained on raw code alone.
+**Distillation complements pretraining**: a strong teacher can transfer
+structured knowledge (code patterns, API usage, docstring→implementation
+mapping) that raw code data alone teaches slowly. phi-1 (1.3B) achieved 51%
+HumanEval using synthetic data from GPT-3.5 — dramatically better than any
+model of that size trained on raw code alone. The plan: train base model to
+convergence on 5B tokens, then distill from Qwen3-Coder-30B teacher.
 
 ### 4.2 Teacher Model: Qwen3-Coder-30B-A3B-Instruct
 
