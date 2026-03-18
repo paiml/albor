@@ -177,7 +177,7 @@ At 17.5 tok/s decode (serve path), synthetic data generation times:
 | 6. Generate 705 completions | DONE | 321K student tokens, resume+retry support |
 | 7. Train distill-v1 (PoC) | DONE | 100% synthetic → catastrophic forgetting (§4.11) |
 | 8. Train distill-v2 (mixed) | DONE | 90/10 mix → val_ppl 148 (+10.6%, needs more data) |
-| 9. Scale to 5M+ synthetic tokens | **IN PROGRESS** | 2.67M tokens (53%), 27 tok/s, ETA ~March 15 |
+| 9. Scale to 5M+ synthetic tokens | **DONE** | 10,043 completions, 5.8M tokens. Generation complete. |
 | 10. Fix realizar f32 APR eval | DONE | ALB-108: LM head weight layout swap + tokenizer fix (§4.13) |
 | 11. HumanEval/MBPP eval | **DONE** | Baseline v9: 0/164 HumanEval, 0/500 MBPP (§4.14) |
 | 12. Fix APR CPU inference in eval | DONE | `SafetensorsToAprConverter` → `AprTransformer::from_apr_file()` |
@@ -241,22 +241,23 @@ unambiguous:
 | Data mix | **90% codeparrot + 10% synthetic** | Prevents catastrophic forgetting (literature standard: 90-95% replay) |
 | Optimizer | AdamW (lr=1e-4, lower than pretraining) | Conservative for fine-tuning |
 | Schedule | Cosine with 100-step warmup | Standard |
-| Init | From **v9 checkpoint** (step 14950, val_ppl=133) | Best available base model (includes RoPE) |
+| Init | From **v13 checkpoint** (post-convergence, ~5B tokens) | Best base model; v9 (490M tokens, ppl=129) is fallback |
 | Max steps | 1,000-3,000 | Small synthetic budget; early stopping on val_ppl |
 
-Starting from the v9 checkpoint means the student already has
-val_ppl=133 on codeparrot. The mixed training teaches it the teacher's
-coding patterns while replaying the original distribution to maintain
+Starting from the v13 checkpoint (projected val_ppl 80-120 after 5B
+tokens) gives the student a stronger foundation than v9 (ppl=129 at
+490M tokens). The mixed training teaches it the teacher's coding
+patterns while replaying the original distribution to maintain
 (or improve) general Python capability.
 
 ### 4.10 Success Criteria
 
-| Metric | Base v9 | Distillation Target | Stretch |
-|--------|---------|---------------------|---------|
-| val_ppl (codeparrot) | 133 | < 130 (no regression) | < 100 |
-| train_loss (synthetic) | ~6.0 (untrained) | < 4.5 | < 3.5 |
-| HumanEval pass@1 | 0/164 | > 5/164 (3%) | > 15/164 (9%) |
-| MBPP pass@1 | 0/974 | > 20/974 (2%) | > 50/974 (5%) |
+| Metric | Base v13 (projected) | Distillation Target | Stretch |
+|--------|---------------------|---------------------|---------|
+| val_ppl (codeparrot) | 80-120 | < base (no regression) | < 50 |
+| train_loss (synthetic) | ~5.0 (untrained) | < 4.0 | < 3.0 |
+| HumanEval pass@1 | TBD (v9 was 0/164) | > 5/164 (3%) | > 15/164 (9%) |
+| MBPP pass@1 | TBD (v9 was 0/974) | > 20/974 (2%) | > 50/974 (5%) |
 
 **Critical constraint**: val_ppl on codeparrot must NOT regress beyond
 10% of base (i.e., must stay < 147). Distill-v1 violated this (133 →
