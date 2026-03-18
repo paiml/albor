@@ -199,7 +199,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | v10 | 5058 | 166M | 660 | KILLED (plateau) | ALB-118: fresh GPU optimizer + low LR (1e-4) |
 | v11 | 8150 | 267M | 750 | KILLED (plateau) | ALB-118: fresh GPU optimizer + same LR (3e-4) |
 | v12 | 37 | 1.2M | 5639 | KILLED | ALB-118: resume loaded embed optimizer only, full-LR step destroyed weights |
-| v13 | running | 5.08B target | **426** (step 5K best) | **RUNNING** | Phase change steps 4K-5K: val_ppl 812→499→426. Regression steps 6K-7K: 455→655. Train loss plateau at ~6.1 since step 4.5K. v9's 2nd phase change did not transfer. Monitoring — if no recovery by step 10K, may need LR adjustment. |
+| v13 | running | 5.08B target | **414** (step 8K) | **RUNNING** | New best val_ppl=414 at step 8K. Oscillating at near-peak LR: 499→426→455→655→414. Step 7K regression was noise (recovered). v9 trails due to LR schedule mismatch (v9 cosine over 20K, v13 over 155K). True convergence expected ~step 30K when LR decay engages. |
 | distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*

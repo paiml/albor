@@ -232,7 +232,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.70 | ~7 days | **RUNNING** — 8.3K tok/s, 24.0% MFU. Phase change steps 4K-5K: val_ppl 812→499→426. **Regression** steps 6K-7K: 455→655. Train loss plateaued at ~6.1 since step 4.5K. v9's 2nd phase change (287 at step 7K) did not materialize. Monitoring continues. |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.70 | ~7 days | **RUNNING** — 8.3K tok/s, 24.1% MFU. Best val_ppl=**414** at step 8K (new best). Oscillating at near-peak LR (99.7%): 499→426→455→655→414. v9 trails due to LR schedule (v9 decaying at 78%, v13 flat). Convergence expected once cosine decay engages (~step 30K). |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
@@ -245,6 +245,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 5000 | 472 | **426** | **−9.8%** | accelerating |
 | 6000 | 410 | 455 | +11.0% | noisy — v9 also oscillated here |
 | 7000 | **287** | **655** | **+128%** | **regression** — see analysis below |
+| 8000 | 207 | **414** | +100% | recovered — new best, LR effect (see below) |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
