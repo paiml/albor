@@ -366,9 +366,23 @@ At the LR-equivalent of v9's convergence point (v13 step 115K), v13 will have se
 ~21% lower ppl. If v9 hit 129 at this LR, v13 should reach ~105 at step 115K, with
 40K more steps of LR decay remaining.
 
-**Projection**: val_ppl 80-120 at step 155K. The built-in predictor says 166-215 but is
-fitting a power law to the noisy high-LR regime — it cannot model the convergence
+**Projection**: val_ppl 80-120 at step 155K. The built-in predictor says 242 at step 25K
+but is fitting a power law to the noisy high-LR regime — it cannot model the convergence
 acceleration from LR decay that hasn't happened yet.
+
+**Predictor slope trend** (power-law exponent, non-spike evals only):
+
+| Window | Avg slope | Avg predicted final ppl | Interpretation |
+|--------|-----------|------------------------|----------------|
+| 5K-10K | 0.370 | 145 | Rapid initial improvement |
+| 10K-15K | 0.342 | 163 | Decelerating |
+| 15K-20K | 0.293 | 197 | Stagnation — high-LR plateau |
+| 20K-25K | 0.222 | 254 | Further deceleration |
+
+The declining slope is the power-law predictor seeing high-LR stagnation. When cosine decay
+engages (~step 30K), the slope should **increase** — this will be a leading indicator of
+convergence acceleration, visible before val_ppl drops dramatically. Watch for slope > 0.30
+as a signal that the model is entering the fast convergence phase.
 
 **Best-envelope trajectory** (log-linear fit on 8 new-best checkpoints through step 25K):
 
