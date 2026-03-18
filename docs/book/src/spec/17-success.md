@@ -31,9 +31,9 @@
 | v10 | 5,058 | 660 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer + low LR |
 | v11 | 8,150 | 750 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer |
 | v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
-| **v13** | **15,000+** | **328** | **8,370** | **24.2%** | **RUNNING** — best val_ppl=328 (step 10K), oscillating at near-peak LR. At 491M tokens (=v9's total), v13 at 472 vs v9's 129 — 3.6x gap from LR schedule. Target: 155K steps (5.08B tokens), ETA March 24 |
+| **v13** | **17,000+** | **308** | **8,360** | **24.2%** | **RUNNING** — best val_ppl=308 (step 16K), oscillating at near-peak LR. Best-envelope: 426→328→308 (improving). Spikes: 655→698→717 (widening). Target: 155K steps (5.08B tokens), ETA March 24 |
 
-**v13 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. 9.7% complete (step 15K/155K). Best val_ppl=328 at step 10K, currently oscillating at near-peak LR (98.4%). GPU optimizer state checkpointed (ALB-118). LR-equivalence analysis projects val_ppl 80-120 at step 155K — v13 won't reach v9's convergence LR until step 115K, at which point it'll have 7.7x more data.
+**v13 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. 11.0% complete (step 17K/155K). Best val_ppl=308 at step 16K. Oscillation pattern: best-envelope improving (~20 ppl/5K steps) while spike peaks intensify (~12 ppl/5K steps) — widening band characteristic of high-LR exploration near saddle points. B_noise=0.11 (healthy). LR still at 97.7% of peak; meaningful decay begins ~step 30K. LR-equivalence analysis projects val_ppl 80-120 at step 155K.
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline

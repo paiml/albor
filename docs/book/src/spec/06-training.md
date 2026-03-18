@@ -232,7 +232,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.80 | ~6.5 days | **RUNNING** — 8.4K tok/s, 24.2% MFU. Best val_ppl=**328** at step 10K. High oscillation at near-peak LR: spikes to 472/655/698 at steps 15K/7K/12K. At 491M tokens (step 15K), v13 at 472 vs v9's 129 — 3.6x gap from LR schedule (98% vs 24% peak). Predicted ppl=80-120 at step 155K (see LR-equivalence analysis). |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.73 | ~6.5 days | **RUNNING** — 8.4K tok/s, 24.2% MFU. Best val_ppl=**308** at step 16K. High oscillation at near-peak LR: spikes to 472/655/698/717 at steps 15K/7K/12K/17K. Best-envelope improving: 426→328→308. Predicted ppl=80-120 at step 155K (see LR-equivalence analysis). |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
@@ -253,6 +253,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 13000 | 135 | 367 | +172% | recovered |
 | 14000 | 129 | 332 | +157% | near best — v9 converged here at ppl=129 |
 | 15000 | 129 | **472** | **+266%** | **oscillation spike** — B_noise=0.27 (elevated). v9 at 490M tokens; v13 at 491M tokens. 3.6x gap = LR effect (v9 at 24% peak, v13 at 98%) |
+| 16000 | — | **308** | — | **NEW BEST** — beats 328 (step 10K). B_noise=0.11 (low). Best-envelope: 426→328→308. |
+| 17000 | — | **717** | — | **worst spike** — exceeds step 12K's 698. B_noise=0.15 (normal). Spikes intensifying: 655→698→717. |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -305,23 +307,37 @@ v9-shifted trajectory model is invalidated: v9 and v13 have fundamentally differ
 profiles at the same step count. The right comparison is at the same LR, not the same step.
 
 **Gradient diagnostics**: ZClip fires on ~34% of steps (z>2.0 threshold), with gnorm
-EMA at 0.25-0.32. Max gnorm 1.48 at step 5043. No gradient explosion. B_noise
-(gradient noise scale) averages ~0.12 at steps 10K-14K, down from ~0.17 at steps
+EMA at 0.15-0.20 (steps 15K-17K). Max gnorm 0.97 at step 17021. No gradient explosion.
+B_noise (gradient noise scale) averages ~0.11 at steps 15K-17K, down from ~0.17 at steps
 2K-4K — a healthy trend showing gradients becoming more signal-dominated over time.
-Occasional spikes (B_noise=0.36 at step 14K) don't persist.
+Occasional spikes (B_noise=0.32 at step 15600) don't persist.
 
 **v13 convergence trajectory** (best-envelope vs oscillation):
 
 The v9-shifted projection was invalidated by the LR schedule mismatch. v13's actual
-trajectory shows two patterns: (1) a slowly improving **best-envelope** (426→328→332),
-and (2) **extreme oscillation** with spikes to 655/698 at steps 7K/12K.
+trajectory shows two patterns: (1) a slowly improving **best-envelope** (426→328→308),
+and (2) **extreme oscillation** with spikes to 655/698/717 at steps 7K/12K/17K.
 
 | Phase | Steps | Best val_ppl | Envelope trend | LR % peak |
 |-------|-------|-------------|----------------|-----------|
 | Plateau | 1K-3K | 800 | flat | 50-100% (warmup) |
 | Phase change | 4K-5K | 426 | rapid drop | 100% |
-| High-LR oscillation | 6K-15K+ | 328 | slow improvement, spikes to 472-698 | 99-96% |
+| High-LR oscillation | 6K-17K+ | 308 | slow improvement, spikes to 472-717 | 99-96% |
 | LR decay (predicted) | 30K-155K | <100? | accelerating convergence | 90→10% |
+
+**Oscillation pattern analysis (steps 6K-17K)**: The oscillation is not random noise —
+it has structure. Best-envelope checkpoints (new val_ppl records) and worst spikes both
+intensify over time, producing a widening band:
+- Best-envelope: 426 (5K) → 328 (10K) → 308 (16K) — improving at ~20 ppl per 5K steps
+- Spike peaks: 655 (7K) → 698 (12K) → 717 (17K) — worsening at ~12 ppl per 5K steps
+- B_noise is NOT correlated with spikes: step 15K spike had B_noise=0.27 (elevated),
+  but step 17K's worst spike had B_noise=0.15 (normal). The oscillation is LR-driven,
+  not gradient-noise-driven.
+
+This widening band is characteristic of SGD near a flat saddle point with a too-high LR.
+The model explores increasingly distant regions of loss landscape, occasionally finding
+better minima (best-envelope) but also overshooting into worse basins (spikes). Once
+cosine decay engages (~step 30K), the band should narrow rapidly.
 
 The key question: will v13 surpass v9's final ppl=129? The raw step comparison is
 misleading because of the LR schedule mismatch. **LR-equivalent step mapping** shows
