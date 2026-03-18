@@ -127,9 +127,9 @@ Code completion metrics (HumanEval, FIM) are primary; general benchmarks are sec
 | 6 | albor-q4 | 350M | ~90MB | ~5-11% | ~3-7% | >50 |
 
 *Stage 1 numbers are from v8 (val_ppl=879, 0/164 HumanEval). v13 RUNNING —
-currently at step 14K, best val_ppl=328. Projected final val_ppl 100-166 at
-step 155K (5.08B tokens). Stage 2+ numbers are estimates. Distillation uses
-synthetic data generation (not logit-level KD) due to vocab mismatch between
-teacher (151K Qwen BPE) and student (32K Albor BPE). Any non-zero HumanEval
-from a 350M sovereign-stack model is a meaningful result.
-CPU tok/s measured on Xeon at Q4.*
+currently at step 17K (11% complete), best val_ppl=308 (step 16K). Best-envelope
+improving at ~20 ppl per 5K steps. Projected final val_ppl 80-120 at step 155K
+(5.08B tokens). Stage 2+ numbers are estimates. Distillation uses synthetic data
+generation (not logit-level KD) due to vocab mismatch between teacher (151K Qwen
+BPE) and student (32K Albor BPE). Any non-zero HumanEval from a 350M
+sovereign-stack model is a meaningful result. CPU tok/s measured on Xeon at Q4.*

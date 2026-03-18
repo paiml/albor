@@ -255,6 +255,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 15000 | 129 | **472** | **+266%** | **oscillation spike** — B_noise=0.27 (elevated). v9 at 490M tokens; v13 at 491M tokens. 3.6x gap = LR effect (v9 at 24% peak, v13 at 98%) |
 | 16000 | — | **308** | — | **NEW BEST** — beats 328 (step 10K). B_noise=0.11 (low). Best-envelope: 426→328→308. |
 | 17000 | — | **717** | — | **worst spike** — exceeds step 12K's 698. B_noise=0.15 (normal). Spikes intensifying: 655→698→717. |
+| 18000 | — | 373 | — | recovery from 17K spike (52% of spike ppl). Post-spike recovery improving: 63%→53%→52%. |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -355,9 +356,33 @@ At the LR-equivalent of v9's convergence point (v13 step 115K), v13 will have se
 ~21% lower ppl. If v9 hit 129 at this LR, v13 should reach ~105 at step 115K, with
 40K more steps of LR decay remaining.
 
-**Projection**: val_ppl 80-120 at step 155K. The built-in predictor says 166 but is
+**Projection**: val_ppl 80-120 at step 155K. The built-in predictor says 166-215 but is
 fitting a power law to the noisy high-LR regime — it cannot model the convergence
 acceleration from LR decay that hasn't happened yet.
+
+**Best-envelope trajectory** (log-linear fit on the 7 new-best checkpoints through step 17K):
+
+| Step | Best-envelope ppl (actual) | Fit prediction | Key milestone |
+|------|---------------------------|----------------|---------------|
+| 1K | 800 | 656 | — |
+| 4K | 499 | 522 | Phase change |
+| 5K | 426 | 491 | — |
+| 8K | 414 | 410 | — |
+| 9K | 366 | 386 | — |
+| 10K | 328 | 363 | — |
+| 16K | 308 | 256 | New best |
+| 20K | — | 206 | v9's max_steps — unexplored territory |
+| 28K | — | 129 | v9's final ppl (predicted match) |
+| 35K | — | 89 | LR decay engaging (90% peak) |
+
+The log-linear fit extrapolates well near-term but breaks down past step 50K (predicts
+unrealistically low ppl). The LR-equivalence analysis gives a more grounded long-term
+prediction. Key milestone: best-envelope should break v9's final ppl=129 around step 28K
+(~0.92B tokens, 18% complete) — well before LR decay even engages significantly.
+
+**Spike periodicity**: High-LR spikes occur at a suggestive 5K periodicity (steps 7K, 12K,
+17K). With only 3 data points this may be coincidence. If step 22K spikes, the pattern is
+real and likely reflects periodic resonance with data shard boundaries or optimizer dynamics.
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
@@ -393,15 +418,15 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 | Aspect | Design |
 |--------|--------|
 | Format | APR (primary, ALB-096) + SafeTensors fallback |
-| Save frequency | Every 500 steps (`save_interval: 500`) |
-| Eval frequency | Every 250 steps (`eval_interval: 250`, ALB-087) |
+| Save frequency | Every 5000 steps (v13: `save_interval: 5000`; v9: 500) |
+| Eval frequency | Every 1000 steps (v13: `eval_interval: 1000`; v9: 250; ALB-087) |
 | Best-model tracking | `model-best.safetensors` — updated when val_loss improves (ALB-087) |
 | Early stopping | `patience: 10` — stop after 10 evals (2,500 steps) without val_loss improvement (ALB-087) |
-| Content | Model weights + CPU embed optimizer state in single APR file (~1.9 GB), config.json. **ALB-118**: GPU block optimizer (24 blocks × AdamW m/v) NOT checkpointed — continuation training broken. |
+| Content | Model weights + CPU embed optimizer + GPU block optimizer (24 blocks × AdamW m/v) in single APR file (~5.2 GB), config.json. ALB-118 **FIXED**: all 438 GPU optimizer tensors checkpointed (`entrenar@784f7b6`). |
 | Pruning | Automatic — keeps latest + best only, old checkpoints deleted |
-| Disk usage | ~8.4 GB peak (3 checkpoints: current + best + in-flight) |
+| Disk usage | ~15 GB peak (v13: ~5.2 GB per checkpoint, current + best + in-flight) |
 | Storage | Local NVMe RAID-0, checkpoints directory in repo |
-| Resume | From latest APR checkpoint on crash (weights + CPU embed optimizer + step counter). ALB-097: LM head always saved. **Limitation (ALB-118)**: GPU block AdamW m/v not checkpointed; resume restores weights but not GPU optimizer moments — continuation from pre-trained weights degrades model (v10-v12 post-mortem). |
+| Resume | From latest APR checkpoint on crash (weights + CPU embed optimizer + GPU block optimizer + step counter). ALB-097: LM head always saved. ALB-118 **FIXED**: full optimizer state (model weights + 438 GPU tensors + CPU embed optimizer) checkpointed in APR v2 format. v13 benefits from safe resume on interruption. |
 | Shape format | 2D `[out, in]` shapes (ALB-086) — HuggingFace compatible |
 | Export | `apr publish --format safetensors` for HuggingFace |
 
