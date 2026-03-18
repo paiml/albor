@@ -365,7 +365,7 @@ At the LR-equivalent of v9's convergence point (v13 step 115K), v13 will have se
 fitting a power law to the noisy high-LR regime — it cannot model the convergence
 acceleration from LR decay that hasn't happened yet.
 
-**Best-envelope trajectory** (log-linear fit on the 7 new-best checkpoints through step 17K):
+**Best-envelope trajectory** (log-linear fit on all 7 new-best checkpoints through step 22K):
 
 | Step | Best-envelope ppl (actual) | Fit prediction | Key milestone |
 |------|---------------------------|----------------|---------------|
@@ -375,15 +375,30 @@ acceleration from LR decay that hasn't happened yet.
 | 8K | 414 | 410 | — |
 | 9K | 366 | 386 | — |
 | 10K | 328 | 363 | — |
-| 16K | 308 | 256 | New best |
-| 20K | — | 206 | v9's max_steps — unexplored territory |
-| 28K | — | 129 | v9's final ppl (predicted match) |
-| 35K | — | 89 | LR decay engaging (90% peak) |
+| 16K | 308 | 256 | Latest new-best |
+| 22K | (314) | 194 | Near-best (recovery from 829 spike) |
+| 25K | — | 154 | Next checkpoint save |
+| 28K | — | 129 | Predicted v9 match |
+| 30K | — | 115 | LR at 90% peak |
 
-The log-linear fit extrapolates well near-term but breaks down past step 50K (predicts
-unrealistically low ppl). The LR-equivalence analysis gives a more grounded long-term
-prediction. Key milestone: best-envelope should break v9's final ppl=129 around step 28K
-(~0.92B tokens, 18% complete) — well before LR decay even engages significantly.
+The log-linear fit (R²=0.79 on best-envelope, 0.45 on all non-spike evals) extrapolates
+well near-term but breaks down past step 50K. The LR-equivalence analysis gives a more
+grounded long-term prediction: val_ppl 80-120 at step 155K.
+
+**Convergence phase analysis** (5K-window non-spike median):
+
+| Phase | Steps | Non-spike median | Non-spike count | LR % peak |
+|-------|-------|-----------------|-----------------|-----------|
+| Phase change | 5K-10K | 426 | 4/5 | 99-100% |
+| Early high-LR | 10K-15K | 355 | 4/5 | 98-99% |
+| Mid high-LR | 15K-20K | 373 | 4/5 | 97-98% |
+| Late high-LR | 20K-25K | 314 | 1/2 (so far) | 96-97% |
+
+**Key observation**: The non-spike median barely improved from 10K-15K (355) to 15K-20K
+(373). The model's *typical* performance stagnates during the high-LR phase — only the
+best-envelope slowly improves as the model occasionally discovers better minima. Once
+cosine decay engages (~step 30K), the median should converge toward the best-envelope
+as the model stabilizes in deeper basins.
 
 **Spike frequency**: High-LR spikes at steps 7K, 12K, 17K, 20K, 21K. Intervals: 5K, 5K,
 3K, 1K — accelerating. 5 spikes in 18 post-phase-change evals (28%). Steps 20K-21K were the
