@@ -199,7 +199,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | v10 | 5058 | 166M | 660 | KILLED (plateau) | ALB-118: fresh GPU optimizer + low LR (1e-4) |
 | v11 | 8150 | 267M | 750 | KILLED (plateau) | ALB-118: fresh GPU optimizer + same LR (3e-4) |
 | v12 | 37 | 1.2M | 5639 | KILLED | ALB-118: resume loaded embed optimizer only, full-LR step destroyed weights |
-| v13 | running | 5.08B target | **328** (step 10K best) | **RUNNING** | Best val_ppl=328 at step 10K. High oscillation at near-peak LR: spikes to 655/698 (steps 7K/12K), envelope ~330. v9 was at 129 at step 14K (with LR at 26%); v13 at 332 (LR at 96%). Convergence will accelerate with cosine decay (~step 30K). Predicted ppl=166 at 155K (likely pessimistic). |
+| v13 | 14.5K/155K (9.4%) | 475M/5.08B | **328** (step 10K best) | **RUNNING** | ETA March 24. Best envelope 328, oscillating at near-peak LR (98.4%). Key upcoming: step 53K (LR=v9@7K), step 108K (LR=v9@14K with 7.2x data). Projected ppl 80-120 at 155K (see §6 LR-equivalence analysis). |
 | distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
