@@ -257,7 +257,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 17000 | — | **717** | — | **worst spike** — exceeds step 12K's 698. B_noise=0.15 (normal). Spikes intensifying: 655→698→717. |
 | 18000 | — | 373 | — | recovery from 17K spike (52% of spike ppl). Post-spike recovery improving: 63%→53%→52%. |
 | 19000 | — | 317 | — | continued recovery — only 2.9% above best-envelope (308). 717→373→317 trajectory. |
-| 20000 | — | **624** | — | **spike** — 3K after step 17K spike (breaks 5K periodicity). B_noise=0.30 (elevated). But 2.0x best-envelope (milder than 17K's 2.3x). **v9's max_steps** — v13 enters unexplored territory. |
+| 20000 | — | **624** | — | **spike** — 3K after step 17K spike (breaks 5K periodicity). B_noise=0.30 (elevated). 2.0x best-envelope. **v9's max_steps** — v13 enters unexplored territory. |
+| 21000 | — | **829** | — | **worst eval yet** — exceeds step 1K random init (800). B_noise=0.07 (lowest ever!). Two consecutive spikes (20K+21K). val_loss=6.72 (only 17% above best 5.73 — ppl exponential amplifies). |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -333,9 +334,10 @@ it has structure. Best-envelope checkpoints (new val_ppl records) and worst spik
 intensify over time, producing a widening band:
 - Best-envelope: 426 (5K) → 328 (10K) → 308 (16K) — improving at ~20 ppl per 5K steps
 - Spike peaks: 655 (7K) → 698 (12K) → 717 (17K) — worsening at ~12 ppl per 5K steps
-- B_noise is NOT correlated with spikes: step 15K spike had B_noise=0.27 (elevated),
-  but step 17K's worst spike had B_noise=0.15 (normal). The oscillation is LR-driven,
-  not gradient-noise-driven.
+- B_noise is NOT correlated with spikes. **Definitive evidence**: step 21K has the
+  worst spike ever (ppl=829) with the lowest B_noise ever recorded (0.07). Step 15K's
+  spike had B_noise=0.27 (elevated), step 17K had 0.15, step 21K had 0.07. The
+  oscillation is purely LR-driven loss landscape exploration, not gradient noise.
 
 This widening band is characteristic of SGD near a flat saddle point with a too-high LR.
 The model explores increasingly distant regions of loss landscape, occasionally finding
@@ -382,11 +384,12 @@ unrealistically low ppl). The LR-equivalence analysis gives a more grounded long
 prediction. Key milestone: best-envelope should break v9's final ppl=129 around step 28K
 (~0.92B tokens, 18% complete) — well before LR decay even engages significantly.
 
-**Spike frequency**: High-LR spikes at steps 7K, 12K, 17K, 20K. The initial 5K periodicity
-(7K→12K→17K) broke at step 20K (3K interval). Spikes are frequent (~24% of evals) but not
-periodic. Spike magnitude relative to best-envelope: 1.5x (7K), 2.1x (12K), 2.3x (17K),
-2.0x (20K) — not monotonically worsening. The model recovers quickly: each post-spike eval
-is dramatically better (717→373→317 after step 17K spike).
+**Spike frequency**: High-LR spikes at steps 7K, 12K, 17K, 20K, 21K. Intervals: 5K, 5K,
+3K, 1K — accelerating. 5 spikes in 18 post-phase-change evals (28%). Steps 20K-21K are the
+first consecutive spikes. Spike magnitude relative to best-envelope: 1.5x (7K), 2.1x (12K),
+2.3x (17K), 2.0x (20K), **2.7x** (21K). The model has always recovered: 655→414, 698→367,
+717→373→317. **Step 22K is the critical test**: recovery to <400 confirms transient
+oscillation; persistence >700 would indicate emerging instability.
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
