@@ -42,16 +42,16 @@ reverse.
 |--------|-------|--------|
 | Throughput (pre-optimization) | **934 tok/s** | 350M, seq=1024, batch=4, RTX 4090 |
 | Step time (pre-optimization) | ~4.4s | Same config |
-| **Throughput (current, v13)** | **8,357 tok/s** | Same config (steady state, step 17K+) |
-| **Step time (current, v13)** | **~436 ms** | Same config (steady state, per micro-batch) |
-| **MFU (current, v13)** | **24.2%** | vs TF32 tensor core peak |
-| VRAM usage | ~13.3 GB / 24 GB | Same config (includes GPU optimizer state) |
-| Training loss (v13, step 17K) | **5.73** | v13 run (PID 2929312, codeparrot-clean) |
-| Best val_ppl (v13) | **308** | step 16K; oscillates due to near-peak LR (see §6) |
-| Loss trajectory (v13) | 10.40 → 5.73 (step 17K) | v13 run (155K steps target, 11% complete) |
-| Gradient norm (v13) | gnorm EMA=0.15-0.20 | ZClip fires on ~34% of steps |
-| Tokens processed (v13, step 17K) | **557M** | 17,000 × 4 × 8 × 1024 |
-| **Previous best** (v9) | 4.86 (step 14.9K, 490M tok) | val_ppl=129 — v13 projected to surpass ~step 28K (see §6 LR analysis) |
+| **Throughput (current, v13)** | **8,308 tok/s** | Same config (steady state, step 25K+) |
+| **Step time (current, v13)** | **~445 ms** | Same config (steady state, per micro-batch) |
+| **MFU (current, v13)** | **24.1%** | vs TF32 tensor core peak |
+| VRAM usage | ~13.2 GB / 24 GB | Same config (includes GPU optimizer state) |
+| Training loss (v13, step 25K) | **5.66** | v13 run (codeparrot-clean) |
+| Best val_ppl (v13) | **286** | step 25K (NEW BEST); oscillates due to near-peak LR (see §6) |
+| Loss trajectory (v13) | 10.40 → 5.66 (step 25K) | v13 run (155K steps target, 16.1% complete) |
+| Gradient norm (v13) | gnorm EMA=0.10-0.15 | ZClip fires on gradient spikes |
+| Tokens processed (v13, step 25K) | **819M** | 25,000 × 4 × 8 × 1024 |
+| **Previous best** (v9) | 4.86 (step 14.9K, 490M tok) | val_ppl=129 — v13 projected to surpass ~step 42K (see §6 LR analysis) |
 
 ### 1.2 MFU Analysis
 
