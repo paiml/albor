@@ -199,7 +199,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | v10 | 5058 | 166M | 660 | KILLED (plateau) | ALB-118: fresh GPU optimizer + low LR (1e-4) |
 | v11 | 8150 | 267M | 750 | KILLED (plateau) | ALB-118: fresh GPU optimizer + same LR (3e-4) |
 | v12 | 37 | 1.2M | 5639 | KILLED | ALB-118: resume loaded embed optimizer only, full-LR step destroyed weights |
-| v13 | running | 5.08B target | **414** (step 8K) | **RUNNING** | New best val_ppl=414 at step 8K. Oscillating at near-peak LR: 499→426→455→655→414. Step 7K regression was noise (recovered). v9 trails due to LR schedule mismatch (v9 cosine over 20K, v13 over 155K). True convergence expected ~step 30K when LR decay engages. |
+| v13 | running | 5.08B target | **328** (step 10K) | **RUNNING** | val_ppl=328 at step 10K (new best). Gap vs v9 closing (64%, was 128%). Trajectory: 499→426→455→655→414→328. Convergence accelerating even at near-peak LR. Predicted ppl=132 at step 155K. Step 10K checkpoint saved. |
 | distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
