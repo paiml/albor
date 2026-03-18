@@ -31,9 +31,9 @@
 | v10 | 5,058 | 660 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer + low LR |
 | v11 | 8,150 | 750 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer |
 | v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
-| **v13** | **4,000+** | **499** | **8,264** | **23.9%** | **RUNNING** — phase change at step 4K, outperforming v9 by 25%. Target: 155K steps (5.08B tokens) |
+| **v13** | **15,000+** | **328** | **8,370** | **24.2%** | **RUNNING** — best val_ppl=328 (step 10K), oscillating at near-peak LR. At 491M tokens (=v9's total), v13 at 472 vs v9's 129 — 3.6x gap from LR schedule. Target: 155K steps (5.08B tokens), ETA March 24 |
 
-**v13 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. Phase change confirmed at step 4000: val_ppl 812→499. GPU optimizer state checkpointed (ALB-118). Projected val_ppl 30-50 at step 155K based on Chinchilla scaling.
+**v13 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. 9.7% complete (step 15K/155K). Best val_ppl=328 at step 10K, currently oscillating at near-peak LR (98.4%). GPU optimizer state checkpointed (ALB-118). LR-equivalence analysis projects val_ppl 80-120 at step 155K — v13 won't reach v9's convergence LR until step 115K, at which point it'll have 7.7x more data.
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline

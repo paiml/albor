@@ -232,7 +232,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.80 | ~6.5 days | **RUNNING** — 8.4K tok/s, 24.2% MFU. Best val_ppl=**328** at step 10K. High oscillation at near-peak LR: spikes to 655/698 at steps 7K/12K, recovers to ~330 envelope. v9 reached 129 at step 14K with decaying LR; v13 at 332 at step 14K with LR at 95.7% peak. Predicted ppl=166 at step 155K. Convergence will accelerate once cosine decay engages (~step 30K). |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.80 | ~6.5 days | **RUNNING** — 8.4K tok/s, 24.2% MFU. Best val_ppl=**328** at step 10K. High oscillation at near-peak LR: spikes to 472/655/698 at steps 15K/7K/12K. At 491M tokens (step 15K), v13 at 472 vs v9's 129 — 3.6x gap from LR schedule (98% vs 24% peak). Predicted ppl=80-120 at step 155K (see LR-equivalence analysis). |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
@@ -252,6 +252,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 12000 | 151 | **698** | **+363%** | **noise spike** (like step 7K) |
 | 13000 | 135 | 367 | +172% | recovered |
 | 14000 | 129 | 332 | +157% | near best — v9 converged here at ppl=129 |
+| 15000 | 129 | **472** | **+266%** | **oscillation spike** — B_noise=0.27 (elevated). v9 at 490M tokens; v13 at 491M tokens. 3.6x gap = LR effect (v9 at 24% peak, v13 at 98%) |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -319,7 +320,7 @@ and (2) **extreme oscillation** with spikes to 655/698 at steps 7K/12K.
 |-------|-------|-------------|----------------|-----------|
 | Plateau | 1K-3K | 800 | flat | 50-100% (warmup) |
 | Phase change | 4K-5K | 426 | rapid drop | 100% |
-| High-LR oscillation | 6K-14K | 328 | slow improvement | 99-96% |
+| High-LR oscillation | 6K-15K+ | 328 | slow improvement, spikes to 472-698 | 99-96% |
 | LR decay (predicted) | 30K-155K | <100? | accelerating convergence | 90→10% |
 
 The key question: will v13 surpass v9's final ppl=129? The raw step comparison is
