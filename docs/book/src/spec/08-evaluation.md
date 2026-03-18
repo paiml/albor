@@ -151,7 +151,7 @@ apr eval plan \
 # ── Single-sample pass@1 (fast screening) ──
 apr eval apply \
   --model ./checkpoints/albor-distill-350m/ \
-  --task humaneval --data configs/eval/humaneval.jsonl \
+  --task humaneval --data data/humaneval.jsonl \
   --output ./eval/humaneval-pass1.json \
   --seed 42
 
@@ -159,7 +159,7 @@ apr eval apply \
 # Uses Chen et al. (2021) unbiased estimator: pass@k = 1 - C(n-c,k)/C(n,k)
 apr eval apply \
   --model ./checkpoints/albor-distill-350m/ \
-  --task humaneval --data configs/eval/humaneval.jsonl \
+  --task humaneval --data data/humaneval.jsonl \
   --samples 50 --temperature 0.2 \
   --output ./eval/humaneval-pass10.json \
   --seed 42
@@ -167,7 +167,7 @@ apr eval apply \
 # MBPP evaluation (974 problems)
 apr eval apply \
   --model ./checkpoints/albor-distill-350m/ \
-  --task mbpp --data configs/eval/mbpp.jsonl \
+  --task mbpp --data data/mbpp.jsonl \
   --samples 10 --temperature 0.2 \
   --output ./eval/mbpp-results.json \
   --seed 42
@@ -176,7 +176,7 @@ apr eval apply \
 # 20-40x faster than CPU. No KV cache yet (O(n²) but still fast for eval).
 apr eval apply \
   --model ./checkpoints/albor-distill-350m/ \
-  --task humaneval --data configs/eval/humaneval.jsonl \
+  --task humaneval --data data/humaneval.jsonl \
   --samples 50 --temperature 0.2 \
   --device cuda \
   --output ./eval/humaneval-cuda.json
@@ -244,7 +244,7 @@ concurrently with training:
 # On intel (300GB RAM), polling for new checkpoints
 apr eval apply \
   --model ./checkpoints/latest/ \
-  --task humaneval --data configs/eval/humaneval.jsonl \
+  --task humaneval --data data/humaneval.jsonl \
   --samples 10 --temperature 0.2 \
   --output ./eval/step-$(cat ./checkpoints/latest/step.txt).json
 ```
