@@ -381,14 +381,18 @@ acceleration from LR decay that hasn't happened yet.
 | 9K | 366 | 386 | — |
 | 10K | 328 | 363 | — |
 | 16K | 308 | 256 | — |
-| 22K | (314) | 194 | Near-best (recovery from 829 spike) |
-| **25K** | **286** | **154** | **NEW BEST — first record in 9K steps** |
-| 28K | — | 129 | Predicted v9 match |
-| 30K | — | 115 | LR at 90% peak |
+| 22K | (314) | 220 | Near-best (recovery from 829 spike) |
+| **25K** | **286** | **237** | **NEW BEST — first record in 9K steps** |
+| 30K | — | 198 | LR at 90% peak — decay acceleration expected |
+| 42K | — | 129 | Predicted v9 match |
+| 50K | — | 98 | Mid-decay |
 
-The log-linear fit (R²=0.79 on best-envelope, 0.45 on all non-spike evals) extrapolates
-well near-term but breaks down past step 50K. The LR-equivalence analysis gives a more
-grounded long-term prediction: val_ppl 80-120 at step 155K.
+The log-linear fit (R²=0.67 on 8 best-envelope points) over-extrapolates at late steps
+(predicts ppl=2 at 155K, nonsensical). The fit captures the high-LR regime but cannot model
+the two-phase behavior: slow improvement during near-peak LR → acceleration during cosine
+decay. The LR-equivalence analysis gives a more grounded long-term prediction: val_ppl
+80-120 at step 155K. The built-in trainer predictor (242 at 155K) is also pessimistic —
+it fits the noisy high-LR regime and misses coming acceleration.
 
 **Convergence phase analysis** (5K-window non-spike median):
 
