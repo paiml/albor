@@ -232,7 +232,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.70 | ~7 days | **RUNNING** — 8.4K tok/s, 24.2% MFU. Best val_ppl=**328** at step 10K (new best). Trajectory: 499→426→455→655→414→328. Gap vs v9 closing (64% at step 10K, was 128% at step 7K). LR at 99.4% peak, convergence accelerating even before cosine decay. Predicted ppl=132 at step 155K. |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.80 | ~6.5 days | **RUNNING** — 8.4K tok/s, 24.2% MFU. Best val_ppl=**328** at step 10K. High oscillation at near-peak LR: spikes to 655/698 at steps 7K/12K, recovers to ~330 envelope. v9 reached 129 at step 14K with decaying LR; v13 at 332 at step 14K with LR at 95.7% peak. Predicted ppl=166 at step 155K. Convergence will accelerate once cosine decay engages (~step 30K). |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
@@ -246,7 +246,12 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 6000 | 410 | 455 | +11.0% | noisy — v9 also oscillated here |
 | 7000 | **287** | **655** | **+128%** | **regression** — see analysis below |
 | 8000 | 207 | **414** | +100% | recovered — new best, LR effect (see below) |
-| 10000 | 200 | **328** | +64% | improving — gap closing, LR at 99.4% peak |
+| 9000 | 196 | 366 | +87% | improving |
+| 10000 | 200 | **328** | +64% | new best, checkpoint saved |
+| 11000 | 170 | 355 | +109% | slight regression |
+| 12000 | 151 | **698** | **+363%** | **noise spike** (like step 7K) |
+| 13000 | 135 | 367 | +172% | recovered |
+| 14000 | 129 | 332 | +157% | near best — v9 converged here at ppl=129 |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -302,24 +307,25 @@ profiles at the same step count. The right comparison is at the same LR, not the
 0.25-0.32. Max gnorm 1.48 at step 5043. No gradient explosion — the regression is not
 caused by unstable optimization.
 
-| v13 step | Projected val_ppl | Actual | Based on v9 step | Tokens seen |
-|----------|-------------------|--------|------------------|-------------|
-| 5,000 | ~447 | **426** | v9@5,750 | 164M |
-| 6,250 | ~287 | — | v9@7,000 (2nd phase change) | 205M |
-| 10,000 | ~174 | — | v9@10,750 | 328M |
-| 13,250 | ~129 | — | v9@14,000 (v9's best) | 434M |
-| 14,000+ | < 129 | — | **v9 exhausted data here** | 459M+ |
+**v13 convergence trajectory** (best-envelope vs oscillation):
 
-Step 6000 actual: val_ppl=455 (projected ~410 from v9-shift). The regression from 426→455
-mirrors v9's noisy behavior in this range (v9: 472→475→440→447→410 over steps 5K-6K). The
-trainer's prediction at step 6K is val_ppl=129 at step 155K (slope=0.39). The second phase
-change (corresponding to v9 step 7000: 415→287) should arrive at v13 step 6250-7000 if the
-offset-750 model holds.
+The v9-shifted projection was invalidated by the LR schedule mismatch. v13's actual
+trajectory shows two patterns: (1) a slowly improving **best-envelope** (426→328→332),
+and (2) **extreme oscillation** with spikes to 655/698 at steps 7K/12K.
 
-v9 plateaued at ppl=129 because it ran out of data (490M tokens = 7% Chinchilla-optimal).
-v13 has **10x more data** (5.08B tokens = 73% Chinchilla). After matching v9's best at
-~step 13K, v13 has 142K remaining steps of fresh data. Chinchilla scaling laws predict
-val_ppl 30-50 for 350M params trained on 5B tokens — 3-4x improvement over v9's plateau.
+| Phase | Steps | Best val_ppl | Envelope trend | LR % peak |
+|-------|-------|-------------|----------------|-----------|
+| Plateau | 1K-3K | 800 | flat | 50-100% (warmup) |
+| Phase change | 4K-5K | 426 | rapid drop | 100% |
+| High-LR oscillation | 6K-14K | 328 | slow improvement | 99-96% |
+| LR decay (predicted) | 30K-155K | <100? | accelerating convergence | 90→10% |
+
+The key question: will v13 surpass v9's final ppl=129? At step 14K (459M tokens), v13
+is at 332 while v9 was at 129 — a 2.6x gap. But v9's LR was at 26% of peak (already
+heavily decayed), while v13 is at 96%. v13 has 141K more steps and 4.6B more tokens.
+The trainer predicts ppl=166 at step 155K, but this extrapolation from the noisy
+high-LR region is likely pessimistic — convergence should accelerate once the cosine
+schedule starts meaningful decay around step 30K-40K.
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
