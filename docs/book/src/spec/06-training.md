@@ -323,30 +323,32 @@ Occasional spikes (B_noise=0.32 at step 15600) don't persist.
 **v13 convergence trajectory** (best-envelope vs oscillation):
 
 The v9-shifted projection was invalidated by the LR schedule mismatch. v13's actual
-trajectory shows two patterns: (1) a slowly improving **best-envelope** (426→328→308),
-and (2) **extreme oscillation** with spikes to 655/698/717 at steps 7K/12K/17K.
+trajectory shows two patterns: (1) a slowly improving **best-envelope** (426→328→308→286),
+and (2) **extreme oscillation** with spikes to 655/698/829 at steps 7K/12K/17K/20K/21K.
+After step 21K (worst spike: 829), 4 consecutive non-spike evals suggest stabilization
+as early cosine decay begins.
 
 | Phase | Steps | Best val_ppl | Envelope trend | LR % peak |
 |-------|-------|-------------|----------------|-----------|
 | Plateau | 1K-3K | 800 | flat | 50-100% (warmup) |
 | Phase change | 4K-5K | 426 | rapid drop | 100% |
-| High-LR oscillation | 6K-20K+ | 308 | slow improvement, spikes to 472-717 | 99-97% |
+| High-LR oscillation | 6K-25K | 286 | slow improvement, spikes to 472-829 | 99-95% |
 | LR decay (predicted) | 30K-155K | <100? | accelerating convergence | 90→10% |
 
 **Oscillation pattern analysis (steps 6K-17K)**: The oscillation is not random noise —
 it has structure. Best-envelope checkpoints (new val_ppl records) and worst spikes both
 intensify over time, producing a widening band:
-- Best-envelope: 426 (5K) → 328 (10K) → 308 (16K) — improving at ~20 ppl per 5K steps
-- Spike peaks: 655 (7K) → 698 (12K) → 717 (17K) — worsening at ~12 ppl per 5K steps
+- Best-envelope: 426 (5K) → 328 (10K) → 308 (16K) → 286 (25K) — improving at ~15 ppl per 5K steps
+- Spike peaks: 655 (7K) → 698 (12K) → 829 (21K) — worst spikes intensified but stopped after step 21K
 - B_noise is NOT correlated with spikes. **Definitive evidence**: step 21K has the
   worst spike ever (ppl=829) with the lowest B_noise ever recorded (0.07). Step 15K's
   spike had B_noise=0.27 (elevated), step 17K had 0.15, step 21K had 0.07. The
   oscillation is purely LR-driven loss landscape exploration, not gradient noise.
 
-This widening band is characteristic of SGD near a flat saddle point with a too-high LR.
-The model explores increasingly distant regions of loss landscape, occasionally finding
-better minima (best-envelope) but also overshooting into worse basins (spikes). Once
-cosine decay engages (~step 30K), the band should narrow rapidly.
+Through step 21K, this widening band was characteristic of SGD near a flat saddle point
+with a too-high LR. After step 21K, 4 consecutive non-spike evals (including a new best)
+suggest the band is beginning to narrow as cosine decay drops LR below 95% of peak.
+Full narrowing expected once LR drops to 90% peak (~step 30K).
 
 The key question: will v13 surpass v9's final ppl=129? The raw step comparison is
 misleading because of the LR schedule mismatch. **LR-equivalent step mapping** shows
@@ -368,7 +370,7 @@ At the LR-equivalent of v9's convergence point (v13 step 115K), v13 will have se
 fitting a power law to the noisy high-LR regime — it cannot model the convergence
 acceleration from LR decay that hasn't happened yet.
 
-**Best-envelope trajectory** (log-linear fit on all 7 new-best checkpoints through step 22K):
+**Best-envelope trajectory** (log-linear fit on 8 new-best checkpoints through step 25K):
 
 | Step | Best-envelope ppl (actual) | Fit prediction | Key milestone |
 |------|---------------------------|----------------|---------------|
@@ -395,22 +397,21 @@ grounded long-term prediction: val_ppl 80-120 at step 155K.
 | Phase change | 5K-10K | 426 | 4/5 | 99-100% |
 | Early high-LR | 10K-15K | 355 | 4/5 | 98-99% |
 | Mid high-LR | 15K-20K | 373 | 4/5 | 97-98% |
-| Late high-LR | 20K-25K | 314 | 1/2 (so far) | 96-97% |
+| Late high-LR | 20K-25K | 314 | 5/6 | 95-97% |
 
 **Key observation**: The non-spike median barely improved from 10K-15K (355) to 15K-20K
-(373). The model's *typical* performance stagnates during the high-LR phase — only the
-best-envelope slowly improves as the model occasionally discovers better minima. Once
-cosine decay engages (~step 30K), the median should converge toward the best-envelope
-as the model stabilizes in deeper basins.
+(373), but dropped to 314 in the 20K-25K window — the first meaningful median improvement
+during the high-LR phase. This coincides with LR dropping below 95% of peak, suggesting
+even modest decay helps stabilize the model's typical performance. Once cosine decay fully
+engages (~step 30K), the median should converge toward the best-envelope as the model
+stabilizes in deeper basins.
 
-**Spike frequency**: High-LR spikes at steps 7K, 12K, 17K, 20K, 21K. Intervals: 5K, 5K,
-3K, 1K — accelerating. 5 spikes in 18 post-phase-change evals (28%). Steps 20K-21K were the
-first consecutive spikes (worst: ppl=829). **Step 22K proved the model is fine**: recovered
-from 829 to 314 in a single eval — near-best (308 at step 16K). Recovery pattern is
-consistent and robust: every spike is followed by a return to near-best-envelope within
-1-2 evals. The model's learned representations are intact; spikes reflect the stochastic
-nature of validation on different mini-batches when the LR is near peak and the model sits
-in a broad, shallow basin.
+**Spike frequency**: High-LR spikes (>500) at steps 7K, 12K, 17K, 20K, 21K. 5 spikes in
+21 post-phase-change evals (24%). After the worst consecutive spikes (20K-21K, peaking at
+829), the model produced 4 consecutive non-spike evals (22K-25K), including a NEW BEST
+(286 at step 25K). This stabilization coincides with early cosine decay (LR crossing below
+95% peak). Recovery is always immediate: spikes are followed by near-best performance within
+1-2 evals, confirming learned representations are intact through the high-LR regime.
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
