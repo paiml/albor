@@ -13,7 +13,8 @@ apr train apply configs/train/pretrain-350m.yaml --seed 42
 **Produces**: `albor-base-350m` — raw pre-trained model
 **Exercises**: entrenar, trueno (CUDA), alimentar (data streaming)
 **Expected**: OPT-350M class on general benchmarks (~48% avg). On HumanEval,
-target >8% (above random, below CodeGen-350M's 12.8% due to less training data)
+target >8% (above random, below CodeGen-350M's 12.8% due to less training data).
+v13 is training on 5.08B tokens (73% Chinchilla-optimal), projected val_ppl 100-166
 
 ### 7.2 Stage 2: Synthetic Data Distillation from Qwen3-Coder-30B
 
@@ -118,15 +119,17 @@ Code completion metrics (HumanEval, FIM) are primary; general benchmarks are sec
 
 | Stage | Model | Params | Size | HumanEval | MBPP | CPU tok/s |
 |-------|-------|--------|------|-----------|------|-----------|
-| 1 | albor-base (v8) | 350M | ~700MB | 0% | 0% | — |
+| 1 | albor-base (v13) | 350M | ~700MB | TBD | TBD | — |
 | 2 | albor-distill | 350M | ~700MB | ~3-9% | ~2-5% | — |
 | 3 | albor-instruct | 350M | ~700MB | ~5-11% | ~3-7% | — |
 | 4 | albor-merged | 350M | ~700MB | ~6-12% | ~4-8% | — |
 | 5 | albor-pruned | ~175M | ~350MB | ~4-9% | ~3-6% | — |
 | 6 | albor-q4 | 350M | ~90MB | ~5-11% | ~3-7% | >50 |
 
-*Stage 1 numbers are actual (v8 step 1100, val_ppl=879, 0/164 HumanEval).
-Stage 2+ numbers are estimates. Distillation uses synthetic data generation
-(not logit-level KD) due to vocab mismatch between teacher and student.
-Any non-zero HumanEval from a 350M sovereign-stack model is a meaningful result.
+*Stage 1 numbers are from v8 (val_ppl=879, 0/164 HumanEval). v13 RUNNING —
+currently at step 14K, best val_ppl=328. Projected final val_ppl 100-166 at
+step 155K (5.08B tokens). Stage 2+ numbers are estimates. Distillation uses
+synthetic data generation (not logit-level KD) due to vocab mismatch between
+teacher (151K Qwen BPE) and student (32K Albor BPE). Any non-zero HumanEval
+from a 350M sovereign-stack model is a meaningful result.
 CPU tok/s measured on Xeon at Q4.*

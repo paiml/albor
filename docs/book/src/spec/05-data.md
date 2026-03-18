@@ -10,11 +10,13 @@
 
 ### 5.2 Data Mix (Target: ~10B tokens)
 
-**Current status (2026-03-05)**: v3 dataset in preparation — 2M Python files from
-codeparrot-clean (~4.4B tokens raw, ~5.3B pretokenized at seq_len=1024). v2
-dataset had only 139M tokens (67,977 sequences × 2048), which is 0.9% of
-Chinchilla-minimum for 350M params. v3 provides sufficient data for 1B+ token
-training runs. See §5.4.2 for the v3 pipeline.
+**Current status (2026-03-18)**: v3 dataset BUILT and IN USE by v13 training run.
+2M Python files from codeparrot-clean → 4.9M sequences × 1024 = 5.0B tokens in
+19 shards. v13 is training on the full v3 dataset (155K steps, 73% Chinchilla-optimal
+for 350M params). See §5.4.2 for the v3 pipeline.
+
+v2 dataset (139M tokens, 67,977 sequences × 2048) was used for early runs (v1-v8)
+but was only 0.9% of Chinchilla-minimum. v3 provides 36x more tokens.
 
 Following the phi-1 playbook: maximum concentration on Python. phi-1 proved that
 a small model (1.3B) with focused data and distillation can hit 50% HumanEval —

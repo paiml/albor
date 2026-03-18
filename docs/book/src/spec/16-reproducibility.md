@@ -129,12 +129,13 @@ python scripts/pretokenize-codeparrot.py \
 /mnt/nvme-raid0/targets/aprender/release/apr train apply \
     --task pretrain --config configs/train/pretrain-50m-quick.yaml
 
-# 350M v8 — current production config (~24 hours on RTX 4090)
-# All ALB-079–105 fixes applied, APR checkpoints with resume
+# 350M v13 — current production run (~7 days on RTX 4090)
+# All ALB-079–119 fixes applied, GPU optimizer state checkpointed (ALB-118)
 /mnt/nvme-raid0/targets/aprender/release/apr train apply \
-    --task pretrain --config configs/train/pretrain-350m-v8.yaml
-# v8: cosine LR, ga=8, 20K steps, 32K tokens/step, 655M tokens
-# Data: codeparrot-clean 5.3B tokens (19 shards, streaming loader)
+    --task pretrain --config configs/train/pretrain-350m-v13.yaml
+# v13: cosine LR over 155K steps, ga=8, batch=4, seq=1024, 32K tokens/step
+# Data: codeparrot-clean 5.0B tokens (19 shards, streaming loader)
+# RoPE forward+backward (ALB-119), GPU optimizer state saved (ALB-118)
 
 # Build apr-cli with local patches
 cd ~/src/aprender && CARGO_TARGET_DIR=/mnt/nvme-raid0/targets/aprender \

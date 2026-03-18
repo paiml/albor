@@ -61,7 +61,6 @@ The GPU-resident `CudaTransformerTrainer` keeps all 24 blocks in VRAM (weights +
 AdamW states ≈ 5 GB) plus a shared workspace for activations (~10-12 GB). This
 is tighter than the speculative estimate because the shared workspace includes
 attention score matrices that scale as O(heads × seq² × batch). Batch size is
-fixed at 4. Note: `gradient_accumulation` is set to 1 for the v2 config, though
-per-block CPU gradient accumulation is now fully implemented via
-`PerBlockGradientAccumulator` (D2H download, CPU averaging, H2D upload).
-See §6.4 for detailed breakdown.
+fixed at 4 with `gradient_accumulation=8` (effective batch = 32 sequences = 32,768
+tokens/step). GPU-resident gradient accumulation via `CudaGradWorkspace` — no
+D2H transfers during accumulation. See §6.4 for detailed breakdown.
