@@ -303,9 +303,11 @@ This is not a bug — it's an expected consequence of a 155K-step cosine schedul
 v9-shifted trajectory model is invalidated: v9 and v13 have fundamentally different LR
 profiles at the same step count. The right comparison is at the same LR, not the same step.
 
-**Gradient norm**: ZClip fires on ~34% of steps (z>2.0 threshold), with gnorm EMA at
-0.25-0.32. Max gnorm 1.48 at step 5043. No gradient explosion — the regression is not
-caused by unstable optimization.
+**Gradient diagnostics**: ZClip fires on ~34% of steps (z>2.0 threshold), with gnorm
+EMA at 0.25-0.32. Max gnorm 1.48 at step 5043. No gradient explosion. B_noise
+(gradient noise scale) averages ~0.12 at steps 10K-14K, down from ~0.17 at steps
+2K-4K — a healthy trend showing gradients becoming more signal-dominated over time.
+Occasional spikes (B_noise=0.36 at step 14K) don't persist.
 
 **v13 convergence trajectory** (best-envelope vs oscillation):
 
@@ -320,12 +322,25 @@ and (2) **extreme oscillation** with spikes to 655/698 at steps 7K/12K.
 | High-LR oscillation | 6K-14K | 328 | slow improvement | 99-96% |
 | LR decay (predicted) | 30K-155K | <100? | accelerating convergence | 90→10% |
 
-The key question: will v13 surpass v9's final ppl=129? At step 14K (459M tokens), v13
-is at 332 while v9 was at 129 — a 2.6x gap. But v9's LR was at 26% of peak (already
-heavily decayed), while v13 is at 96%. v13 has 141K more steps and 4.6B more tokens.
-The trainer predicts ppl=166 at step 155K, but this extrapolation from the noisy
-high-LR region is likely pessimistic — convergence should accelerate once the cosine
-schedule starts meaningful decay around step 30K-40K.
+The key question: will v13 surpass v9's final ppl=129? The raw step comparison is
+misleading because of the LR schedule mismatch. **LR-equivalent step mapping** shows
+when v13 reaches the same LR as v9 at key milestones:
+
+| v9 milestone | v9 step | v9 LR | v13 equiv step | v13 tokens | v13 data advantage |
+|-------------|---------|-------|---------------|-----------|-------------------|
+| Phase change (ppl=287) | 7K | 2.33e-4 | 53K | 1.74B | 3.5x |
+| ppl=200 | 10K | 1.70e-4 | 77K | 2.51B | 5.1x |
+| ppl=129 | 14K | 8.83e-5 | 108K | 3.54B | 7.2x |
+| Converged (ppl=129) | 15K | 7.23e-5 | 115K | 3.78B | 7.7x |
+
+At the LR-equivalent of v9's convergence point (v13 step 115K), v13 will have seen
+7.7x more tokens. Chinchilla scaling suggests ppl ~ D^(-0.095), so 7.7x more data →
+~21% lower ppl. If v9 hit 129 at this LR, v13 should reach ~105 at step 115K, with
+40K more steps of LR decay remaining.
+
+**Projection**: val_ppl 80-120 at step 155K. The built-in predictor says 166 but is
+fitting a power law to the noisy high-LR regime — it cannot model the convergence
+acceleration from LR decay that hasn't happened yet.
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
