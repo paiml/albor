@@ -93,7 +93,7 @@ learning rate (ALB-079) and insufficient batch size (ALB-080).
 | StarCoderBase-1B | 1B | 15.2% | — | Yes | 1T (The Stack v2) | Multi-language code model |
 | CodeGen-350M-mono | 350M | 12.8% | — | No | 577B (mixed) | Same param count, no distillation |
 | **albor-base (target)** | **350M** | **>8%** | **>8%** | **Yes** | **10B** | **Pre-distillation baseline** |
-| **albor-distill (target)** | **350M** | **>15%** | **>12%** | **Yes** | **10B + distill** | **Post-distillation from 80B teacher** |
+| **albor-distill (target)** | **350M** | **>15%** | **>12%** | **Yes** | **5B + distill** | **Post-distillation from 30B MoE teacher** |
 
 **†phi-1-small caveat**: phi-1-small was never publicly released — it exists
 only as an ablation study in "Textbooks Are All You Need" (Gunasekar et al.,
@@ -102,7 +102,7 @@ reproduced. We treat it as an aspirational ceiling, not a verified baseline.
 
 The benchmark to beat is **CodeGen-350M-mono** (same param count, no
 distillation, no FIM, 12.8% HumanEval). The realistic target for distillation
-is **+2-5 points** over the base model. Albor uses a stronger teacher (80B MoE)
+is **+2-5 points** over the base model. Albor uses a stronger teacher (Qwen3-Coder-30B MoE, 3.3B active)
 but faces a significant architecture mismatch (MoE teacher → dense student)
 and uses a first-generation Rust training stack instead of PyTorch.
 
