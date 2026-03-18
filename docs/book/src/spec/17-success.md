@@ -31,9 +31,9 @@
 | v10 | 5,058 | 660 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer + low LR |
 | v11 | 8,150 | 750 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer |
 | v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
-| **v13** | **22,000+** | **308** | **8,292** | **24.0%** | **RUNNING** — best val_ppl=308 (step 16K). Step 22K: 314 (full recovery from 829 spike). Spikes transient, model intact. Target: 155K steps (5.08B tokens), ETA March 24 |
+| **v13** | **25,000+** | **286** | **8,308** | **24.1%** | **RUNNING** — best val_ppl=286 (step 25K, NEW BEST). Broke 9K-step plateau (was 308 at step 16K). Cosine decay engaging. Target: 155K steps (5.08B tokens), ETA March 24 |
 
-**v13 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. 14.2% complete (step 22K/155K). Best val_ppl=308 at step 16K, step 22K at 314 (near-best). Oscillation pattern resolved: worst spike ever (829 at step 21K) followed by immediate full recovery (314 at step 22K). **Spikes are cosmetic** — the model's learned representations are intact; val_ppl variability reflects stochastic mini-batch evaluation in a broad shallow basin at near-peak LR. B_noise definitively uncorrelated (lowest B_noise=0.07 at worst spike). LR at 96% of peak; meaningful decay begins ~step 30K. Projected val_ppl 80-120 at step 155K.
+**v13 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. 16.1% complete (step 25K/155K). **Best val_ppl=286 at step 25K** — NEW BEST, breaking 9K-step plateau (was 308 at step 16K). 7.1% improvement coincides with early cosine decay (LR=94.7% of peak). Oscillation pattern resolved: spikes (up to 829) are cosmetic — model always recovers within 1-2 evals. B_noise definitively uncorrelated with spikes. Log-linear best-envelope fit (R²=0.79) predicts v9-match (ppl≈129) around step 28K. Projected val_ppl 80-120 at step 155K.
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline

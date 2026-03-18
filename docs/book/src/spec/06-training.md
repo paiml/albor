@@ -232,7 +232,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.73 | ~6.5 days | **RUNNING** — 8.3K tok/s, 24.1% MFU. Best val_ppl=**308** at step 16K. 20K steps complete (12.9%). High oscillation at near-peak LR: 4 spikes (>500) in 17 post-phase-change evals (24%). Best-envelope improving: 426→328→308. Predicted ppl=80-120 at step 155K. |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.66 | ~6.5 days | **RUNNING** — 8.3K tok/s, 24.0% MFU. Best val_ppl=**286** at step 25K (NEW BEST — first record since step 16K). 25K steps (16.1%). Spikes transient (24%, worst 829→recovered to 314 in 1 eval). Best-envelope: 426→328→308→286. Predicted ppl=80-120 at step 155K. |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
@@ -259,7 +259,10 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 19000 | — | 317 | — | continued recovery — only 2.9% above best-envelope (308). 717→373→317 trajectory. |
 | 20000 | — | **624** | — | **spike** — 3K after step 17K spike (breaks 5K periodicity). B_noise=0.30 (elevated). 2.0x best-envelope. **v9's max_steps** — v13 enters unexplored territory. |
 | 21000 | — | **829** | — | **worst eval yet** — exceeds step 1K random init (800). B_noise=0.07 (lowest ever!). Two consecutive spikes (20K+21K). val_loss=6.72 (only 17% above best 5.73 — ppl exponential amplifies). |
-| 22000 | — | **314** | — | **FULL RECOVERY** — from 829 to 314 in 1 eval. Near-best (308 at step 16K). Confirms oscillation is transient, model knowledge intact. Strongest evidence spikes are cosmetic. |
+| 22000 | — | **314** | — | **FULL RECOVERY** — from 829 to 314 in 1 eval. Near-best (308 at step 16K). Confirms oscillation is transient, model knowledge intact. |
+| 23000 | — | 313 | — | near-best, second consecutive good eval (314→313). Model stabilizing near best-envelope. |
+| 24000 | — | 407 | — | moderate regression — normal oscillation (not a >500 spike). B_noise=0.21. |
+| 25000 | — | **286** | — | **NEW BEST** — first record since step 16K (308). 7.1% improvement. Checkpoint saved. LR=2.84e-4 (94.7% peak) — decay beginning to help. |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -375,9 +378,9 @@ acceleration from LR decay that hasn't happened yet.
 | 8K | 414 | 410 | — |
 | 9K | 366 | 386 | — |
 | 10K | 328 | 363 | — |
-| 16K | 308 | 256 | Latest new-best |
+| 16K | 308 | 256 | — |
 | 22K | (314) | 194 | Near-best (recovery from 829 spike) |
-| 25K | — | 154 | Next checkpoint save |
+| **25K** | **286** | **154** | **NEW BEST — first record in 9K steps** |
 | 28K | — | 129 | Predicted v9 match |
 | 30K | — | 115 | LR at 90% peak |
 
