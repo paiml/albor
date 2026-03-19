@@ -272,7 +272,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 31000 | — | 336 | — | Recovery (573→336). LR=2.74e-4 (91% peak). |
 | 32000 | — | **239** | — | **NEW BEST** — first sub-250! 5.1% below previous best (252). Full recovery from 573 spike. LR=2.73e-4 (91%). |
 | 33000 | — | 262 | — | Near-best. Predictor slope turned positive (0.12). |
-| 34000 | — | 300 | — | Normal oscillation. Predictor slope 0.26, predicts 215 at 155K. LR=2.69e-4 (90% peak). |
+| 34000 | — | 300 | — | Normal oscillation. Predictor slope 0.26. LR=2.69e-4 (90% peak). |
+| 35000 | — | 334 | — | Moderate regression. Checkpoint saved. LR=2.67e-4 (89%). Predictor: 242 at 155K. |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
