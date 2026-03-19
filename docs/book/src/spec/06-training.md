@@ -265,6 +265,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 25000 | — | **286** | — | **NEW BEST** — first record since step 16K (308). 7.1% improvement. Checkpoint saved. LR=2.84e-4 (94.7% peak) — decay beginning to help. |
 | 25671 | — | — | — | **SYSTEM REBOOT** — training killed. Resumed from step 25K checkpoint. Lost 671 steps (~40 min). |
 | 26000 | — | **252** | — | **NEW BEST** — 11.8% improvement over 286. Second consecutive record. Post-resume with fresh GPU optimizer moments — convergence unaffected. LR=2.82e-4. |
+| 27000 | — | 421 | — | Oscillation spike — expected pattern resumes. Not a >500 spike. Predictor reset by resume (only 2 points). |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
