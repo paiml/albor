@@ -6,36 +6,44 @@
 # This prevents the LR schedule, AdamW bias correction, and max_steps check
 # from inheriting stale state from a source checkpoint.
 
-contract:
-  id: C-FRESH-TRAIN-001
-  title: "Fresh training step counter starts at zero"
-  status: IMPLEMENTED
-  gap: ALB-117
-  issue: "https://github.com/paiml/entrenar/issues/273"
+metadata:
+  version: "1.0.0"
+  description: "Fresh training step counter starts at zero when no checkpoint in output_dir"
+  references:
+    - "ALB-117"
+    - "https://github.com/paiml/entrenar/issues/273"
 
-  invariant: |
-    For any training run where output_dir contains no checkpoint:
-      initial_step = 0
-    regardless of checkpoint_step embedded in model_path APR metadata
-    or model-step-N.apr filename.
+equations:
+  fresh_step:
+    formula: "initial_step = 0 when no checkpoint in output_dir"
+    domain: "output_dir contains no model-step-N.apr or model-best.apr"
+    invariants:
+      - "initial_step = 0 regardless of checkpoint_step in model_path APR metadata"
+      - "LR schedule, AdamW bias correction, max_steps check start from step 0"
 
-  falsification:
-    - name: "model_path with step does not leak"
-      given: "model.path = dir containing model-step-14500.apr, output_dir = empty"
-      when: "load_transformer_model(model_path, config, output_dir)"
-      then: "checkpoint_step = 0"
+  resume_step:
+    formula: "initial_step = N when output_dir contains model-step-N.apr"
+    domain: "output_dir contains a checkpoint"
+    invariants:
+      - "checkpoint_step preserved from output_dir resume"
 
-    - name: "output_dir resume preserves step"
-      given: "output_dir = dir containing model-step-500.apr"
-      when: "load_transformer_model(model_path, config, output_dir)"
-      then: "checkpoint_step = 500"
+falsification:
+  - name: "model_path with step does not leak"
+    given: "model.path = dir containing model-step-14500.apr, output_dir = empty"
+    when: "load_transformer_model(model_path, config, output_dir)"
+    then: "checkpoint_step = 0"
 
-    - name: "max_steps not prematurely reached"
-      given: "model_path has step=14500, max_steps=5, output_dir empty"
-      when: "training loop starts"
-      then: "trainer.step() = 0 AND at least 5 train_batch() calls execute"
+  - name: "output_dir resume preserves step"
+    given: "output_dir = dir containing model-step-500.apr"
+    when: "load_transformer_model(model_path, config, output_dir)"
+    then: "checkpoint_step = 500"
 
-  evidence:
-    commit: "pending"
+  - name: "max_steps not prematurely reached"
+    given: "model_path has step=14500, max_steps=5, output_dir empty"
+    when: "training loop starts"
+    then: "trainer.step() = 0 AND at least 5 train_batch() calls execute"
+
+bindings:
+  - function: "load_transformer_model"
     file: "entrenar/src/config/train/loader.rs"
-    fix: "Override checkpoint_step to 0 when loading from model_path (lines 2365-2372)"
+    evidence: "Override checkpoint_step to 0 when loading from model_path (lines 2365-2372)"
