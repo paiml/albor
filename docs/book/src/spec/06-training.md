@@ -232,7 +232,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.53 | ~6.5 days | **RUNNING** — 8.4K tok/s, 26.5% MFU. Best val_ppl=**252** at step 26K (NEW BEST). Resumed from step 25K after system reboot. Best-envelope: 426→328→308→286→252. Convergence accelerating. |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.48 | ~5.1 days | **RUNNING** — 8.8K tok/s, 27.8% MFU. Best val_ppl=**239** at step 32K (NEW BEST, first sub-250). Best-envelope: 426→328→308→286→252→239. Convergence accelerating through cosine decay. |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
@@ -269,7 +269,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 28000 | — | 384 | — | Recovering from spike (421→384). |
 | 29000 | — | 389 | — | Still elevated. Post-resume GPU optimizer cold start → slower recovery. |
 | 30000 | — | **573** | — | **Severe spike** — first >500 since step 21K. LR=2.76e-4 (92% peak). Checkpoint saved. |
-| 31000 | — | 336 | — | Recovery (573→336). Pattern intact — expect near-best by step 32K. LR=2.74e-4 (91% peak). |
+| 31000 | — | 336 | — | Recovery (573→336). LR=2.74e-4 (91% peak). |
+| 32000 | — | **239** | — | **NEW BEST** — first sub-250! 5.1% below previous best (252). Full recovery from 573 spike + new record in 2 evals. LR=2.73e-4 (91%). |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -346,7 +347,7 @@ records (286, 252) confirm convergence is accelerating as cosine decay engages.
 **Oscillation pattern analysis (steps 6K-17K)**: The oscillation is not random noise —
 it has structure. Best-envelope checkpoints (new val_ppl records) and worst spikes both
 intensify over time, producing a widening band:
-- Best-envelope: 426 (5K) → 328 (10K) → 308 (16K) → 286 (25K) → **252 (26K)** — accelerating
+- Best-envelope: 426 (5K) → 328 (10K) → 308 (16K) → 286 (25K) → 252 (26K) → **239 (32K)** — accelerating
 - Spike peaks: 655 (7K) → 698 (12K) → 829 (21K) — worst spikes intensified but stopped after step 21K
 - B_noise is NOT correlated with spikes. **Definitive evidence**: step 21K has the
   worst spike ever (ppl=829) with the lowest B_noise ever recorded (0.07). Step 15K's
@@ -405,8 +406,8 @@ as a signal that the model is entering the fast convergence phase.
 | 16K | 308 | 256 | — |
 | 22K | (314) | 220 | Near-best (recovery from 829 spike) |
 | 25K | 286 | 237 | NEW BEST — broke 9K-step plateau |
-| **26K** | **252** | **229** | **NEW BEST — 11.8% drop. Post-resume, convergence accelerating** |
-| 30K | — | 198 | LR at 90% peak — decay acceleration expected |
+| 26K | 252 | 229 | NEW BEST — 11.8% drop. Post-resume, convergence accelerating |
+| **32K** | **239** | **208** | **NEW BEST — first sub-250. Convergence continues through spikes** |
 | 42K | — | 129 | Predicted v9 match |
 | 50K | — | 98 | Mid-decay |
 

@@ -31,9 +31,9 @@
 | v10 | 5,058 | 660 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer + low LR |
 | v11 | 8,150 | 750 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer |
 | v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
-| **v13** | **26,000+** | **252** | **8,438** | **26.5%** | **RUNNING** — best val_ppl=252 (step 26K, NEW BEST). Convergence accelerating: 286→252 (11.8%). Resumed from step 25K after reboot. Target: 155K steps, ETA March 24 |
+| **v13** | **32,000+** | **239** | **8,840** | **27.8%** | **RUNNING** — best val_ppl=239 (step 32K, NEW BEST, first sub-250). Convergence accelerating through cosine decay. 20.6% complete, 1.05B tokens. Target: 155K steps, ETA March 24 |
 
-**v13 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. 16.8% complete (step 26K/155K). **Best val_ppl=252 at step 26K** — NEW BEST, convergence accelerating (286→252, 11.8% in 1 eval). Resumed from step 25K after system reboot — fresh GPU optimizer moments did not hurt convergence. Oscillation pattern: spikes (up to 829) are cosmetic, model always recovers. 5 consecutive non-spike evals (22K-26K). Projected val_ppl 80-120 at step 155K.
+**v13 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. 20.6% complete (step 32K/155K). **Best val_ppl=239 at step 32K** — NEW BEST, first sub-250. Convergence accelerating through cosine decay (LR at 91% peak). Best-envelope: 308→286→252→239. Resumed from step 25K after reboot — spikes persist (573 at 30K) but always recover within 2 evals. Projected val_ppl 80-120 at step 155K.
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline

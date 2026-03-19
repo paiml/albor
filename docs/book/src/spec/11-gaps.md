@@ -199,7 +199,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | v10 | 5058 | 166M | 660 | KILLED (plateau) | ALB-118: fresh GPU optimizer + low LR (1e-4) |
 | v11 | 8150 | 267M | 750 | KILLED (plateau) | ALB-118: fresh GPU optimizer + same LR (3e-4) |
 | v12 | 37 | 1.2M | 5639 | KILLED | ALB-118: resume loaded embed optimizer only, full-LR step destroyed weights |
-| v13 | 26K/155K (16.8%) | 852M/5.08B | **252** (step 26K best) | **RUNNING** | ETA March 24. Convergence accelerating: 286→252 (11.8%) in 1 eval. Resumed from step 25K after system reboot. Projected ppl 80-120 at 155K. |
+| v13 | 32K/155K (20.6%) | 1.05B/5.08B | **239** (step 32K best) | **RUNNING** | ETA March 24. First sub-250 val_ppl. Envelope: 308→286→252→239. Spikes (573 at 30K) recover within 2 evals. Projected ppl 80-120 at 155K. |
 | distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*
