@@ -275,7 +275,10 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 34000 | — | 300 | — | Normal oscillation. Predictor slope 0.26. LR=2.69e-4 (90% peak). |
 | 35000 | — | 334 | — | Moderate regression. Checkpoint saved. LR=2.67e-4 (89%). |
 | 36000 | — | **568** | — | **Severe spike**. Second >500 post-resume (cf. step 30K: 573). LR=2.64e-4. |
-| 37000 | — | 412 | — | Recovering (568→412). LR=2.63e-4 (88%). Pattern intact. |
+| 37000 | — | 412 | — | Recovering (568→412). LR=2.63e-4 (88%). |
+| 38000 | — | 323 | — | Continued recovery. LR=2.60e-4 (87%). |
+| 39000 | — | 345 | — | Moderate regression. LR=2.58e-4 (86%). |
+| 40000 | — | 370 | — | Still elevated. Checkpoint saved. LR=2.57e-4 (86%). 25.8% complete, 1.31B tokens. |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
