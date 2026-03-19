@@ -44,14 +44,18 @@ falsification:
     then: "trainer.step() = 0 AND at least 5 train_batch() calls execute"
 
 proof_obligations:
-  - id: PO-FRESH-001
+  - type: invariant
+    id: PO-FRESH-001
     equation: fresh_step
     property: "initial_step = 0 when output_dir has no checkpoint"
+    formal: "For all model_path with step S: if output_dir has no checkpoint, then initial_step = 0"
     proof_level: L1
 
-  - id: PO-FRESH-002
+  - type: invariant
+    id: PO-FRESH-002
     equation: resume_step
     property: "initial_step = N when output_dir has model-step-N.apr"
+    formal: "For output_dir containing model-step-N.apr: initial_step = N"
     proof_level: L1
 
 falsification_tests:
