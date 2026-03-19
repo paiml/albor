@@ -268,7 +268,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 27000 | — | 421 | — | Oscillation spike. Not >500. Predictor reset by resume (2 points). |
 | 28000 | — | 384 | — | Recovering from spike (421→384). |
 | 29000 | — | 389 | — | Still elevated. Post-resume GPU optimizer cold start → slower recovery. |
-| 30000 | — | **573** | — | **Severe spike** — first >500 since step 21K. Post-resume oscillation amplified. LR=2.76e-4 (92% peak). Checkpoint saved. |
+| 30000 | — | **573** | — | **Severe spike** — first >500 since step 21K. LR=2.76e-4 (92% peak). Checkpoint saved. |
+| 31000 | — | 336 | — | Recovery (573→336). Pattern intact — expect near-best by step 32K. LR=2.74e-4 (91% peak). |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
