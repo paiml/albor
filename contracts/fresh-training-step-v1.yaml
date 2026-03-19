@@ -43,6 +43,46 @@ falsification:
     when: "training loop starts"
     then: "trainer.step() = 0 AND at least 5 train_batch() calls execute"
 
+proof_obligations:
+  - id: PO-FRESH-001
+    equation: fresh_step
+    property: "initial_step = 0 when output_dir has no checkpoint"
+    proof_level: L1
+
+  - id: PO-FRESH-002
+    equation: resume_step
+    property: "initial_step = N when output_dir has model-step-N.apr"
+    proof_level: L1
+
+falsification_tests:
+  - id: F-FRESH-001
+    obligation: PO-FRESH-001
+    test: "test_fresh_step_from_model_path"
+    strategy: "Load model with step=14500 into empty output_dir, assert step=0"
+
+  - id: F-FRESH-002
+    obligation: PO-FRESH-002
+    test: "test_resume_preserves_step"
+    strategy: "Load model with output_dir containing checkpoint, assert step matches"
+
+kani_harnesses:
+  - id: KANI-FRESH-001
+    obligation: PO-FRESH-001
+    property: "Fresh step is always 0 when no checkpoint exists"
+    bound: 4
+    strategy: exhaustive
+    harness: verify_fresh_step_zero
+
+qa_gate:
+  id: F-FRESH-GATE
+  name: "Fresh Training Step Contract"
+  min_coverage: 0.90
+  max_complexity: 10
+  required_tests:
+    - "test_fresh_step_from_model_path"
+    - "test_resume_preserves_step"
+    - "test_max_steps_not_prematurely_reached"
+
 bindings:
   - function: "load_transformer_model"
     file: "entrenar/src/config/train/loader.rs"
