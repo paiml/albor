@@ -63,7 +63,7 @@ the model has learned to concentrate probability mass on the correct tokens.
 | 32,768 | Random baseline (uniform over vocab) | Untrained / step 0 |
 | ~1,000 | Basic token frequency learned | v3 plateau (step 12K-28K) |
 | ~500 | Phase change — position encoding learned | v13 step 4K, v9 step 4.75K |
-| ~300 | Token co-occurrence and local patterns | v13 best-envelope (step 25K, 819M tokens) |
+| ~250 | Token co-occurrence and local patterns | v13 best-envelope (step 26K, 852M tokens) |
 | ~130 | Sentence-level patterns and common idioms | v9 plateau (step 14K, 490M tokens); v13 projected ~step 42K |
 | ~50 | Syntactic patterns and code structure captured | v13 target at ~1.5B tokens |
 | ~30 | Strong code model — predicts Python structure | Good 350M model (Chinchilla-trained) |
