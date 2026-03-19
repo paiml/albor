@@ -267,7 +267,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 26000 | — | **252** | — | **NEW BEST** — 11.8% improvement over 286. Second consecutive record. Post-resume with fresh GPU optimizer moments — convergence unaffected. LR=2.82e-4. |
 | 27000 | — | 421 | — | Oscillation spike. Not >500. Predictor reset by resume (2 points). |
 | 28000 | — | 384 | — | Recovering from spike (421→384). |
-| 29000 | — | 389 | — | Still elevated. Post-resume GPU optimizer cold start may cause slower recovery. 3 evals above best-envelope (252). |
+| 29000 | — | 389 | — | Still elevated. Post-resume GPU optimizer cold start → slower recovery. |
+| 30000 | — | **573** | — | **Severe spike** — first >500 since step 21K. Post-resume oscillation amplified. LR=2.76e-4 (92% peak). Checkpoint saved. |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
