@@ -199,7 +199,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | v10 | 5058 | 166M | 660 | KILLED (plateau) | ALB-118: fresh GPU optimizer + low LR (1e-4) |
 | v11 | 8150 | 267M | 750 | KILLED (plateau) | ALB-118: fresh GPU optimizer + same LR (3e-4) |
 | v12 | 37 | 1.2M | 5639 | KILLED | ALB-118: resume loaded embed optimizer only, full-LR step destroyed weights |
-| v13 | 32K/155K (20.6%) | 1.05B/5.08B | **239** (step 32K best) | **RUNNING** | ETA March 24. First sub-250 val_ppl. Envelope: 308→286→252→239. Spikes (573 at 30K) recover within 2 evals. Projected ppl 80-120 at 155K. |
+| v13 | 62K/155K (40%) | 2.03B/5.08B | **239** (step 32K, inflated) | **STOPPED** (patience=30) | System reboot → data loader restart → 2x data overlap. val_ppl collapsed from 239 to 782 at step 50K when model hit new data. gnorm collapsed 0.08→0.01. Best checkpoint may be overfit. |
 | distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*

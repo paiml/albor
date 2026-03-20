@@ -232,7 +232,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v11 (continue v9, lr=3e-4, fresh optim) | 8,150 | 7.94→6.62 | ~2.3h | **KILLED** (plateau) — val_ppl=750, worse than v10. ALB-118: re-warming doesn't fix same-data continuation. |
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
-| 350M v13 (from scratch, full epoch, 5.08B tokens) | 155K target | 10.40→5.48 | ~5.1 days | **RUNNING** — 8.8K tok/s, 27.8% MFU. Best val_ppl=**239** at step 32K (NEW BEST, first sub-250). Best-envelope: 426→328→308→286→252→239. Convergence accelerating through cosine decay. |
+| 350M v13 (from scratch, full epoch, 5.08B tokens) | 62K / 155K | 10.40→6.87 | 40.1h | **STOPPED** (patience=30) — Best val_ppl=**239** at step 32K (inflated by 2x data overlap). System reboot at step 25671 caused data loader restart → 2x overlap on shards 1-4 → val_ppl collapse at step 50K when model hit new data. gnorm collapsed 0.08→0.01. |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
@@ -294,6 +294,13 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 53000 | — | **799** | — | Plateau at ~786-806. Not recovering — **data distribution shift** (see below). |
 | 54000 | — | **786** | — | Flat. val_loss stable at 6.67. |
 | 55000 | — | **786** | — | 6 consecutive >500 evals. Checkpoint saved. 35.5% complete, 1.80B tokens. |
+| 56000 | — | **784** | — | 7th consecutive >500. gnorm collapsed to 0.01. |
+| 57000 | — | **782** | — | 8th consecutive. Flat at ~782. |
+| 58000 | — | **782** | — | 9th consecutive. Patience 26/30. |
+| 59000 | — | **781** | — | 10th consecutive. Patience 27/30. |
+| 60000 | — | **783** | — | 11th consecutive. Checkpoint saved. Patience 28/30. |
+| 61000 | — | **784** | — | 12th consecutive. Patience 29/30. |
+| 62000 | — | **782** | — | **EARLY STOP** — 30 evals without improvement. Best val_loss=5.48 (step 32K). Training time: 40.1h. |
 
 **Data distribution shift at step ~50,662**: The system reboot at step 25,671 forced a data
 loader restart from shard 1. Steps 25K-50.7K re-trained on shards 1-4 (already seen in the

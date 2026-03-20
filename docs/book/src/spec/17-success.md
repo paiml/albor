@@ -31,9 +31,9 @@
 | v10 | 5,058 | 660 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer + low LR |
 | v11 | 8,150 | 750 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer |
 | v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
-| **v13** | **32,000+** | **239** | **8,840** | **27.8%** | **RUNNING** — best val_ppl=239 (step 32K, NEW BEST, first sub-250). Convergence accelerating through cosine decay. 20.6% complete, 1.05B tokens. Target: 155K steps, ETA March 24 |
+| **v13** | **62,000** | **239** (inflated) | **8,400** | **26.4%** | **STOPPED** (patience=30) — best val_ppl=239 (step 32K) but inflated by 2x data overlap from reboot. val_ppl collapsed to ~782 at step 50K. 62K/155K steps (40%), 2.03B tokens, 40.1h. |
 
-**v13 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. 20.6% complete (step 32K/155K). **Best val_ppl=239 at step 32K** — NEW BEST, first sub-250. Convergence accelerating through cosine decay (LR at 91% peak). Best-envelope: 308→286→252→239. Resumed from step 25K after reboot — spikes persist (573 at 30K) but always recover within 2 evals. Projected val_ppl 80-120 at step 155K.
+**v13 training (STOPPED):** From scratch with RoPE forward+backward (ALB-119). Ran 62K/155K steps before early stopping. System reboot at step 25,671 caused data loader restart → 2x data overlap on shards 1-4. Best val_ppl=239 at step 32K was partly inflated by repeated data. At step ~50,662, model hit genuinely new data → val_ppl collapsed from ~288 to ~782 and never recovered (13 consecutive >500 evals). Gradient norm collapsed 0.08→0.01. **Root cause: data loader doesn't resume from correct position after checkpoint reload.** This is a new gap — the training infrastructure needs data position checkpointing.
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline
