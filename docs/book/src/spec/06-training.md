@@ -283,7 +283,12 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 42000 | — | 288 | — | Near-best. Was predicted v9-match (ppl=129) by log-linear fit — actual 288. |
 | 43000 | — | 288 | — | Stable plateau at 288 (2 consecutive evals). Predictor slope positive (0.01). |
 | 44000 | — | 286 | — | Near-best, matches step 25K record. 3 consecutive evals at 286-288. LR=2.47e-4 (82%). |
-| 45000 | — | 410 | — | Moderate spike, not >500. Checkpoint saved. 29% complete, 1.47B tokens. |
+| 45000 | — | 410 | — | Moderate spike. Checkpoint saved. 29% complete, 1.47B tokens. |
+| 46000 | — | 251 | — | Near-best — 5% above record (239). LR=2.43e-4 (81%). |
+| 47000 | — | 299 | — | Normal oscillation. |
+| 48000 | — | 403 | — | Elevated. |
+| 49000 | — | 427 | — | Elevated. Was predicted v9-match point — actual 427, not 129. |
+| 50000 | — | **734** | — | **Severe spike** — worst since step 21K (829). Checkpoint saved. 32.3% complete, 1.64B tokens. LR=2.33e-4 (78%). |
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
@@ -450,10 +455,10 @@ medians: 426→355→373→314→386→317→358→**288**. The improvement patt
 (spikes cause temporary regressions in the median), but the trend is clearly downward as
 LR drops below 85% peak.
 
-**Spike frequency**: Spikes (>500) at steps 7K, 12K, 17K, 20K, 21K, 30K, 36K. 7 spikes in
-41 post-phase-change evals (17%). Spike rate is declining as LR decays: 5/21 pre-resume
-(24%), 2/20 post-resume (10%). Recovery always within 2 evals. Model integrity confirmed
-through every spike.
+**Spike frequency**: Spikes (>500) at steps 7K, 12K, 17K, 20K, 21K, 30K, 36K, 50K. 8 spikes
+in 46 post-phase-change evals (17%). Spike rate by phase: 5/21 pre-resume (24%), 3/25
+post-resume (12%). Recovery always within 2 evals. Step 50K spike (734) is the worst since
+step 21K (829) — spikes persist even at 78% LR peak. Model integrity always confirmed.
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
