@@ -406,25 +406,25 @@ engages (~step 30K), the slope should **increase** — this will be a leading in
 convergence acceleration, visible before val_ppl drops dramatically. Watch for slope > 0.30
 as a signal that the model is entering the fast convergence phase.
 
-**Best-envelope trajectory** (log-linear fit on 8 new-best checkpoints through step 25K):
+**Best-envelope trajectory** (log-linear fit on 10 best-envelope points through step 32K):
 
 | Step | Best-envelope ppl (actual) | Fit prediction | Key milestone |
 |------|---------------------------|----------------|---------------|
-| 1K | 800 | 656 | — |
-| 4K | 499 | 522 | Phase change |
-| 5K | 426 | 491 | — |
-| 8K | 414 | 410 | — |
-| 9K | 366 | 386 | — |
-| 10K | 328 | 363 | — |
-| 16K | 308 | 256 | — |
-| 22K | (314) | 220 | Near-best (recovery from 829 spike) |
-| 25K | 286 | 237 | NEW BEST — broke 9K-step plateau |
-| 26K | 252 | 229 | NEW BEST — 11.8% drop. Post-resume, convergence accelerating |
-| **32K** | **239** | **208** | **NEW BEST — first sub-250. Convergence continues through spikes** |
-| 42K | — | 129 | Predicted v9 match |
-| 50K | — | 98 | Mid-decay |
+| 1K | 800 | 578 | — |
+| 4K | 499 | 474 | Phase change |
+| 5K | 426 | 460 | — |
+| 8K | 414 | 399 | — |
+| 9K | 366 | 387 | — |
+| 10K | 328 | 376 | — |
+| 16K | 308 | 312 | — |
+| 25K | 286 | 244 | Broke 9K plateau |
+| 26K | 252 | 237 | Post-resume new best |
+| **32K** | **239** | **201** | **First sub-250** |
+| 42K-44K | (286-288) | 149-145 | Stable plateau — "typical" matches old best-envelope |
+| 49K | — | 125 | Predicted v9 match |
+| 77K | — | 56 | LR-equiv of v9 ppl=200 |
 
-The log-linear fit (R²=0.67 on 8 best-envelope points) over-extrapolates at late steps
+The log-linear fit (R²=0.76 on 10 best-envelope points) over-extrapolates at late steps
 (predicts ppl=2 at 155K, nonsensical). The fit captures the high-LR regime but cannot model
 the two-phase behavior: slow improvement during near-peak LR → acceleration during cosine
 decay. The LR-equivalence analysis gives a more grounded long-term prediction: val_ppl
@@ -439,20 +439,21 @@ it fits the noisy high-LR regime and misses coming acceleration.
 | Early high-LR | 10K-15K | 355 | 4/5 | 98-99% |
 | Mid high-LR | 15K-20K | 373 | 4/5 | 97-98% |
 | Late high-LR | 20K-25K | 314 | 5/6 | 95-97% |
+| Early decay (post-resume) | 25K-30K | 386 | 4/5 | 92-95% |
+| Mid decay | 30K-35K | 317 | 4/5 | 89-92% |
+| Spike aftermath | 35K-40K | 358 | 4/5 | 86-89% |
+| **Convergence acceleration** | **40K-45K** | **288** | **5/5** | **82-86%** |
 
-**Key observation**: The non-spike median barely improved from 10K-15K (355) to 15K-20K
-(373), but dropped to 314 in the 20K-25K window — the first meaningful median improvement
-during the high-LR phase. This coincides with LR dropping below 95% of peak, suggesting
-even modest decay helps stabilize the model's typical performance. Once cosine decay fully
-engages (~step 30K), the median should converge toward the best-envelope as the model
-stabilizes in deeper basins.
+**Key observation**: The 40K-45K window median of 288 is a major breakthrough — the model's
+*typical* performance now matches the previous best-envelope (286 at step 25K). Non-spike
+medians: 426→355→373→314→386→317→358→**288**. The improvement pattern is not monotonic
+(spikes cause temporary regressions in the median), but the trend is clearly downward as
+LR drops below 85% peak.
 
-**Spike frequency**: High-LR spikes (>500) at steps 7K, 12K, 17K, 20K, 21K. 5 spikes in
-21 post-phase-change evals (24%). After the worst consecutive spikes (20K-21K, peaking at
-829), the model produced 4 consecutive non-spike evals (22K-25K), including a NEW BEST
-(286 at step 25K). This stabilization coincides with early cosine decay (LR crossing below
-95% peak). Recovery is always immediate: spikes are followed by near-best performance within
-1-2 evals, confirming learned representations are intact through the high-LR regime.
+**Spike frequency**: Spikes (>500) at steps 7K, 12K, 17K, 20K, 21K, 30K, 36K. 7 spikes in
+41 post-phase-change evals (17%). Spike rate is declining as LR decays: 5/21 pre-resume
+(24%), 2/20 post-resume (10%). Recovery always within 2 evals. Model integrity confirmed
+through every spike.
 
 **ALB-060: Training Configuration Epoch/Step Mismatch (Critical)**
 
