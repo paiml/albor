@@ -289,6 +289,20 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 48000 | — | 403 | — | Elevated. |
 | 49000 | — | 427 | — | Elevated. Was predicted v9-match point — actual 427, not 129. |
 | 50000 | — | **734** | — | **Severe spike** — worst since step 21K (829). Checkpoint saved. 32.3% complete, 1.64B tokens. LR=2.33e-4 (78%). |
+| 51000 | — | **756** | — | Consecutive spike. Data transition: step ~50,662 is where model sees NEW data after resume overlap. |
+| 52000 | — | **806** | — | Third consecutive >500. |
+| 53000 | — | **799** | — | Plateau at ~786-806. Not recovering — **data distribution shift** (see below). |
+| 54000 | — | **786** | — | Flat. val_loss stable at 6.67. |
+| 55000 | — | **786** | — | 6 consecutive >500 evals. Checkpoint saved. 35.5% complete, 1.80B tokens. |
+
+**Data distribution shift at step ~50,662**: The system reboot at step 25,671 forced a data
+loader restart from shard 1. Steps 25K-50.7K re-trained on shards 1-4 (already seen in the
+original run), creating a 2x data overlap. At step 50,662, the model transitions to genuinely
+new data (shard 4+). The val_ppl spike from ~288 to ~786 correlates precisely with this
+transition. **The best-envelope of 239-288 during steps 32K-46K was partly inflated by
+training on data seen twice.** The model should gradually adapt to new data and val_ppl
+should recover, but the true convergence trajectory is uncertain until the model processes
+sufficient unseen data.
 
 v9 had NO RoPE (position learned via weight absorption). v13 has RoPE forward+backward
 (position-independent projections + explicit rotation). v13's ~15% worse early val_ppl
