@@ -202,6 +202,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | v11 | 8150 | 267M | 750 | KILLED (plateau) | ALB-118: fresh GPU optimizer + same LR (3e-4) |
 | v12 | 37 | 1.2M | 5639 | KILLED | ALB-118: resume loaded embed optimizer only, full-LR step destroyed weights |
 | v13 | 62K/155K (40%) | 2.03B/5.08B | **239** (step 32K, inflated) | **STOPPED** (patience=30) | System reboot → data loader restart → 2x data overlap. val_ppl collapsed from 239 to 782 at step 50K when model hit new data. gnorm collapsed 0.08→0.01. Best checkpoint may be overfit. |
+| v14 | 0/155K | 0/5.08B | — | **RUNNING** | Same config as v13. ALB-120 fixed (data position checkpointed). Launched March 21. |
 | distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*

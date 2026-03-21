@@ -1,0 +1,76 @@
+# configs/train/pretrain-350m-v14.yaml — v14: Full epoch from scratch (ALB-120 fixed)
+#
+# v13 STOPPED at step 62K (patience=30). Root cause: system reboot at step
+# 25,671 caused data loader restart → 2x data overlap → val_ppl collapse
+# from 239 to 782 when model hit new data. ALB-120 FIXED: data position
+# now checkpointed in APR metadata, training loop skips already-processed
+# batches on resume (entrenar@d058c722).
+#
+# v14: Same config as v13. The training infrastructure fix (ALB-120) is in
+# the binary — no config changes needed. From scratch, full epoch.
+#
+# Architecture: 350M LLaMA-style (same as v9/v13)
+# Data: codeparrot-clean 5.3B tokens (19 train shards)
+# Starting weights: random init
+#
+# Token budget: 155,000 steps × 32,768 tokens/step = 5.08B tokens (73% Chinchilla)
+# Expected: ~8.4K tok/s, ~5.3 days on RTX 4090
+# Expected convergence: val_ppl 80-120 (LR-equivalence analysis from v13 pre-collapse)
+
+model:
+  path: "."
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
+
+data:
+  train: "data/pretokenized-1024-v3/train/"
+  val: "data/pretokenized-1024-v3/val/"
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 2000
+  gradient_accumulation: 8
+  output_dir: "./checkpoints/albor-base-350m-v14"
+  save_interval: 5000
+  eval_interval: 1000
+  patience: 30
+  max_steps: 155000
+
+monitoring:
+  terminal:
+    enabled: false
+  tracking:
+    enabled: false
+  system:
+    enabled: false
+
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded — Andon stop"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion — Andon stop"

@@ -31,11 +31,10 @@
 | v10 | 5,058 | 660 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer + low LR |
 | v11 | 8,150 | 750 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer |
 | v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
-| **v13** | **62,000** | **239** (inflated) | **8,400** | **26.4%** | **STOPPED** (patience=30) — best val_ppl=239 (step 32K) but inflated by 2x data overlap from reboot. val_ppl collapsed to ~782 at step 50K. 62K/155K steps (40%), 2.03B tokens, 40.1h. |
+| v13 | 62,000 | 239 (inflated) | 8,400 | 26.4% | **STOPPED** (patience=30) — 2x data overlap from reboot. See §6 post-mortem. |
+| **v14** | **0** | **—** | **—** | **—** | **RUNNING** — same config as v13, ALB-120 fixed. Launched March 21. Target: 155K steps (5.08B tokens). |
 
-**v13 training (STOPPED):** From scratch with RoPE forward+backward (ALB-119). Ran 62K/155K steps before early stopping. System reboot at step 25,671 caused data loader restart → 2x data overlap on shards 1-4. Best val_ppl=239 at step 32K was partly inflated by repeated data. At step ~50,662, model hit genuinely new data → val_ppl collapsed from ~288 to ~782 and never recovered (13 consecutive >500 evals). Gradient norm collapsed 0.08→0.01. **Root cause: ALB-120 (data loader position not checkpointed) — NOW FIXED** (`entrenar@d058c722`). v14 will retrain from scratch with the fix applied.
-
-**v9 remains the best genuine training result** (val_ppl=129 at step 14,950). v13's best-envelope values (239-286) cannot be trusted due to the 2x data overlap from steps 25K-50K.
+**v14 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. Same architecture and hyperparameters as v13. **ALB-120 FIXED** (`entrenar@d058c722`): data position now checkpointed — training resumes from correct batch position after interruption. v9 remains the best genuine training result (val_ppl=129 at step 14,950). v14 targets val_ppl 80-120 based on Chinchilla scaling with 10x more data than v9.
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline
