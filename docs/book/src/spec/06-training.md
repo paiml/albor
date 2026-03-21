@@ -235,6 +235,12 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v13 (from scratch, full epoch, 5.08B tokens) | 62K / 155K | 10.40→6.87 | 40.1h | **STOPPED** (patience=30) — Best val_ppl=**239** at step 32K (inflated by 2x data overlap). System reboot at step 25671 caused data loader restart → 2x overlap on shards 1-4 → val_ppl collapse at step 50K when model hit new data. gnorm collapsed 0.08→0.01. |
 | 350M v14 (from scratch, ALB-120 fixed) | 155K target | 10.40→... | ~5.3 days | **RUNNING** — same config as v13. ALB-120 fix ensures correct data position on resume. Launched March 21. |
 
+**v14 early convergence** (should match v13 pre-reboot trajectory):
+
+| Step | v13 val_ppl | v14 val_ppl | v14 note |
+|------|-----------|-----------|----------|
+| 1000 | 800 | 838 | mid-warmup, on track |
+
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
 | Step | v9 val_ppl | v13 val_ppl | v13 vs v9 | v13 note |
