@@ -42,16 +42,16 @@ reverse.
 |--------|-------|--------|
 | Throughput (pre-optimization) | **934 tok/s** | 350M, seq=1024, batch=4, RTX 4090 |
 | Step time (pre-optimization) | ~4.4s | Same config |
-| **Throughput (current, v13)** | **8,750 tok/s** | Same config (steady state, step 27K+, post-reboot) |
-| **Step time (current, v13)** | **~424 ms** | Same config (steady state, per micro-batch) |
-| **MFU (current, v13)** | **27.5%** | vs TF32 tensor core peak (up from 24.1% pre-reboot) |
-| VRAM usage | ~13.0 GB / 24 GB | Same config (includes GPU optimizer state) |
-| Training loss (v13, step 28K) | **5.95** | v13 run (codeparrot-clean) — oscillating |
-| Best val_ppl (v13) | **252** | step 26K (NEW BEST); oscillates during near-peak LR (see §6) |
-| Loss trajectory (v13) | 10.40 → 5.53 (step 26K) | v13 run (155K steps target, 16.8% complete) |
-| Gradient norm (v13) | gnorm EMA=0.08-0.12 | ZClip fires on gradient spikes |
-| Tokens processed (v13, step 28K) | **918M** | 28,000 × 4 × 8 × 1024 |
-| **Previous best** (v9) | 4.86 (step 14.9K, 490M tok) | val_ppl=129 — v13 projected to surpass ~step 44K (see §6 LR analysis) |
+| **Throughput (v13, final)** | **8,400 tok/s** | Same config (steady state, post-reboot) |
+| **Step time (v13, final)** | **~440 ms** | Same config (per micro-batch) |
+| **MFU (v13, final)** | **26.4%** | vs TF32 tensor core peak |
+| VRAM usage | ~13.1 GB / 24 GB | Same config (includes GPU optimizer state) |
+| Training loss (v13, final) | **6.87** | v13 stopped at step 62K (early stopping) |
+| Best val_ppl (v13) | **239** | step 32K — **inflated by 2x data overlap** (see §6 post-mortem) |
+| Loss trajectory (v13) | 10.40 → 6.87 (step 62K) | v13 run stopped (patience=30). 62K/155K steps (40%) |
+| Gradient norm (v13) | gnorm collapsed 0.08→0.01 | After data distribution shift at step 50K |
+| Tokens processed (v13) | **2.03B** | 62,000 × 4 × 8 × 1024 |
+| **Previous best** (v9) | 4.86 (step 14.9K, 490M tok) | val_ppl=129 — still the best genuine convergence result |
 
 ### 1.2 MFU Analysis
 
