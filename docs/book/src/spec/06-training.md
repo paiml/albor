@@ -239,7 +239,11 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 
 | Step | v13 val_ppl | v14 val_ppl | v14 note |
 |------|-----------|-----------|----------|
-| 1000 | 800 | 838 | mid-warmup, on track |
+| 1000 | 800 | 838 | mid-warmup |
+| 2000 | 829 | **571** | v14 31% better at warmup end |
+| 3000 | 812 | 856 | plateau — both similar |
+| 4000 | **499** | 803 | v13 phase-changed here; v14 hasn't yet |
+| 5000 | 426 | 789 | v14 still in plateau. Checkpoint saved. Awaiting phase change. |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
