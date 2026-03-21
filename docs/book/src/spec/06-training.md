@@ -248,7 +248,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 7000 | 655 | 795 | v14 plateau continues. |
 | 8000 | 414 | 783 | v14 plateau (best so far: 783). v13 was at 414. |
 | 9000 | 366 | 786 | v14 plateau. v13 was at 366. |
-| 10000 | 328 | 805 | v14 plateau — **10 evals without phase change**. v13 was at 328. Checkpoint saved. **Investigating.** |
+| 10000 | 328 | 805 | v14 plateau — 10 evals without phase change. v13 was at 328. Checkpoint saved. Diagnosis: random init variance (code identical to v13). Patience 8/30. |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
