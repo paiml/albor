@@ -32,9 +32,9 @@
 | v11 | 8,150 | 750 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer |
 | v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
 | v13 | 62,000 | 239 (inflated) | 8,400 | 26.4% | **STOPPED** (patience=30) — 2x data overlap from reboot. See §6 post-mortem. |
-| **v14** | **0** | **—** | **—** | **—** | **RUNNING** — same config as v13, ALB-120 fixed. Launched March 21. Target: 155K steps (5.08B tokens). |
+| **v14** | **6,000+** | **571** | **8,050** | **23.3%** | **RUNNING** — step 6K, still in ~800 plateau. Phase change not yet (v13 was at 4K). ALB-120 fixed. |
 
-**v14 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch. Same architecture and hyperparameters as v13. **ALB-120 FIXED** (`entrenar@d058c722`): data position now checkpointed — training resumes from correct batch position after interruption. v9 remains the best genuine training result (val_ppl=129 at step 14,950). v14 targets val_ppl 80-120 based on Chinchilla scaling with 10x more data than v9.
+**v14 training (ACTIVE):** From scratch with RoPE forward+backward (ALB-119), full epoch, ALB-120 fixed. Step 6K: val_ppl=796 — still in the pre-phase-change plateau (~800). v13 phase-changed at step 4K but v14 hasn't yet (random seed variance expected 1-3K steps). Upstream audit (March 21): no upstream fixes affect fp32 training on RTX 4090 — ENT-287 fixes are Blackwell NF4/cuBLAS only. v14 binary is correct. v9 remains the best genuine result (val_ppl=129).
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline

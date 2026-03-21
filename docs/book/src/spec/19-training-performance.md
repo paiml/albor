@@ -42,16 +42,17 @@ reverse.
 |--------|-------|--------|
 | Throughput (pre-optimization) | **934 tok/s** | 350M, seq=1024, batch=4, RTX 4090 |
 | Step time (pre-optimization) | ~4.4s | Same config |
-| **Throughput (v13, final)** | **8,400 tok/s** | Same config (steady state, post-reboot) |
-| **Step time (v13, final)** | **~440 ms** | Same config (per micro-batch) |
-| **MFU (v13, final)** | **26.4%** | vs TF32 tensor core peak |
-| VRAM usage | ~13.1 GB / 24 GB | Same config (includes GPU optimizer state) |
-| Training loss (v13, final) | **6.87** | v13 stopped at step 62K (early stopping) |
-| Best val_ppl (v13) | **239** | step 32K — **inflated by 2x data overlap** (see §6 post-mortem) |
-| Loss trajectory (v13) | 10.40 → 6.87 (step 62K) | v13 run stopped (patience=30). 62K/155K steps (40%) |
-| Gradient norm (v13) | gnorm collapsed 0.08→0.01 | After data distribution shift at step 50K |
-| Tokens processed (v13) | **2.03B** | 62,000 × 4 × 8 × 1024 |
+| **Throughput (v14, current)** | **8,050 tok/s** | Same config (step 6K, still warming) |
+| **Step time (v14, current)** | **~450 ms** | Same config (per micro-batch) |
+| **MFU (v14, current)** | **23.3%** | vs TF32 tensor core peak |
+| VRAM usage | ~13.3 GB / 24 GB | Same config (includes GPU optimizer state) |
+| Training loss (v14, step 6K) | **6.82** | v14 run (still in ~800 plateau) |
+| Best val_ppl (v14) | **571** | step 2K (warmup end); step 6K at 796 (plateau) |
+| Loss trajectory (v14) | 10.40 → 6.82 (step 6K) | v14 run (155K target, 3.9% complete) |
+| Gradient norm (v14) | gnorm=0.14-0.35 | Healthy, no collapse |
+| Tokens processed (v14, step 6K) | **197M** | 6,000 × 4 × 8 × 1024 |
 | **Previous best** (v9) | 4.86 (step 14.9K, 490M tok) | val_ppl=129 — still the best genuine convergence result |
+| v13 (reference) | 6.87 (step 62K, 2.03B tok) | STOPPED — val_ppl=239 (inflated). See §6 post-mortem |
 
 ### 1.2 MFU Analysis
 
