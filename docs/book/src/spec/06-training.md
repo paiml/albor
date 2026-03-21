@@ -233,7 +233,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
 | 350M v13 (from scratch, full epoch, 5.08B tokens) | 62K / 155K | 10.40→6.87 | 40.1h | **STOPPED** (patience=30) — Best val_ppl=**239** at step 32K (inflated by 2x data overlap). System reboot at step 25671 caused data loader restart → 2x overlap on shards 1-4 → val_ppl collapse at step 50K when model hit new data. gnorm collapsed 0.08→0.01. |
-| 350M v14 (from scratch, ALB-120 fixed) | 155K target | 10.40→6.82 | ~5.3 days | **RUNNING** — step 6.6K. Still in ~800 plateau (no phase change yet, v13 phase-changed at 4K). ALB-120 fix active. |
+| 350M v14 (from scratch, ALB-120 fixed) | 155K target | 10.40→6.65 | ~5.3 days | **RUNNING** — step 10K. Stuck in ~800 plateau for 10 evals (steps 1K-10K). Phase change absent (v13/v9 at step 4-5K). Under investigation. |
 
 **v14 early convergence** (should match v13 pre-reboot trajectory):
 
@@ -245,6 +245,10 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 4000 | **499** | 803 | v13 phase-changed here; v14 hasn't yet |
 | 5000 | 426 | 789 | v14 still in plateau. Checkpoint saved. |
 | 6000 | 455 | 796 | v14 still no phase change. v13 was at 455 (post-phase-change). |
+| 7000 | 655 | 795 | v14 plateau continues. |
+| 8000 | 414 | 783 | v14 plateau (best so far: 783). v13 was at 414. |
+| 9000 | 366 | 786 | v14 plateau. v13 was at 366. |
+| 10000 | 328 | 805 | v14 plateau — **10 evals without phase change**. v13 was at 328. Checkpoint saved. **Investigating.** |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
