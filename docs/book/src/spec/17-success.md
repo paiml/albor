@@ -13,8 +13,9 @@
 **Current blocker for Phase 3 completion:**
 - ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
 
-**All critical training bugs FIXED (94+ gaps closed):**
-- ~~ALB-038–044, 059–060, 063, 065, 069, 071–074, 079–080, 083, 092, 096–097, 099–119~~ — see §11 gap register
+**All critical training bugs FIXED (97 gaps closed, 10 open):**
+- ~~ALB-038–044, 059–060, 063, 065, 069, 071–074, 079–080, 083, 092, 096–097, 099–120~~ — see §11 gap register
+- ALB-121 (shard shuffling) — OPEN, nice-to-have
 
 **Training run history:**
 
@@ -32,10 +33,10 @@
 | v11 | 8,150 | 750 | — | — | **KILLED**: ALB-118 — fresh GPU optimizer |
 | v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
 | v13 | 62,000 | 239 (inflated) | 8,400 | 26.4% | **STOPPED** (patience=30) — 2x data overlap from reboot. See §6 post-mortem. |
-| v14 | 20,000 | 571 | 8,190 | 23.7% | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. Degenerate init. |
-| **v15** | **0** | **—** | **—** | **—** | **RUNNING** — seed=123. ALB-120 fixed. Launched March 22. |
+| v14 | 20,000 | 571 | 8,190 | 23.7% | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. Degenerate init (seed=42). |
+| **v15** | **5,000+** | **333** | **8,500** | **24.6%** | **RUNNING** — phase change at step 3K! val_ppl 805→538→362→333. 21% ahead of v13. seed=123. |
 
-**v15 training (ACTIVE):** From scratch with seed=123 (v14 used default seed=42 which produced a degenerate init on the recompiled binary). Same architecture and hyperparameters as v13/v14. ALB-120 fixed. v9 remains the best genuine result (val_ppl=129). Phase change expected by step 5K if seed is viable.
+**v15 training (ACTIVE):** From scratch with seed=123, full epoch. **Phase change at step 3K** — earliest and strongest of any run. val_ppl trajectory: 805→793→538→362→333. At step 5K, v15 is 21% ahead of v13 (333 vs 426) and 2.4x ahead of where v14 was (333 vs 789). Predictor slope 0.60, predicting val_ppl≈45 at step 155K. ALB-120 fix active. If convergence continues at this rate, v15 should surpass v9's best (ppl=129) by step 10K-15K and could reach sub-50 by step 155K.
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline

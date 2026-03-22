@@ -42,17 +42,18 @@ reverse.
 |--------|-------|--------|
 | Throughput (pre-optimization) | **934 tok/s** | 350M, seq=1024, batch=4, RTX 4090 |
 | Step time (pre-optimization) | ~4.4s | Same config |
-| **Throughput (v14, current)** | **8,050 tok/s** | Same config (step 6K, still warming) |
-| **Step time (v14, current)** | **~450 ms** | Same config (per micro-batch) |
-| **MFU (v14, current)** | **23.3%** | vs TF32 tensor core peak |
-| VRAM usage | ~13.3 GB / 24 GB | Same config (includes GPU optimizer state) |
-| Training loss (v14, step 6K) | **6.82** | v14 run (still in ~800 plateau) |
-| Best val_ppl (v14) | **571** | step 2K (warmup end); step 6K at 796 (plateau) |
-| Loss trajectory (v14) | 10.40 → 6.82 (step 6K) | v14 run (155K target, 3.9% complete) |
-| Gradient norm (v14) | gnorm=0.14-0.35 | Healthy, no collapse |
-| Tokens processed (v14, step 6K) | **197M** | 6,000 × 4 × 8 × 1024 |
-| **Previous best** (v9) | 4.86 (step 14.9K, 490M tok) | val_ppl=129 — still the best genuine convergence result |
-| v13 (reference) | 6.87 (step 62K, 2.03B tok) | STOPPED — val_ppl=239 (inflated). See §6 post-mortem |
+| **Throughput (v15, current)** | **8,500 tok/s** | Same config (step 5K, seed=123) |
+| **Step time (v15, current)** | **~440 ms** | Same config (per micro-batch) |
+| **MFU (v15, current)** | **24.6%** | vs TF32 tensor core peak |
+| VRAM usage | ~13.1 GB / 24 GB | Same config (includes GPU optimizer state) |
+| Training loss (v15, step 5K) | **5.81** | v15 run — phase change confirmed, converging |
+| Best val_ppl (v15) | **333** | step 5K — 21% ahead of v13 at same step (426) |
+| Loss trajectory (v15) | 10.37 → 5.81 (step 5K) | v15 run (155K target, 3.2% complete) |
+| Gradient norm (v15) | gnorm=0.20-0.50 | Healthy, strong gradients |
+| Tokens processed (v15, step 5K) | **164M** | 5,000 × 4 × 8 × 1024 |
+| **Previous best** (v9) | 4.86 (step 14.9K, 490M tok) | val_ppl=129 — v15 on track to surpass at step 10-15K |
+| v14 (killed) | 6.66 (step 20K, 655M tok) | KILLED — val_ppl stuck at ~782. Degenerate seed |
+| v13 (stopped) | 6.87 (step 62K, 2.03B tok) | STOPPED — val_ppl=239 (inflated by data overlap) |
 
 ### 1.2 MFU Analysis
 

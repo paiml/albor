@@ -203,7 +203,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | v12 | 37 | 1.2M | 5639 | KILLED | ALB-118: resume loaded embed optimizer only, full-LR step destroyed weights |
 | v13 | 62K/155K (40%) | 2.03B/5.08B | **239** (step 32K, inflated) | **STOPPED** (patience=30) | System reboot → data loader restart → 2x data overlap. val_ppl collapsed from 239 to 782 at step 50K when model hit new data. gnorm collapsed 0.08→0.01. Best checkpoint may be overfit. |
 | v14 | 20K/155K | 655M/5.08B | 571 (step 2K) | KILLED (plateau) | val_ppl stuck at ~782 for 19K steps. Degenerate init with seed=42 on recompiled binary. No phase change. |
-| v15 | 0/155K | 0/5.08B | — | **RUNNING** | seed=123 (different from v14). ALB-120 fixed. Launched March 22. |
+| v15 | 5K/155K (3.2%) | 164M/5.08B | **333** (step 5K) | **RUNNING** | seed=123. Phase change at step 3K (earliest ever). 21% ahead of v13. Strongest early convergence. |
 | distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*

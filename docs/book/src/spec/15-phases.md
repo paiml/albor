@@ -43,7 +43,7 @@
 - [x] `pv audit` — PASS: 7/7 contracts, 0 findings
 - [x] **Milestone**: Training loop converges ✓, contracts pass ✓
 
-### Phase 3: Base Model — 350M Pre-Training (Week 2-4) — v13 RUNNING
+### Phase 3: Base Model — 350M Pre-Training (Week 2-4) — v15 RUNNING
 - [x] Write `configs/train/pretrain-350m.yaml` — pre-tokenized ByteLevel BPE v2, 22K×2048 tokens
 - [x] Train albor-base-350m on 4090 — STARTED (2760 batches, ~20h est.)
 - [x] Build evaluation infrastructure — eval-code.py, eval-perplexity.py, 35 benchmark problems
