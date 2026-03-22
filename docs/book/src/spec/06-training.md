@@ -233,7 +233,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v12 (resume v9 with embed optimizer state) | 37 | 8.00→6.77 | <1min | **KILLED** — val_ppl=5639. ALB-118: only CPU embed optimizer restored; GPU block AdamW always fresh. |
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
 | 350M v13 (from scratch, full epoch, 5.08B tokens) | 62K / 155K | 10.40→6.87 | 40.1h | **STOPPED** (patience=30) — Best val_ppl=**239** at step 32K (inflated by 2x data overlap). System reboot at step 25671 caused data loader restart → 2x overlap on shards 1-4 → val_ppl collapse at step 50K when model hit new data. gnorm collapsed 0.08→0.01. |
-| 350M v14 (from scratch, ALB-120 fixed) | 155K target | 10.40→6.65 | ~5.3 days | **RUNNING** — step 10K. Stuck in ~800 plateau for 10 evals (steps 1K-10K). Phase change absent (v13/v9 at step 4-5K). Under investigation. |
+| 350M v14 (from scratch, ALB-120 fixed) | 20K / 155K | 10.40→6.66 | 12h | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. No phase change. Degenerate init with seed=42 on recompiled binary. |
+| 350M v15 (from scratch, seed=123) | 155K target | 10.37→... | ~5.3 days | **RUNNING** — different random seed. Launched March 22. ALB-120 fix active. |
 
 **v14 early convergence** (should match v13 pre-reboot trajectory):
 
@@ -248,7 +249,9 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 7000 | 655 | 795 | v14 plateau continues. |
 | 8000 | 414 | 783 | v14 plateau (best so far: 783). v13 was at 414. |
 | 9000 | 366 | 786 | v14 plateau. v13 was at 366. |
-| 10000 | 328 | 805 | v14 plateau — 10 evals without phase change. v13 was at 328. Checkpoint saved. Diagnosis: random init variance (code identical to v13). Patience 8/30. |
+| 10000 | 328 | 805 | v14 plateau continues. v13 was at 328. |
+| 15000 | 472 | 786 | v14 still flat. gnorm collapsed to 0.025. |
+| 19000 | 317 | 782 | **v14 KILLED** — 19 evals at ~782. Degenerate init. v15 launched with seed=123. |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
