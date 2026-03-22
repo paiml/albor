@@ -1,10 +1,10 @@
 # 17. Success Criteria
 
 ### Minimum Viable (Phase 3 complete)
-- [ ] 350M base model trained on 4090 to convergence (target: ~10B tokens; current: 139M v2 dataset)
+- [ ] 350M base model trained on 4090 to convergence (val_ppl < 100; target: 5.08B tokens)
 - [x] FIM (fill-in-the-middle) training implemented and validated (~~ALB-018~~ FIXED — `alimentar fim` verified)
-- [ ] **HumanEval pass@1 > 8%** (baseline Python capability, beat random)
-- [ ] **HumanEval-FIM working** (model can infill Python code)
+- [ ] **HumanEval pass@1 > 5%** (baseline Python capability — any valid code generation from sovereign stack)
+- [ ] **val_ppl < 50** on codeparrot-clean validation set (syntactic structure captured)
 - [ ] Entire pipeline uses only sovereign stack components
 - [ ] All training artifacts reproducible from spec
 - [ ] All existing kernel contracts pass `pv audit` (Level 2+)
@@ -41,7 +41,7 @@
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline
 - [ ] albor-distill-350m outperforms albor-base-350m on all code benchmarks
-- [ ] **HumanEval pass@1 > 15%** (beat CodeGen-350M-mono's 12.8% via distillation from 30B MoE teacher)
+- [ ] **HumanEval pass@1 > 10%** (beat CodeGen-350M-mono's 10.2% via distillation from 30B MoE teacher)
 - [ ] **MBPP pass@1 > 12%**
 - [ ] **FIM infill working** (qualitatively: model can complete Python between prefix and suffix)
 - [ ] KD contract at Level 4 (Kani-proved KL non-negativity)

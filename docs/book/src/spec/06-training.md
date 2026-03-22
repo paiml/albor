@@ -16,7 +16,7 @@
 | Batch size (global) | 32K tokens/step | batch=4 × ga=8 × seq_len=1024 (v9 config) |
 | Micro-batch (4090) | 4 | GPU-resident (batch=8 OOM at seq≥1024) |
 | Gradient accumulation | 8 (ALB-091) | GPU-resident accumulation via `GpuGradientAccumulator` — zero D2H during micro-batch loop |
-| Total training tokens | Target 5.08B (v13); 5.3B available | 155,000 steps × 32K tokens/step; data: codeparrot-clean pretokenized-1024-v3. 73% Chinchilla-optimal (7B for 350M). |
+| Total training tokens | Target 5.08B (v15); 5.3B available | 155,000 steps × 32K tokens/step; data: codeparrot-clean pretokenized-1024-v3. 73% Chinchilla-optimal (7B for 350M at 20:1). Modern practice overtrains far beyond Chinchilla — Llama 3 uses 1875:1. Our 14.5:1 is acceptable for first-gen training. |
 | Mixed precision | fp16 (CUDA) | Hardware-appropriate |
 
 ### 6.2 Training Config: `configs/train/pretrain-350m-v9.yaml`
