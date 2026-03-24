@@ -6,17 +6,16 @@ Early training runs (v1-v8) on codeparrot-clean showed a val_ppl ~800 plateau
 with limited data (655M tokens = 1.9x params). The root cause was Chinchilla
 scaling mismatch: 350M params needs ~7B tokens (20x) for optimal training.
 
-**v13 is closing the Chinchilla gap:** Training on 5.08B tokens (73%
-Chinchilla-optimal) broke through the plateau — val_ppl dropped from 812 to
-499 at step 4000, outperforming v9 (which trained on only 490M tokens) by 25%.
-Chinchilla scaling predicts val_ppl 30-50 at 5B tokens for 350M params.
+**v15 is the current training run:** Phase change at step 3K (earliest ever),
+best pre-outage val_ppl=309 (step 9K). Power outage at step 11K, resumed from
+10K. Post-resume oscillating at 400-657. HumanEval 0/164 at ppl=333.
 
-| Parameter | v9 (early) | v13 (current) | Chinchilla Optimal |
+| Parameter | v9 (best genuine) | v15 (current) | Chinchilla Optimal |
 |-----------|-----------|---------------|-------------------|
 | Model size | 350M | 350M | 350M |
 | Training tokens | 490M (15K steps) | 5.08B (155K steps) | ~7B |
 | Ratio (tokens/params) | 1.4x | 14.5x | 20x |
-| Best val_ppl | 129 (data-limited) | 499 (step 4K, improving) | ~30-50 (predicted) |
+| Best val_ppl | 129 | 309 (step 9K, improving) | ~30-50 (predicted) |
 
 **Distillation complements pretraining**: a strong teacher can transfer
 structured knowledge (code patterns, API usage, docstring→implementation
