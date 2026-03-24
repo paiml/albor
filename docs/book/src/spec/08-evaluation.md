@@ -129,8 +129,10 @@ quantity at this scale (phi-1 lesson).
 | 30-50 | 8-15% | Competitive with CodeGen-350M |
 | < 30 | 15%+ | Strong code model at this scale |
 
-v15 at val_ppl=333 (step 5K) is still in the "unstructured" zone. Must reach
-ppl < 100 for any HumanEval score, ppl < 50 to beat CodeGen-350M.
+**Empirical baseline (v15, step 5K, val_ppl=333):** HumanEval pass@1 = **0/164**
+(0%). Ran full 164-problem eval with CPU inference, greedy decoding, 256 max
+tokens. Confirmed: ppl=333 produces no valid Python. Consistent with the
+mapping above — must reach ppl < 100 for any score, ppl < 50 to compete.
 
 **Big Code Models Leaderboard — where Albor would land**
 
