@@ -234,24 +234,21 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
 | 350M v13 (from scratch, full epoch, 5.08B tokens) | 62K / 155K | 10.40→6.87 | 40.1h | **STOPPED** (patience=30) — Best val_ppl=**239** at step 32K (inflated by 2x data overlap). System reboot at step 25671 caused data loader restart → 2x overlap on shards 1-4 → val_ppl collapse at step 50K when model hit new data. gnorm collapsed 0.08→0.01. |
 | 350M v14 (from scratch, ALB-120 fixed) | 20K / 155K | 10.40→6.66 | 12h | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. No phase change. Degenerate init with seed=42 on recompiled binary. |
-| 350M v15 (from scratch, seed=123) | 155K target | 10.37→5.81 | ~5.3 days | **RUNNING** — phase change at step 3K! val_ppl 805→538→362→333. 21% ahead of v13 at step 5K. Strongest early convergence yet. |
+| 350M v15 (from scratch, seed=123) | 155K target | 10.37→5.58 | ~5.3 days | **RUNNING** — step 24K (15.6%). Phase change at step 3K. Best pre-outage: 309 (step 9K). Power outage at step 11K → resumed from 10K (ALB-120). Post-resume best: 400 (step 17K). ALB-122 (trueno PTX bug) discovered+fixed during resume. |
 
-**v14 early convergence** (should match v13 pre-reboot trajectory):
+**v15 convergence tracking** (seed=123, strongest early convergence):
 
-| Step | v13 val_ppl | v14 val_ppl | v14 note |
+| Step | v13 val_ppl | v15 val_ppl | v15 note |
 |------|-----------|-----------|----------|
-| 1000 | 800 | 838 | mid-warmup |
-| 2000 | 829 | **571** | v14 31% better at warmup end |
-| 3000 | 812 | 856 | plateau — both similar |
-| 4000 | **499** | 803 | v13 phase-changed here; v14 hasn't yet |
-| 5000 | 426 | 789 | v14 still in plateau. Checkpoint saved. |
-| 6000 | 455 | 796 | v14 still no phase change. v13 was at 455 (post-phase-change). |
-| 7000 | 655 | 795 | v14 plateau continues. |
-| 8000 | 414 | 783 | v14 plateau (best so far: 783). v13 was at 414. |
-| 9000 | 366 | 786 | v14 plateau. v13 was at 366. |
-| 10000 | 328 | 805 | v14 plateau continues. v13 was at 328. |
-| 15000 | 472 | 786 | v14 still flat. gnorm collapsed to 0.025. |
-| 19000 | 317 | 782 | **v14 KILLED** — 19 evals at ~782. Degenerate init. v15 launched with seed=123. |
+| 3000 | 812 | **538** | **Phase change** — earliest ever |
+| 4000 | 499 | **362** | Accelerating |
+| 5000 | 426 | **333** | Best pre-outage. 21% ahead of v13. Checkpoint saved. |
+| 9000 | 366 | **309** | **Best overall**. Pre-outage. |
+| 10000 | 328 | 912 | Spike (pre-outage). |
+| 11000 | 355 | 378/499 | Pre-outage 378. **POWER OUTAGE** → resumed from 10K. Post-resume 499. |
+| 17000 | 717 | **400** | Best post-resume. Fresh GPU optimizer recovering. |
+| 18000 | 373 | 1736 | **Severe spike** (worst ever). |
+| 24000 | 407 | **415** | Recovery continuing. Predictor slope turned positive (0.08). |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 

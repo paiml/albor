@@ -34,9 +34,9 @@
 | v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
 | v13 | 62,000 | 239 (inflated) | 8,400 | 26.4% | **STOPPED** (patience=30) — 2x data overlap from reboot. See §6 post-mortem. |
 | v14 | 20,000 | 571 | 8,190 | 23.7% | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. Degenerate init (seed=42). |
-| **v15** | **5,000+** | **333** | **8,500** | **24.6%** | **RUNNING** — phase change at step 3K! val_ppl 805→538→362→333. 21% ahead of v13. seed=123. |
+| **v15** | **24,000+** | **309** | **14,900** | **46.9%** | **RUNNING** — step 24K (15.6%). Best: 309 (step 9K pre-outage). Power outage at step 11K, resumed from 10K. Post-resume best: 400 (step 17K). Oscillating 400-657. |
 
-**v15 training (ACTIVE):** From scratch with seed=123, full epoch. **Phase change at step 3K** — earliest and strongest of any run. val_ppl trajectory: 805→793→538→362→333. At step 5K, v15 is 21% ahead of v13 (333 vs 426) and 2.4x ahead of where v14 was (333 vs 789). Predictor slope 0.60, predicting val_ppl≈45 at step 155K. ALB-120 fix active. If convergence continues at this rate, v15 should surpass v9's best (ppl=129) by step 10K-15K and could reach sub-50 by step 155K.
+**v15 training (ACTIVE):** From scratch with seed=123. Phase change at step 3K (earliest ever). Best pre-outage val_ppl=309 (step 9K). Power outage at step 11,129 → resumed from step 10K checkpoint (ALB-120 batch skip). Post-resume recovery in progress: GPU optimizer moments are fresh, val_ppl oscillating 400-657 (best post-resume: 400 at step 17K). Throughput increased to 14.9K tok/s / 46.9% MFU post-reboot. ALB-122 (trueno PTX MulWide bug) discovered and fixed during resume. Step 24K predictor slope turned positive (0.08) — convergence resuming.
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline

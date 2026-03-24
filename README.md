@@ -24,19 +24,19 @@ A **350M-parameter decoder-only transformer** for Python code completion, traine
 
 ## Current Status
 
-**v15 training RUNNING** (March 22, 2026) — Phase change confirmed at step 3K.
+**v15 training RUNNING** — Step 24K/155K (15.6%), 786M tokens processed.
 
 | Metric | Value |
 |--------|-------|
 | Training run | v15 (15th attempt, seed=123) |
-| Step | 5,000 / 155,000 (3.2%) |
-| Best val_ppl | **333** (step 5K) |
-| Throughput | 8,500 tok/s, 24.6% MFU |
+| Step | 24,000 / 155,000 (15.6%) |
+| Best val_ppl | **309** (step 9K, pre-outage) |
+| Throughput | 14,900 tok/s, 46.9% MFU |
 | Hardware | RTX 4090 (24 GB), single GPU |
 | Data | codeparrot-clean, 5.08B tokens (73% Chinchilla) |
-| ETA | ~5 days from launch |
+| ETA | ~3.3 days remaining |
 
-**v15 is the strongest early convergence of any run** — 21% ahead of the previous best (v13) at step 5K. Phase change occurred at step 3K (v13 at 4K, v9 at 4.75K).
+Phase change at step 3K (earliest ever). Power outage at step 11K — resumed from step 10K checkpoint. Post-resume best: 400 (step 17K). 98 gaps fixed including ALB-122 (trueno PTX bug discovered during resume).
 
 ### What We've Built
 
