@@ -256,6 +256,20 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 30000 | — | **387** | **New post-resume best**. Predictor slope 0.19, predicting 343. Checkpoint saved. |
 | 31000 | — | 421 | Oscillation. Predictor slope 0.21 (steadily climbing). |
 
+**v15 post-resume convergence analysis** (5K-window non-spike medians):
+
+| Window | Non-spike median | Improvement | LR % peak |
+|--------|-----------------|-------------|-----------|
+| 10K-15K | 489 | — (baseline) | 99% |
+| 15K-20K | 423 | −13.5% | 97% |
+| 20K-25K | 484 | spike aftermath | 95% |
+| 25K-31K | **414** | −15.3% from baseline | 91% |
+
+Model IS converging post-resume, just slower than pre-outage due to fresh GPU
+optimizer moments. Best post-resume val_loss: 5.96 (step 30K) vs pre-outage
+best 5.73 (step 9K). Needs to close 0.23 gap before patience exhaustion at
+step 39K. At current rate (~0.05 improvement per 5K window), this is borderline.
+
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
 | Step | v9 val_ppl | v13 val_ppl | v13 vs v9 | v13 note |
