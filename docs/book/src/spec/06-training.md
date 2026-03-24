@@ -234,7 +234,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
 | 350M v13 (from scratch, full epoch, 5.08B tokens) | 62K / 155K | 10.40→6.87 | 40.1h | **STOPPED** (patience=30) — Best val_ppl=**239** at step 32K (inflated by 2x data overlap). System reboot at step 25671 caused data loader restart → 2x overlap on shards 1-4 → val_ppl collapse at step 50K when model hit new data. gnorm collapsed 0.08→0.01. |
 | 350M v14 (from scratch, ALB-120 fixed) | 20K / 155K | 10.40→6.66 | 12h | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. No phase change. Degenerate init with seed=42 on recompiled binary. |
-| 350M v15 (from scratch, seed=123) | 155K target | 10.37→5.18 | ~5.3 days | **RUNNING** — step 33K (21.7%). Best post-resume: **368** (step 32K). Closing on pre-outage best (309). Slope 0.25, predicting 299. Patience 24/30. |
+| 350M v15 (from scratch, seed=123) | 155K target | 10.37→5.18 | ~5.3 days | **RUNNING** — step 39K (25.2%). Best post-resume: 368/5.91 (step 32K). Patience 7/30 (reset by resume). Cosine decay engaging (LR 87% peak). Will run until ~step 62K if no improvement. |
 
 **v15 convergence tracking** (seed=123, strongest early convergence):
 
@@ -256,7 +256,13 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 30000 | — | **387** | **New post-resume best**. Predictor slope 0.19, predicting 343. Checkpoint saved. |
 | 31000 | — | 421 | Oscillation. Predictor slope 0.21. |
 | 32000 | — | **368** | **New post-resume best**. val_loss=5.91 (closing on pre-outage 5.73). Slope 0.25, predicting 299. |
-| 33000 | — | 520 | Spike. Normal oscillation. Patience ~24/30. |
+| 33000 | — | 520 | Spike. |
+| 34000 | — | 502 | Elevated. |
+| 35000 | — | 490 | Checkpoint saved. Predictor slope declining (0.20). |
+| 36000 | — | 490 | Flat. |
+| 37000 | — | 632 | Spike. |
+| 38000 | — | 540 | Elevated. |
+| 39000 | — | 503 | Patience reset by resume — 7/30 (NOT 30/30). 23 evals remaining. |
 
 **v15 post-resume convergence analysis** (5K-window non-spike medians):
 
