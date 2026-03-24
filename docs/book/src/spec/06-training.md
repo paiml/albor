@@ -234,7 +234,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
 | 350M v13 (from scratch, full epoch, 5.08B tokens) | 62K / 155K | 10.40→6.87 | 40.1h | **STOPPED** (patience=30) — Best val_ppl=**239** at step 32K (inflated by 2x data overlap). System reboot at step 25671 caused data loader restart → 2x overlap on shards 1-4 → val_ppl collapse at step 50K when model hit new data. gnorm collapsed 0.08→0.01. |
 | 350M v14 (from scratch, ALB-120 fixed) | 20K / 155K | 10.40→6.66 | 12h | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. No phase change. Degenerate init with seed=42 on recompiled binary. |
-| 350M v15 (from scratch, seed=123) | 155K target | 10.37→5.60 | ~5.3 days | **RUNNING** — step 31K (20.4%). Best pre-outage: 309 (step 9K). Post-resume improving: 400→387 (step 30K). Predictor slope 0.21, predicting 327. 14.1K tok/s. |
+| 350M v15 (from scratch, seed=123) | 155K target | 10.37→5.18 | ~5.3 days | **RUNNING** — step 33K (21.7%). Best post-resume: **368** (step 32K). Closing on pre-outage best (309). Slope 0.25, predicting 299. Patience 24/30. |
 
 **v15 convergence tracking** (seed=123, strongest early convergence):
 
@@ -254,7 +254,9 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 27000 | — | 414 | Recovery. |
 | 28000 | — | **405** | New post-resume best. |
 | 30000 | — | **387** | **New post-resume best**. Predictor slope 0.19, predicting 343. Checkpoint saved. |
-| 31000 | — | 421 | Oscillation. Predictor slope 0.21 (steadily climbing). |
+| 31000 | — | 421 | Oscillation. Predictor slope 0.21. |
+| 32000 | — | **368** | **New post-resume best**. val_loss=5.91 (closing on pre-outage 5.73). Slope 0.25, predicting 299. |
+| 33000 | — | 520 | Spike. Normal oscillation. Patience ~24/30. |
 
 **v15 post-resume convergence analysis** (5K-window non-spike medians):
 
