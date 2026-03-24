@@ -234,7 +234,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
 | 350M v13 (from scratch, full epoch, 5.08B tokens) | 62K / 155K | 10.40→6.87 | 40.1h | **STOPPED** (patience=30) — Best val_ppl=**239** at step 32K (inflated by 2x data overlap). System reboot at step 25671 caused data loader restart → 2x overlap on shards 1-4 → val_ppl collapse at step 50K when model hit new data. gnorm collapsed 0.08→0.01. |
 | 350M v14 (from scratch, ALB-120 fixed) | 20K / 155K | 10.40→6.66 | 12h | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. No phase change. Degenerate init with seed=42 on recompiled binary. |
-| 350M v15 (from scratch, seed=123) | 155K target | 10.37→5.79 | ~5.3 days | **RUNNING** — step 25K (16.5%). Phase change at step 3K. Best pre-outage: 309 (step 9K). Power outage at step 11K → resumed from 10K. Post-resume: oscillating 400-657, best 400 (step 17K). Patience 16/30. HumanEval 0/164 at ppl=333. |
+| 350M v15 (from scratch, seed=123) | 155K target | 10.37→5.60 | ~5.3 days | **RUNNING** — step 31K (20.4%). Best pre-outage: 309 (step 9K). Post-resume improving: 400→387 (step 30K). Predictor slope 0.21, predicting 327. 14.1K tok/s. |
 
 **v15 convergence tracking** (seed=123, strongest early convergence):
 
@@ -249,7 +249,12 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 17000 | 717 | **400** | Best post-resume. Fresh GPU optimizer recovering. |
 | 18000 | 373 | 1736 | **Severe spike** (worst ever). |
 | 24000 | 407 | **415** | Recovery continuing. Predictor slope turned positive (0.08). |
-| 25000 | 286 | 472 | Oscillation. Patience 16/30 (best val_loss=5.73 at step 9K). |
+| 25000 | 286 | 472 | Oscillation. |
+| 26000 | — | 777 | Spike. |
+| 27000 | — | 414 | Recovery. |
+| 28000 | — | **405** | New post-resume best. |
+| 30000 | — | **387** | **New post-resume best**. Predictor slope 0.19, predicting 343. Checkpoint saved. |
+| 31000 | — | 421 | Oscillation. Predictor slope 0.21 (steadily climbing). |
 
 **v9 vs v13 convergence comparison** (first 5000 steps):
 
