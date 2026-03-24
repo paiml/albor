@@ -42,18 +42,16 @@ reverse.
 |--------|-------|--------|
 | Throughput (pre-optimization) | **934 tok/s** | 350M, seq=1024, batch=4, RTX 4090 |
 | Step time (pre-optimization) | ~4.4s | Same config |
-| **Throughput (v15, current)** | **8,500 tok/s** | Same config (step 5K, seed=123) |
-| **Step time (v15, current)** | **~440 ms** | Same config (per micro-batch) |
-| **MFU (v15, current)** | **24.6%** | vs TF32 tensor core peak |
-| VRAM usage | ~13.1 GB / 24 GB | Same config (includes GPU optimizer state) |
-| Training loss (v15, step 5K) | **5.81** | v15 run — phase change confirmed, converging |
-| Best val_ppl (v15) | **333** | step 5K — 21% ahead of v13 at same step (426) |
-| Loss trajectory (v15) | 10.37 → 5.81 (step 5K) | v15 run (155K target, 3.2% complete) |
-| Gradient norm (v15) | gnorm=0.20-0.50 | Healthy, strong gradients |
-| Tokens processed (v15, step 5K) | **164M** | 5,000 × 4 × 8 × 1024 |
-| **Previous best** (v9) | 4.86 (step 14.9K, 490M tok) | val_ppl=129 — v15 on track to surpass at step 10-15K |
-| v14 (killed) | 6.66 (step 20K, 655M tok) | KILLED — val_ppl stuck at ~782. Degenerate seed |
-| v13 (stopped) | 6.87 (step 62K, 2.03B tok) | STOPPED — val_ppl=239 (inflated by data overlap) |
+| **Throughput (v15, post-reboot)** | **14,900 tok/s** | Post-reboot improvement (was 8,500 pre-outage) |
+| **Step time (v15, current)** | **~445 ms** | Same config (per micro-batch) |
+| **MFU (v15, post-reboot)** | **46.9%** | vs TF32 tensor core peak (up from 24.6%) |
+| VRAM usage | ~13.4 GB / 24 GB | Same config (includes GPU optimizer state) |
+| Training loss (v15, step 24K) | **5.58** | Recovering from power outage resume |
+| Best val_ppl (v15) | **309** | step 9K (pre-outage). Post-resume best: 400 (step 17K). |
+| Loss trajectory (v15) | 10.37 → 5.58 (step 24K) | 15.6% complete, 786M tokens |
+| Gradient norm (v15) | gnorm=0.09 | Healthy, stable |
+| Tokens processed (v15, step 24K) | **786M** | 24,000 × 4 × 8 × 1024 |
+| **Previous best** (v9) | 4.86 (step 14.9K, 490M tok) | val_ppl=129 — still best genuine result |
 
 ### 1.2 MFU Analysis
 
