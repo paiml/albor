@@ -270,7 +270,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v13 (from scratch, full epoch, 5.08B tokens) | 62K / 155K | 10.40→6.87 | 40.1h | **STOPPED** (patience=30) — Best val_ppl=**239** at step 32K (inflated by 2x data overlap). System reboot at step 25671 caused data loader restart → 2x overlap on shards 1-4 → val_ppl collapse at step 50K when model hit new data. gnorm collapsed 0.08→0.01. |
 | 350M v14 (from scratch, ALB-120 fixed) | 20K / 155K | 10.40→6.66 | 12h | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. No phase change. Degenerate init with seed=42 on recompiled binary. |
 | 350M v15 (from scratch, seed=123) | 47K / 155K | 10.37→5.18 | 37h | **KILLED** — power outage at step 11K permanently damaged convergence. Post-resume val_ppl stuck at ~400 (-0.017 val_loss/10K steps). Best pre-outage: 309 (step 9K). |
-| 350M v16 (from scratch, seed=456, canary-validated) | 155K target | 10.40→6.56 | ~5.3 days | **RUNNING** — step 6K. Gradual improvement (900→806→679→752→708) but no clean phase change. Borderline — better than v14 (796) but much weaker than v13/v15 at same step. |
+| 350M v16 (from scratch, seed=456, canary-validated) | 10K / 155K | 10.40→6.64 | 11h | **KILLED** (plateau) — val_ppl stuck at 693-767 for steps 6K-10K. No phase change. Same pattern as v14 (seed=42). seed=456 degenerate. |
 
 **v15 convergence tracking** (seed=123, strongest early convergence):
 
