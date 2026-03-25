@@ -65,12 +65,15 @@ def main():
     parser.add_argument("--eval-interval", type=int, default=1000)
     parser.add_argument("--compare", type=str, help="Path to entrenar log for comparison")
     parser.add_argument("--data-dir", default="data/pretokenized-1024-v3/train/")
+    parser.add_argument("--seed", type=int, default=None, help="Override seed (default: use CONFIG)")
     args = parser.parse_args()
 
     import torch
     from torch.optim import AdamW
 
-    torch.manual_seed(CONFIG["seed"])
+    seed = args.seed if args.seed is not None else CONFIG["seed"]
+    torch.manual_seed(seed)
+    print(f"Seed: {seed}")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     device = torch.device(args.device)
 
