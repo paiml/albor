@@ -1,0 +1,71 @@
+# configs/train/pretrain-350m-v16.yaml — v16: Canary-validated, fresh start
+#
+# v15 killed at step 47K: power outage at step 11K permanently damaged
+# convergence (post-resume val_ppl stuck at ~400, improvement rate -0.017/10K).
+#
+# PyTorch canary validated: loss drops 10.65→9.02 in 50 steps (config is sane).
+# v16: same config, seed=456 (v14=42 degenerate, v15=123 power-outaged).
+# ALB-120 fix active. ALB-122 fix active.
+#
+# If power outage occurs: the ALB-120 batch skip + GPU optimizer state
+# checkpoint (ALB-118) should allow clean resume. The canary confirms
+# this config CAN converge — previous failures were infrastructure, not config.
+
+model:
+  path: "."
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
+
+data:
+  train: "data/pretokenized-1024-v3/train/"
+  val: "data/pretokenized-1024-v3/val/"
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 2000
+  gradient_accumulation: 8
+  output_dir: "./checkpoints/albor-base-350m-v16"
+  save_interval: 5000
+  eval_interval: 1000
+  patience: 30
+  max_steps: 155000
+  seed: 456
+
+monitoring:
+  terminal:
+    enabled: false
+  tracking:
+    enabled: false
+  system:
+    enabled: false
+
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded — Andon stop"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion — Andon stop"
