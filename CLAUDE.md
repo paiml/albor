@@ -143,6 +143,21 @@ to specific components. Use the boundaries:
 **Never**: patch the symptom (e.g., "clamp NaN to 0"). Always: fix the root
 cause at the deepest why.
 
+### 9. PyTorch Canary: Validate Before Committing GPU Time
+
+**When confused about whether an approach will work, run the PyTorch canary
+(`scripts/canary_pytorch.py`) BEFORE committing GPU days to an entrenar run.**
+
+The canary replicates the exact config in PyTorch/HuggingFace. If PyTorch
+can't converge, entrenar won't either — the problem is config/data, not
+the stack. Adapted from `bashrs` and `qwen-coder-deploy` canary patterns.
+
+**When to canary**: new training config, after failure, before distillation,
+before hyperparameter changes. See §6.1.1 for details.
+
+**Why**: v14 wasted 12h on a degenerate seed. v15 wasted 3 days post-outage
+on a damaged trajectory. A 30-min PyTorch canary would have diagnosed both.
+
 ## Build & Test
 
 ```bash
