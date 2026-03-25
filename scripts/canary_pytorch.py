@@ -49,9 +49,9 @@ CONFIG = {
     "beta2": 0.95,
     "weight_decay": 0.1,
     "warmup_steps": 2000,
-    "batch_size": 4,
+    "batch_size": 2,  # Reduced from 4 — OOM with 4 even with grad checkpointing
     "seq_len": 1024,
-    "grad_accum": 8,
+    "grad_accum": 16,  # 2×16 = 32 = same effective batch as 4×8
     "seed": 123,  # Match v15
 }
 
@@ -89,7 +89,9 @@ def main():
             rms_norm_eps=CONFIG["rms_norm_eps"],
             rope_theta=CONFIG["rope_theta"],
         )
-        model = LlamaForCausalLM(config).to(device)
+        model = LlamaForCausalLM(config)
+        model.gradient_checkpointing_enable()
+        model = model.to(device)
     except ImportError:
         print("ERROR: pip install transformers torch")
         return
@@ -176,7 +178,7 @@ def main():
             tok_s = toks / max(elapsed, 1)
             entry = {"step": step, "loss": total_loss, "lr": lr, "tok_s": tok_s}
             log.append(entry)
-            print(f"  step={step:>5d} loss={total_loss:.4f} lr={lr:.2e} tok/s={tok_s:.0f}")
+            print(f"  step={step:>5d} loss={total_loss:.4f} lr={lr:.2e} tok/s={tok_s:.0f}", flush=True)
 
         # Eval
         if step > 0 and step % args.eval_interval == 0:
@@ -197,7 +199,7 @@ def main():
                     val_batches += 1
             avg_val = val_loss / max(val_batches, 1)
             val_ppl = math.exp(min(avg_val, 20))
-            print(f"  [EVAL] step={step} val_loss={avg_val:.4f} val_ppl={val_ppl:.1f}")
+            print(f"  [EVAL] step={step} val_loss={avg_val:.4f} val_ppl={val_ppl:.1f}", flush=True)
             log.append({"step": step, "val_loss": avg_val, "val_ppl": val_ppl, "type": "eval"})
             model.train()
 
