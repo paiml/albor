@@ -19,6 +19,41 @@
 | Total training tokens | Target 5.08B (v15); 5.3B available | 155,000 steps × 32K tokens/step; data: codeparrot-clean pretokenized-1024-v3. 73% Chinchilla-optimal (7B for 350M at 20:1). Modern practice overtrains far beyond Chinchilla — Llama 3 uses 1875:1. Our 14.5:1 is acceptable for first-gen training. |
 | Mixed precision | fp16 (CUDA) | Hardware-appropriate |
 
+### 6.1.1 PyTorch Canary — Ground Truth Validation
+
+**Rule: When confused about whether an approach will work, run the PyTorch canary first.**
+
+The canary (`scripts/canary_pytorch.py`) replicates the exact training config in
+PyTorch/HuggingFace transformers. It answers: "Can this architecture + data +
+hyperparameters even converge?" If PyTorch can't reach low ppl, entrenar won't
+either — the problem is config/data, not the sovereign stack.
+
+Adapted from sister projects:
+- `bashrs/training/canary_pytorch.py` — validates entrenar NF4 QLoRA vs PyTorch parity
+- `qwen-coder-deploy/scripts/canary_pytorch.py` — validates inference runtime vs HF ground truth
+
+**When to run the canary:**
+- Before a new training config (does this architecture converge on this data?)
+- After a training failure (is the bug in entrenar or in the config?)
+- Before distillation (does fine-tuning improve val_ppl in PyTorch?)
+- When optimizer/LR changes are proposed (does PyTorch benefit from this change?)
+
+**Ship/kill gate:**
+- PyTorch val_ppl tracks or beats entrenar → config is sound, focus on stack bugs
+- PyTorch val_ppl also plateaus → config/data problem, change hyperparameters
+- PyTorch val_ppl diverges from entrenar by >20% → stack bug, investigate entrenar
+
+```bash
+# Quick canary (50 steps, CPU, ~2 min)
+python3 scripts/canary_pytorch.py --steps 50 --device cpu
+
+# Full canary (5K steps, GPU, ~30 min)
+python3 scripts/canary_pytorch.py --steps 5000
+
+# Compare with entrenar run
+python3 scripts/canary_pytorch.py --steps 5000 --compare logs/v15-training.log
+```
+
 ### 6.2 Training Config: `configs/train/pretrain-350m-v9.yaml`
 
 A single YAML file defines **everything** — model architecture and training
