@@ -234,7 +234,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | distill-v3 (v9 + 58M mixed tokens) | 2,400 | —→— | ~40min | **STOPPED** — val_ppl=658. HumanEval 0% pass@1. Insufficient tokens + raw code format. |
 | 350M v13 (from scratch, full epoch, 5.08B tokens) | 62K / 155K | 10.40→6.87 | 40.1h | **STOPPED** (patience=30) — Best val_ppl=**239** at step 32K (inflated by 2x data overlap). System reboot at step 25671 caused data loader restart → 2x overlap on shards 1-4 → val_ppl collapse at step 50K when model hit new data. gnorm collapsed 0.08→0.01. |
 | 350M v14 (from scratch, ALB-120 fixed) | 20K / 155K | 10.40→6.66 | 12h | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. No phase change. Degenerate init with seed=42 on recompiled binary. |
-| 350M v15 (from scratch, seed=123) | 155K target | 10.37→5.18 | ~5.3 days | **RUNNING** — step 45K (29%). Best post-resume: 368/5.91 (step 32K). Patience 13/30. LR at 81% peak. Oscillating 383-804. |
+| 350M v15 (from scratch, seed=123) | 155K target | 10.37→5.18 | ~5.3 days | **RUNNING** — step 46K (30%). Best post-resume: 368/5.91 (step 32K). Post-resume improvement rate: -0.017 val_loss per 10K steps — too slow for HumanEval convergence. Pre-outage best (5.73) unreachable within 155K steps. |
 
 **v15 convergence tracking** (seed=123, strongest early convergence):
 
@@ -266,7 +266,8 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 40000 | — | 446 | Checkpoint saved. LR=2.56e-4 (85% peak). |
 | 41000 | — | 383 | Near post-resume best. val_loss=5.95 (didn't beat 5.91 at 32K). |
 | 42000 | — | 404 | |
-| 45000 | — | 804 | Severe spike. Patience ~13/30. Checkpoint saved. 29% complete. |
+| 45000 | — | 804 | Severe spike. Checkpoint saved. |
+| 46000 | — | 776 | Two consecutive >500. Linear fit: val_loss improves -0.017/10K steps. Pre-outage best (5.73) unreachable at step 255K. HumanEval threshold (4.6) at step 928K. **Recommend: kill and distill v9.** |
 
 **v15 post-resume convergence analysis** (5K-window non-spike medians):
 
