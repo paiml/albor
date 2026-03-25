@@ -204,7 +204,9 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | v12 | 37 | 1.2M | 5639 | KILLED | ALB-118: resume loaded embed optimizer only, full-LR step destroyed weights |
 | v13 | 62K/155K (40%) | 2.03B/5.08B | **239** (step 32K, inflated) | **STOPPED** (patience=30) | System reboot → data loader restart → 2x data overlap. val_ppl collapsed from 239 to 782 at step 50K when model hit new data. gnorm collapsed 0.08→0.01. Best checkpoint may be overfit. |
 | v14 | 20K/155K | 655M/5.08B | 571 (step 2K) | KILLED (plateau) | val_ppl stuck at ~782 for 19K steps. Degenerate init with seed=42 on recompiled binary. No phase change. |
-| v15 | 24K/155K (15.6%) | 786M/5.08B | **309** (step 9K pre-outage) | **RUNNING** | seed=123. Phase change at step 3K. Power outage at step 11K → resumed from 10K. Post-resume best: 400 (step 17K). ALB-122 fixed. 14.9K tok/s / 46.9% MFU post-reboot. |
+| v15 | 47K/155K (30%) | 1.54B/5.08B | 309 (step 9K pre-outage) | KILLED | Power outage at step 11K → post-resume stuck at ~400. Improvement rate -0.017/10K — too slow. |
+| distill-v3-retry | 700 | 23M | 145→524 | STOPPED | Catastrophic overfitting on small synthetic data. |
+| v16 | 0/155K | 0/5.08B | — | **RUNNING** | seed=456. Canary-validated config. Phase change expected step 3-5K. |
 | distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*

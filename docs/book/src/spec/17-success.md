@@ -34,9 +34,10 @@
 | v12 | 37 | 5,639 | — | — | **KILLED**: ALB-118 — only CPU embed optimizer restored |
 | v13 | 62,000 | 239 (inflated) | 8,400 | 26.4% | **STOPPED** (patience=30) — 2x data overlap from reboot. See §6 post-mortem. |
 | v14 | 20,000 | 571 | 8,190 | 23.7% | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. Degenerate init (seed=42). |
-| **v15** | **24,000+** | **309** | **14,900** | **46.9%** | **RUNNING** — step 24K (15.6%). Best: 309 (step 9K pre-outage). Power outage at step 11K, resumed from 10K. Post-resume best: 400 (step 17K). Oscillating 400-657. |
+| v15 | 47,000 | 309 (pre-outage) | 11,000 | 34.6% | **KILLED** — power outage at step 11K. Post-resume stuck at ~400. Trajectory analysis: -0.017 val_loss/10K — too slow. |
+| **v16** | **2,600+** | **—** | **8,269** | **23.9%** | **RUNNING** — seed=456. Canary-validated (PyTorch loss 10.65→9.02). Phase change expected step 3-5K. |
 
-**v15 training (ACTIVE):** From scratch with seed=123. Phase change at step 3K (earliest ever). Best pre-outage val_ppl=309 (step 9K). Power outage at step 11,129 → resumed from step 10K checkpoint (ALB-120 batch skip). Post-resume recovery in progress: GPU optimizer moments are fresh, val_ppl oscillating 400-657 (best post-resume: 400 at step 17K). Throughput increased to 14.9K tok/s / 46.9% MFU post-reboot. ALB-122 (trueno PTX MulWide bug) discovered and fixed during resume. Step 24K predictor slope turned positive (0.08) — convergence resuming.
+**v16 training (ACTIVE):** From scratch with seed=456. PyTorch canary validated config is sane (loss drops 10.65→9.02 in 50 steps). Same architecture/hyperparameters as v13-v15. ALB-120 + ALB-122 fixes active. v9 remains best genuine result (val_ppl=129). Phase change expected step 3-5K; if absent by step 10K, kill and try seed=789.
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline
