@@ -91,6 +91,7 @@ def main():
             max_position_embeddings=CONFIG["max_position_embeddings"],
             rms_norm_eps=CONFIG["rms_norm_eps"],
             rope_theta=CONFIG["rope_theta"],
+            tie_word_embeddings=True,  # Match entrenar (tied lm_head)
         )
         model = LlamaForCausalLM(config)
         model.gradient_checkpointing_enable()
@@ -116,6 +117,18 @@ def main():
         col = "input_ids" if "input_ids" in table.column_names else "token_ids"
         sequences = [row.as_py() for row in table[col]]
         print(f"  Loaded {len(sequences)} sequences from {shards[0].name}")
+
+        # Load held-out val set
+        val_dir = Path(args.data_dir).parent / "val"
+        val_shards = sorted(val_dir.glob("*.parquet"))
+        if val_shards:
+            val_table = pq.read_table(val_shards[0])
+            val_col = "input_ids" if "input_ids" in val_table.column_names else "token_ids"
+            val_sequences = [row.as_py() for row in val_table[val_col]]
+            print(f"  Loaded {len(val_sequences)} val sequences from {val_shards[0].name}")
+        else:
+            val_sequences = sequences[:1000]  # fallback: first 1K train seqs
+            print(f"  No val dir found, using first 1K train sequences")
     except ImportError:
         print("ERROR: pip install pyarrow")
         return
@@ -189,10 +202,11 @@ def main():
             val_loss = 0.0
             val_batches = 0
             with torch.no_grad():
-                for vi in range(min(250, len(sequences) // CONFIG["batch_size"])):
+                eval_seqs = val_sequences  # Use held-out val set
+                for vi in range(min(250, len(eval_seqs) // CONFIG["batch_size"])):
                     vseqs = []
                     for _ in range(CONFIG["batch_size"]):
-                        seq = sequences[(vi * CONFIG["batch_size"] + _) % len(sequences)][:CONFIG["seq_len"]]
+                        seq = eval_seqs[(vi * CONFIG["batch_size"] + _) % len(eval_seqs)][:CONFIG["seq_len"]]
                         if len(seq) < CONFIG["seq_len"]:
                             seq = seq + [0] * (CONFIG["seq_len"] - len(seq))
                         vseqs.append(seq)
