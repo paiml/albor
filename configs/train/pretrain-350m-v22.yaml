@@ -1,0 +1,53 @@
+# v22: FIRST RUN WITH PROPER RANDOM INIT (entrenar#309 FIXED)
+# C-INIT-001: normal(0, 0.02) matching HuggingFace LLaMA
+# PyTorch canary reached val_ppl=50 at step 1K with this init.
+model:
+  path: "."
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
+data:
+  train: "data/pretokenized-1024-v3/train/"
+  val: "data/pretokenized-1024-v3/val/"
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+optimizer:
+  name: "adamw"
+  lr: 3.0e-4
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.1
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 2000
+  gradient_accumulation: 8
+  output_dir: "./checkpoints/albor-base-350m-v22"
+  save_interval: 5000
+  eval_interval: 1000
+  patience: 30
+  max_steps: 155000
+  seed: 123
+monitoring:
+  terminal: { enabled: false }
+  tracking: { enabled: false }
+  system: { enabled: false }
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion"
