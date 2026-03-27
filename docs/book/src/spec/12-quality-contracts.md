@@ -71,7 +71,25 @@ Many already exist in provable-contracts; new ones must be written.
 | `cosine-lr-schedule-v1.yaml` | lr(t) = lr_min + 0.5(lr_max - lr_min)(1 + cos(π·t/T)) | Peak at warmup end, decay to lr_min, warmup linear | High | PASS |
 | `batch-size-scaling-v1.yaml` | effective_batch = micro_batch × grad_accum × seq_len | Chinchilla-scale token budget, numerical equivalence | High | PASS |
 
-**Contract validation status: 34/34 PASS** (`pv validate contracts/*.yaml`, 2026-03-09)
+### Convergence Parity Contracts (ALB-123 through ALB-127)
+
+Added 2026-03-27 from Five Whys analysis of 14x convergence gap vs PyTorch.
+
+| Contract | Key Equations | Key Obligations | Priority | `pv validate` |
+|----------|---------------|-----------------|----------|---------------|
+| `weight-initialization-v1.yaml` | W ~ N(0, 0.02) for all linear layers | Init matches PyTorch LlamaForCausalLM default | Critical | PASS |
+| `causal-attention-mask-v1.yaml` | mask[i,j] = 0 if j≤i else -∞ | Lower-triangular mask applied before softmax | Critical | PASS |
+| `gradient-clipping-v1.yaml` | clip_coef = min(max_norm / √(Σ‖g_i‖²), 1.0) | L2 norm (not squared), no re-squaring of squared_sum | Critical | PASS |
+| `backward-parity-v1.yaml` | ∀P: 0.5 < gnorm_e[P]/gnorm_p[P] < 2.0 | Per-layer gradient norm within 2x of PyTorch golden reference | Critical | PASS |
+
+Key findings from gradient parity testing:
+- **C-RESIDUAL-001**: Both residual skip connections must bypass their respective
+  RMSNorm backward passes. The identity gradient `grad_output` flows AROUND the
+  norm, not through it. Missing this caused vanishing gradients (gnorm=0 for 20/24 blocks).
+- **C-CLIP-001**: `squared_sum_collect` returns ‖g‖². Do not re-square.
+- **ENTRENAR_TRACE_GRADIENTS=1**: env var enables per-block gradient norm logging.
+
+**Contract validation status: 38/38 PASS** (`pv validate contracts/*.yaml`, 2026-03-27)
 
 ## 12.3 Contract Workflow for Each Kernel
 
