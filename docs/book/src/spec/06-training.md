@@ -178,6 +178,41 @@ with D2H at save and H2D at resume. v13 benefits from this protection.
 **Legacy configs**: v1-v8 — see gap register (§11) for per-version history and
 why each was superseded. v9 was the best single run (val_ppl=129).
 
+### 6.4.1 Convergence Fix: v17-v22 (2026-03-27)
+
+Five root causes were identified and fixed via systematic Five Whys analysis
+comparing entrenar's backward pass against a PyTorch canary:
+
+| # | Root Cause | Issue | Impact |
+|---|-----------|-------|--------|
+| 1 | Sinusoidal weight init | entrenar#309 | Step-0 loss mismatch |
+| 2 | No causal attention mask | entrenar#310 | Minimal effect alone |
+| 3 | Gradient clipping ‖g‖⁴ → ‖g‖ | entrenar#311 | 3% improvement |
+| 4 | Per-block gradient clipping | entrenar#312 | Train loss improved |
+| 5 | **Missing residual skip gradients** | **entrenar#313** | **PRIMARY: 6.3x val_ppl improvement** |
+
+Root cause #5 was the dominant issue: both residual connections' identity skip
+gradients were being transformed by their respective RMSNorm backward passes
+instead of bypassing them. This caused vanishing gradients — 20 out of 24
+transformer blocks received zero gradient, effectively freezing their weights.
+
+**Fix**: `grad_input = RMSNorm_backward(sublayer_grad) + grad_output`
+not `grad_input = RMSNorm_backward(sublayer_grad + grad_output)`.
+
+**Results** (v22 — all fixes):
+
+| Metric | v17-v20 (broken) | v22 (fixed) | PyTorch canary |
+|--------|-----------------|-------------|----------------|
+| val_ppl @ step 1K | 726 | **114.7** | 50 |
+| Blocks with gradient | 4/24 | **24/24** | 24/24 |
+| Train loss @ step 1K | 6.80 | **4.68** | 3.80 |
+
+Gradient parity verified via `ENTRENAR_TRACE_GRADIENTS=1` against
+golden reference in `scripts/golden_gradients.json`. Contracts:
+C-RESIDUAL-001, C-CLIP-001, C-BACKPARITY-001.
+
+**Current config (v22)**: `configs/train/pretrain-350m-v22.yaml`
+
 **Note on YAML numeric formatting**: YAML supports underscore notation natively
 (`32_768`, `1_000_000`) for human-readable large numbers. All albor configs use
 this convention. For shorthand like `10B` or `512K`, see gap ALB-021.
