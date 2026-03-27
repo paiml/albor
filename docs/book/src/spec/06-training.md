@@ -211,6 +211,16 @@ Gradient parity verified via `ENTRENAR_TRACE_GRADIENTS=1` against
 golden reference in `scripts/golden_gradients.json`. Contracts:
 C-RESIDUAL-001, C-CLIP-001, C-BACKPARITY-001.
 
+**v22 convergence trajectory**:
+
+| Step | val_ppl | val_loss | Train loss |
+|------|---------|----------|-----------|
+| 1K | 114.7 | 4.74 | 4.68 |
+| 2K | **9.44** | 2.24 | 1.95 |
+
+val_ppl=9.44 at step 2K (65M tokens, 0.9% of epoch) confirms the model
+is converging correctly with all backward pass fixes applied.
+
 **Current config (v22)**: `configs/train/pretrain-350m-v22.yaml`
 
 **Note on YAML numeric formatting**: YAML supports underscore notation natively
