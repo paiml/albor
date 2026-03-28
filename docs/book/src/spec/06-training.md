@@ -227,7 +227,7 @@ is converging correctly with all backward pass fixes applied.
 |-----|---------|---------|---------|---------|--------|
 | v22 | All residual fixes | 114.7 | **9.44** | 118.3 | Overfitting regression |
 | v23 | + shuffle + tied weight fix | 143.4 | 109 | 242 | Tied weight fix hurt |
-| v25 | + shuffle (no tied weight) | 143.0 | TBD | TBD | **RUNNING** |
+| v25 | + shuffle (no tied weight) | 143.0 | **69.35** | 135.96 | **RUNNING** (predicted 55.8) |
 
 v22's val_ppl=9.44 at step 2K was a memorization artifact — the model
 consumed all 64K sequences from shard 1 by step 2K. The step 3K regression
