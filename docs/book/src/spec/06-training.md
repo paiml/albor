@@ -221,7 +221,25 @@ C-RESIDUAL-001, C-CLIP-001, C-BACKPARITY-001.
 val_ppl=9.44 at step 2K (65M tokens, 0.9% of epoch) confirms the model
 is converging correctly with all backward pass fixes applied.
 
-**Current config (v22)**: `configs/train/pretrain-350m-v22.yaml`
+**v23-v25 iterations** (tied weight and shuffle experiments):
+
+| Run | Changes | Step 1K | Step 2K | Step 3K | Status |
+|-----|---------|---------|---------|---------|--------|
+| v22 | All residual fixes | 114.7 | **9.44** | 118.3 | Overfitting regression |
+| v23 | + shuffle + tied weight fix | 143.4 | 109 | 242 | Tied weight fix hurt |
+| v25 | + shuffle (no tied weight) | 143.0 | TBD | TBD | **RUNNING** |
+
+v22's val_ppl=9.44 at step 2K was a memorization artifact — the model
+consumed all 64K sequences from shard 1 by step 2K. The step 3K regression
+(118.3) confirmed overfitting. Cross-shard shuffling (entrenar#315) prevents
+this by interleaving sequences across all 19 shards.
+
+The tied weight gradient fix (entrenar#314) was reverted — downloading
+only the last micro-batch's LM head gradient (1/8th of total) corrupted
+the embedding optimizer state. The correct fix requires proper accumulated
+gradient support (future work).
+
+**Current config (v25)**: `configs/train/pretrain-350m-v25.yaml`
 
 **Note on YAML numeric formatting**: YAML supports underscore notation natively
 (`32_768`, `1_000_000`) for human-readable large numbers. All albor configs use
