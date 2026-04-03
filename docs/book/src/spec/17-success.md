@@ -10,12 +10,15 @@
 - [ ] All existing kernel contracts pass `pv audit` (Level 2+)
 - [ ] `pmat comply check` passes on all modified components
 
-**Current blocker for Phase 3 completion:**
-- ALB-042: CUDA runtime errors produce silent loss=0.0 — **OPEN** (workaround: `CUDA_VISIBLE_DEVICES=""`)
+**Phase 3 progress:**
+- v28 training at step 8.3K/38K, val_ppl=38.53 (best), predicted ~29 at completion
+- val_ppl < 50 target **MET** (38.53 at step 6K)
+- val_ppl < 100 target **MET** (98.56 at step 1K)
+- HumanEval > 5% — **PENDING** (0% on v4 baseline, awaiting v28 checkpoint eval)
 
-**All critical training bugs FIXED (97 gaps closed, 10 open):**
-- ~~ALB-038–044, 059–060, 063, 065, 069, 071–074, 079–080, 083, 092, 096–097, 099–120~~ — see §11 gap register
-- ALB-121 (shard shuffling) — OPEN, nice-to-have
+**129+ gaps filed, 52 contracts validated:**
+- All critical training bugs fixed (ALB-038–132) — see §11 gap register
+- Key fixes: ALB-078 (fused grad clip), ALB-128 (HPO), ALB-129 (cosine horizon)
 
 **Training run history:**
 
@@ -35,9 +38,14 @@
 | v13 | 62,000 | 239 (inflated) | 8,400 | 26.4% | **STOPPED** (patience=30) — 2x data overlap from reboot. See §6 post-mortem. |
 | v14 | 20,000 | 571 | 8,190 | 23.7% | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. Degenerate init (seed=42). |
 | v15 | 47,000 | 309 (pre-outage) | 11,000 | 34.6% | **KILLED** — power outage at step 11K. Post-resume stuck at ~400. Trajectory analysis: -0.017 val_loss/10K — too slow. |
-| **v16** | **2,600+** | **—** | **8,269** | **23.9%** | **RUNNING** — seed=456. Canary-validated (PyTorch loss 10.65→9.02). Phase change expected step 3-5K. |
+| v16 | 2,600+ | — | 8,269 | 23.9% | **KILLED** — seed=456, superseded by HPO-era runs |
+| v22 | 7K | 9.44 (memorized) | — | — | **STOPPED**: Overfitting without shuffle |
+| v23 | 10K | 50.38 | 8,200 | 25.7% | **STOPPED**: HPO baseline |
+| v27 | 10.2K | 9.39→82 | 14,700 | 46.1% | **STOPPED**: ALB-129 cosine horizon broken |
+| v28 (orig) | 5.4K | **5.88** | 14,700 | 46.1% | **KILLED** by cargo-killer, best val_ppl ever |
+| **v28 (fresh)** | **8.3K** | **38.53** | **11,000** | **36.3%** | **RUNNING** — HPO-validated, ALB-078/129 fixed. Plateau 38-42, predicted ~29 at 38K. |
 
-**v16 training (ACTIVE):** From scratch with seed=456. PyTorch canary validated config is sane (loss drops 10.65→9.02 in 50 steps). Same architecture/hyperparameters as v13-v15. ALB-120 + ALB-122 fixes active. v9 remains best genuine result (val_ppl=129). Phase change expected step 3-5K; if absent by step 10K, kill and try seed=789.
+**v28 training (ACTIVE):** Fresh start with all fixes (ALB-078 fused grad clip, ALB-129 cosine horizon, ALB-130-132 checkpoint fixes). HPO-validated hyperparameters (C-HPO-001): lr=7.35e-5, ga=32, wd=0.012. Step 8.3K/38K (~22%), ETA ~3 days. After v28: v29 on filtered data (2.04B tokens), then distillation.
 
 ### Good (Phase 5 complete)
 - [x] Distillation from Qwen3-Coder-30B demonstrated (ALB-010); text-based synthetic data pipeline
