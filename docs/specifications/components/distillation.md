@@ -6,15 +6,17 @@
 
 ## 1. Why Distillation
 
-Pre-training 350M params from scratch on a single RTX 4090 hit val_ppl=776
-after 64M tokens (v6, step 2000). Extrapolating: competitive results require
-7B+ tokens of curated data at current convergence rate. The phi-1 result proves
-a 350M model CAN reach 45% HumanEval — but only with data quality far beyond
-raw codeparrot-clean.
+Pre-training 350M params on raw codeparrot-clean with HPO-validated
+hyperparameters reached val_ppl=38.53 at step 6K (v28 fresh, running). The
+v28 original run achieved val_ppl=5.88 at step 3.5K — best ever — but
+HumanEval pass@1 remains 0% on raw pre-training data alone. The phi-1 result
+proves a 350M model CAN reach 45% HumanEval — but only with curated data +
+SFT on teacher completions.
 
-**Distillation is the multiplier**: transfer a 35B model's coding knowledge
-into 350M parameters via high-quality synthetic data, not brute-force token
-volume.
+**Distillation is the multiplier**: transfer a 30B MoE teacher's coding
+knowledge into 350M parameters via high-quality synthetic data. Pre-training
+on filtered data (v29, 2.04B clean tokens) provides the foundation; teacher
+completions provide the HumanEval-targeting signal.
 
 ---
 
@@ -65,15 +67,17 @@ reusable; config parsing needs adaptation for `qwen3_moe`.
 
 | Step | Description | Status |
 |------|-------------|--------|
-| 1-3 | MoE routing, dispatch, forward (architecture-agnostic) | MERGED |
-| 4* | Config parsing (adapt for `qwen3_moe`) | NEEDS UPDATE |
-| 5* | Tests (re-validate for 128 experts, no shared) | NEEDS UPDATE |
-| 6 | Download model + APR import + tensor→slot mapping | **TODO** |
-| 7 | Q4 quantization via `apr quantize` | TODO |
+| 1-3 | MoE routing, dispatch, forward (architecture-agnostic) | MERGED (PR #133) |
+| 4 | Config: `has_qk_norm=true`, QK norm tensor names | DONE (`0c495ef`) |
+| 5 | Per-expert weight loading (Layout 2 fallback) | DONE (`0c495ef`) |
+| 6 | Download model + APR import + tensor→slot mapping | **IN PROGRESS** |
+| 7 | Q4K quantization via `apr quantize` | TODO |
 | 8 | End-to-end generation dogfood | BLOCKED on 6-7 |
 
-Steps marked * need adaptation from `qwen3_5_moe` → `qwen3_moe`. The core
-MoE routing/dispatch is architecture-agnostic and transfers directly.
+**Interim teacher**: Qwen3-8B (dense) serving on gx10 via `realizar serve`
+(2 instances, ports 8090/8091). Teacher completions pilot: 330/1K prompts
+completed at 36/h throughput before connection reset. 100% pass rate on
+generated completions — no failures in first 330 samples.
 
 ### 2.4 Weight Loading: APR Format
 
@@ -199,21 +203,24 @@ Start with pilot to validate pipeline and measure rejection rate.
 
 ### 5.1 Stage A: Pre-train on Curated Data
 
-Train student from random init on quality-filtered codeparrot-clean.
+Two parallel paths, best checkpoint from either feeds into Stage B:
 
-| Config | Value |
-|--------|-------|
-| Data | 1-2B tokens (filtered from 5.3B raw) |
-| Loss | Causal LM (cross-entropy) |
-| LR | 3e-4, cosine decay |
-| Warmup | 2000 steps |
-| Batch | 32K tokens/step |
-| Steps | ~40K-60K |
-| Target | val_loss < 4.0 |
+**Path 1 (v28)**: Full epoch on raw codeparrot-clean (5.3B tokens) with
+HPO-validated hyperparameters. Currently running, val_ppl=38.53 at step 6K.
 
-**Quality classifier**: Train random forest on teacher annotations.
-Annotate ~10K samples as "textbook quality" (1) or not (0). Apply classifier
-to full 5.3B tokens, keep samples scoring > 0.5.
+**Path 2 (v29)**: Train on AST-filtered subset (2.04B tokens, 850K files,
+`data/pretokenized-1024-v4/`). Config: `configs/train/pretrain-350m-v29.yaml`
+(15,530 steps, ~2.4 days). Expected to converge faster due to higher data
+quality (28.7% pass rate, valid AST + docstrings + import diversity).
+
+| Config | v28 (raw) | v29 (filtered) |
+|--------|-----------|----------------|
+| Data | 5.3B tokens | 2.04B tokens |
+| LR | 7.35e-5, cosine | 7.35e-5, cosine |
+| Warmup | 93 steps | TBD |
+| Batch | 131K tokens/step | 131K tokens/step |
+| Steps | 38,349 | 15,530 |
+| Target | val_ppl < 30 | val_ppl < 25 |
 
 ### 5.2 Stage B: SFT on Teacher Completions
 
