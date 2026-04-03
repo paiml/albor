@@ -160,7 +160,7 @@ entrenar loads all parquet shards into memory at startup via
 `ParquetDataLoader`. For 19 shards of codeparrot-clean:
 - 5.16M sequences × ~4KB each ≈ 20 GB in RAM
 - With OS overhead → 39 GB swap usage
-- Progressive throughput degradation: 8.4K → 6.5K tok/s
+- Progressive throughput degradation: 8.4K → 6.5K tok/s (v6 era, mitigated in v28 by ga=32)
 
 ### 4.2 Planned: Streaming Data Loader
 
