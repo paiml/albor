@@ -55,7 +55,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | ALB-016 | [#17](https://github.com/paiml/albor/issues/17) | provable-contracts | Pruning contract (WANDA, magnitude) | Medium | **FIXED** | `pruning-kernel-v1.yaml` — committed and passes `pv validate`. Sparsity invariant, score ordering. |
 | ALB-017 | [#18](https://github.com/paiml/albor/issues/18) | provable-contracts | Gradient accumulation contract | High | **FIXED** | `gradient-accumulation-kernel-v1.yaml` — committed and passes `pv validate`. Numerical equivalence, gradient zeroing. |
 
-**Contract coverage report** (`pv coverage contracts`): 49 contracts in `contracts/` covering training, GPU ops, evaluation, data pipeline, MoE routing, quantization, memory profiling, checkpoint resume, hyperparameter tuning, and configuration validation. All 49/49 pass `pv validate` (2026-04-03).
+**Contract coverage report** (`pv coverage contracts`): 52 contracts in `contracts/` covering training, GPU ops, evaluation, data pipeline, MoE routing, quantization, memory profiling, checkpoint resume, hyperparameter tuning, teacher completions, data quality filtering, and configuration validation. All 52/52 pass `pv validate` (2026-04-03).
 
 ### 11.4 Dogfooding-Discovered Gaps
 
