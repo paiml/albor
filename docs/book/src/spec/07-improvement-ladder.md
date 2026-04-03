@@ -14,7 +14,8 @@ apr train apply configs/train/pretrain-350m.yaml --seed 42
 **Exercises**: entrenar, trueno (CUDA), alimentar (data streaming)
 **Expected**: OPT-350M class on general benchmarks (~48% avg). On HumanEval,
 target >8% (above random, below CodeGen-350M's 12.8% due to less training data).
-v13 is training on 5.08B tokens (73% Chinchilla-optimal), projected val_ppl 100-166
+v28 is training on 5.08B tokens (73% Chinchilla-optimal): val_ppl=38.53 at step 6K,
+predicted ~29 at completion. v29 ready on filtered data (2.04B clean tokens).
 
 ### 7.2 Stage 2: Synthetic Data Distillation from Qwen3-Coder-30B
 
@@ -119,17 +120,16 @@ Code completion metrics (HumanEval, FIM) are primary; general benchmarks are sec
 
 | Stage | Model | Params | Size | HumanEval | MBPP | CPU tok/s |
 |-------|-------|--------|------|-----------|------|-----------|
-| 1 | albor-base (v13) | 350M | ~700MB | TBD | TBD | — |
-| 2 | albor-distill | 350M | ~700MB | ~3-9% | ~2-5% | — |
-| 3 | albor-instruct | 350M | ~700MB | ~5-11% | ~3-7% | — |
-| 4 | albor-merged | 350M | ~700MB | ~6-12% | ~4-8% | — |
-| 5 | albor-pruned | ~175M | ~350MB | ~4-9% | ~3-6% | — |
-| 6 | albor-q4 | 350M | ~90MB | ~5-11% | ~3-7% | >50 |
+| 1 | albor-base (v28/v29) | 350M | ~700MB | TBD (predicted 8-15%) | TBD | — |
+| 2 | albor-distill | 350M | ~700MB | ~10-20% | ~5-10% | — |
+| 3 | albor-instruct | 350M | ~700MB | ~12-22% | ~7-12% | — |
+| 4 | albor-merged | 350M | ~700MB | ~13-23% | ~8-13% | — |
+| 5 | albor-pruned | ~175M | ~350MB | ~10-18% | ~6-10% | — |
+| 6 | albor-q4 | 350M | ~90MB | ~12-22% | ~7-12% | >50 |
 
-*Stage 1: v15 RUNNING — phase change at step 3K (earliest ever), val_ppl=333 at step 5K
-(21% ahead of v13). On track to surpass v9's best (val_ppl=129) by step 10-15K.
-97 gaps closed (incl ALB-120 data position checkpoint). 15 training runs, 3 critical
-infrastructure bugs found and fixed by dogfooding. Stage 2+ numbers are estimates.
-Distillation uses synthetic data generation (not logit-level KD) due to vocab mismatch
-between teacher (151K Qwen BPE) and student (32K Albor BPE). Any non-zero HumanEval
-from a 350M sovereign-stack model is a meaningful result.*
+*Stage 1: v28 RUNNING (step 8.3K/38K), val_ppl=38.53 at step 6K. 28 training runs,
+9 root causes found and fixed (RC1-RC9). HPO-validated hyperparameters (C-HPO-001).
+129+ gaps filed, 52 contracts validated. Teacher pilot: 330/1K completions at 100%
+pass rate (Qwen3-8B interim). Distillation uses sequence-level synthetic data (not
+logit-level KD) due to vocab mismatch (teacher 151K vs student 32K). Any non-zero
+HumanEval from a 350M sovereign-stack model is a meaningful result.*

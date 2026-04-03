@@ -1,7 +1,7 @@
 # Albor LLM Specification
 
-**Version**: 1.0.0
-**Date**: 2026-03-08
+**Version**: 1.3.0
+**Date**: 2026-04-03
 **Author**: Noah Gift / Pragmatic AI Labs
 
 > *Albor* (Spanish: "dawn") — A sovereign 350M Python code completion model.
