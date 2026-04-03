@@ -6,9 +6,9 @@
 
 ## 1. Summary
 
-**92 gaps filed. 52 fixed.** The gap register tracks every missing capability,
-bug, or integration issue discovered during end-to-end LLM development with the
-sovereign stack.
+**129+ gaps filed. 50 contracts validated.** The gap register tracks every
+missing capability, bug, or integration issue discovered during end-to-end LLM
+development with the sovereign stack.
 
 The model is the proof; the stack improvements are the lasting value.
 
@@ -21,10 +21,10 @@ The model is the proof; the stack improvements are the lasting value.
 | ALB-010 | `qwen3_moe` teacher loading (re-scoped) | Steps 6-8 | realizar | **BLOCKER**: Qwen3-Coder-30B-A3B |
 | ALB-089 | GPU-accelerated inference for eval | DOGFOODING | realizar | Needed for fast teacher generation |
 
-### 2.1 ALB-010: Qwen3.5-35B-A3B MoE Support
+### 2.1 ALB-010: Qwen3-Coder MoE Teacher Loading
 
 **The single most important gap.** Without this, we cannot use our primary
-teacher model.
+teacher model at full quality.
 
 **Re-scoped**: Teacher changed from Qwen3.5-35B-A3B (`qwen3_5_moe`) to
 Qwen3-Coder-30B-A3B-Instruct (`qwen3_moe`). Falsification revealed the
@@ -38,6 +38,10 @@ original teacher has no FIM support and isn't code-specialized.
 | 6 | Download model + APR import + tensor→slot mapping | **IN PROGRESS** |
 | 7 | Q4K quantization via `apr quantize` | TODO |
 | 8 | End-to-end generation dogfood | BLOCKED on 6-7 |
+
+**Interim teacher**: Qwen3-8B (dense) running on gx10 via `realizar serve`
+(2 instances, ports 8090/8091). Used for teacher completions pipeline pilot
+(330/1K prompts completed, 36/h throughput, before connection reset).
 
 **Architecture differences** (`qwen3_moe` vs `qwen3_5_moe`):
 - 128 experts (not 256), no shared expert
@@ -116,6 +120,27 @@ corruption → wrong gradients. Fix: dedicated buffer per purpose.
 `RMSNorm::forward_batched()` had no backward op. Blocked ALL gradient flow
 through the network. Training appeared to work (loss decreased via embedding
 gradients only) but produced garbage weights. Fix: implement batched backward.
+
+### 3.10 ALB-078: Fused Gradient Clipping (FIXED)
+
+Per-block gradient clipping required 24 D2H transfers per step to read
+individual block norms on CPU. Fused approach: compute all block norms on
+GPU, single D2H for total norm, clip all at once. Result: MFU 19% → 38.7%,
+tok/s 6.7K → 14.7K. Rebuilt binary 2026-04-02.
+
+### 3.11 ALB-128: LR-Batch Mismatch (MITIGATED)
+
+Original lr=3e-4 with batch=4K tokens/step was mismatched — too aggressive
+for the effective batch size. HPO sweep (C-HPO-001) on 50M proxy found
+optimal: lr=7.35e-5, batch=131K tokens/step (ga=32). 4× lower LR with
+4× larger batch size.
+
+### 3.12 ALB-129: Cosine Schedule Horizon Miscalibration (FIXED)
+
+`max_steps=155000` in v27 config, but actual training is ~38K steps (1 epoch).
+Cosine schedule only decayed 1% over 10K steps — effectively constant LR.
+One-number fix: `max_steps=38349` (= total_train_batches / GA). Turned a
+diverging run (v27: 9.39 → 82) into the best result (v28: val_ppl=5.88).
 
 ---
 
