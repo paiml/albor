@@ -71,6 +71,19 @@ Many already exist in provable-contracts; new ones must be written.
 | `cosine-lr-schedule-v1.yaml` | lr(t) = lr_min + 0.5(lr_max - lr_min)(1 + cos(π·t/T)) | Peak at warmup end, decay to lr_min, warmup linear | High | PASS |
 | `batch-size-scaling-v1.yaml` | effective_batch = micro_batch × grad_accum × seq_len | Chinchilla-scale token budget, numerical equivalence | High | PASS |
 
+### Checkpoint & Training Lifecycle Contracts (ALB-117, ALB-118, ALB-130, ALB-132)
+
+Added 2026-03-17 through 2026-04-03 from checkpoint resume failures and training lifecycle bugs.
+
+| Contract | Key Equations | Key Obligations | Priority | `pv validate` |
+|----------|---------------|-----------------|----------|---------------|
+| `gpu-optimizer-checkpoint-v1.yaml` | Round-trip: \|loaded - saved\| < ε for all m/v buffers | 438 optimizer tensors in APR checkpoint (18 × 24 blocks + 6); resume converges within 5% | Critical | PASS |
+| `checkpoint-resume-v1.yaml` | Consecutive resumes produce same val_ppl (< 1% variance) | No checkpoint overwrite at resume step; GPU block optimizer restore reports actual count | Critical | PASS |
+| `checkpoint-tokenizer-v1.yaml` | Checkpoint embeds tokenizer for standalone inference | `apr eval --task humaneval` uses embedded tokenizer, not fallback structural validation | High | PASS |
+| `fresh-training-step-v1.yaml` | initial_step = 0 when no checkpoint in output_dir | Step counter doesn't leak from source checkpoint; LR schedule starts from 0 | High | PASS |
+| `hyperparameter-tuning-v1.yaml` | μTransfer: lr_target = lr_proxy × (width_proxy / width_target) | Successive halving protocol; scaling law prediction; WSD schedule support | High | PASS |
+| `interleaved-optimizer-v1.yaml` | lr_adj = lr_chinchilla / √(1 + avg_staleness) | LR bound for interleaved per-block optimizer; staleness = (L-1)/2 for L blocks | High | PASS |
+
 ### Convergence Parity Contracts (ALB-123 through ALB-127)
 
 Added 2026-03-27 from Five Whys analysis of 14x convergence gap vs PyTorch.
@@ -89,7 +102,7 @@ Key findings from gradient parity testing:
 - **C-CLIP-001**: `squared_sum_collect` returns ‖g‖². Do not re-square.
 - **ENTRENAR_TRACE_GRADIENTS=1**: env var enables per-block gradient norm logging.
 
-**Contract validation status: 38/38 PASS** (`pv validate contracts/*.yaml`, 2026-03-27)
+**Contract validation status: 49/49 PASS** (`pv validate contracts/*.yaml`, 2026-04-03)
 
 ## 12.3 Contract Workflow for Each Kernel
 

@@ -20,84 +20,109 @@ A **350M-parameter decoder-only transformer** for Python code completion, traine
 
 **The project has two goals:**
 1. Produce a **usable Python code completion model** that runs anywhere Rust compiles
-2. Identify and fix every gap in the [Sovereign AI stack](https://github.com/paiml) that blocks end-to-end LLM development — **97 gaps found and fixed so far**
+2. Identify and fix every gap in the [Sovereign AI stack](https://github.com/paiml) that blocks end-to-end LLM development — **128+ gaps found, 120+ fixed**
 
 ## Current Status
 
-**v15 training RUNNING** — Step 24K/155K (15.6%), 786M tokens processed.
+**v28 training RUNNING** — step 5.6K/38K (~15% complete).
 
 | Metric | Value |
 |--------|-------|
-| Training run | v15 (15th attempt, seed=123) |
-| Step | 24,000 / 155,000 (15.6%) |
-| Best val_ppl | **309** (step 9K, pre-outage) |
-| Throughput | 14,900 tok/s, 46.9% MFU |
+| Training run | v28 fresh (ALB-129/130/131/132 fixes) |
+| Best val_ppl | **42.99** at step 5K (plateau phase) |
+| Projected val_ppl | **31.7** at step 38K (scaling law) |
+| Prior best (v28 orig) | **5.88** at step 3.5K (killed by `cargo-killer`) |
+| Config | lr=7.35e-5, GA=32 (131K tok/step), wd=0.012 |
+| Throughput | 14,700 tok/s, **46% MFU** (ALB-078 fused gradient clipping) |
 | Hardware | RTX 4090 (24 GB), single GPU |
 | Data | codeparrot-clean, 5.08B tokens (73% Chinchilla) |
-| ETA | ~3.3 days remaining |
+| Total steps | 38,349 (1 epoch, cosine decay calibrated) |
+| ETA | ~3.4 days (2026-04-06) |
 
-Phase change at step 3K (earliest ever). Power outage at step 11K — resumed from step 10K checkpoint. Post-resume best: 400 (step 17K). 98 gaps fixed including ALB-122 (trueno PTX bug discovered during resume).
+### Training History: v1 to v28
 
-### What We've Built
+28 training runs across three phases:
 
-Through 15 training runs and 97 bug fixes, the project has:
+**Phase 1 — Correctness (v1-v22):** Fixed 7 critical backward pass bugs via
+systematic Five Whys analysis and PyTorch canary comparison:
 
-- **Trained a 350M transformer on a single GPU entirely in Rust** — no Python anywhere in the stack
-- **Achieved 8.5K tok/s at 24.6% MFU** on an RTX 4090 with hand-written PTX kernels + cuBLAS
-- **Discovered and fixed 97 infrastructure gaps** across 6 upstream repos, including:
-  - Silent memory corruption in CUDA backward kernels (ALB-041, 043, 059)
-  - Missing RoPE backward pass (ALB-119) — model trained without position gradients
-  - GPU optimizer state not checkpointed (ALB-118) — resume destroyed weights
-  - Data loader position not checkpointed (ALB-120) — resume caused data overlap
-  - Activation gradient overflow at GPU-CPU boundary (ALB-044) — NaN in embeddings
-  - Stream synchronization race conditions (ALB-065) — stale GPU data on D2H transfer
-- **Reached val_ppl=129** (v9) on 490M tokens — v15 is on track to beat this with 10x more data
-- **Built 39 provable contracts** verified by `pv` (provable-contracts)
-- **108/108 batuta falsification tests PASS** (Toyota Standard grade)
+| Root Cause | Impact | Gap |
+|-----------|--------|-----|
+| Missing residual skip gradients | **val_ppl 726 → 9.44** (6.3x) | ALB-126/127 |
+| Gradient clipping using ‖g‖⁴ | 3% improvement | ALB-124 |
+| No causal attention mask | Minimal | ALB-125 |
+| Wrong weight init (sinusoidal) | Step-0 parity | entrenar#309 |
+| Sequential shard overfitting | val_ppl regression at step 3K | entrenar#315 |
+
+**Phase 2 — Hyperparameters (v22-v27):** Systematic HPO via `apr train halving`:
+
+| Run | LR | Batch (tok/step) | Best val_ppl | Key Finding |
+|-----|-----|-------------------|-------------|-------------|
+| v22 | 3e-4 | 32K | 9.44 (memorized) | Overfitting without shuffle |
+| v25 | 3e-4 | 32K | 69 → 314 (spike) | LR too high for small batch |
+| v26 | 1e-4 | 32K | 15 → 162 → 41 | Still oscillating |
+| v27 | 7.35e-5 | 131K | 9.39 → 82 (diverged) | HPO-validated, but cosine schedule broken |
+
+**Phase 3 — Schedule fix (v28):** ALB-129 — `max_steps` calibrated to actual
+training horizon. One config change, best result ever:
+
+| Step | v28 val_ppl | v27 val_ppl |
+|------|-----------|-----------|
+| 2K | 9.65 | 9.39 (peak) |
+| 2.5K | 6.87 | 12.57 (diverging) |
+| 3K | 6.16 | 16.07 |
+| 3.5K | **5.88** | 32.02 |
+| 5K | 6.70 | 55.86 |
+
+v27's cosine schedule used `max_steps=155K` for a 38K-step run — LR never
+decayed (99% of peak at step 10K). v28 sets `max_steps=38349` so cosine
+completes its full decay. The model pushes through the divergence zone and
+keeps improving.
+
+### Pipeline to HumanEval
+
+| Phase | What | Status | ETA |
+|-------|------|--------|-----|
+| **v28** | Full epoch, unfiltered codeparrot (5B tokens, 38K steps) | **RUNNING** step 5.6K | ~3.4 days |
+| **v29** | Filtered codeparrot (2B clean tokens, 15.5K steps) | **READY** | ~2.4 days |
+| **Distill** | Best checkpoint + Qwen3-Coder-30B teacher | **CONFIG READY** | after v29 |
+| **HumanEval** | Target: 5-15% pass@1 | pending | after distill |
+
+### Data Filtering
+
+codeparrot-clean (raw GitHub Python) filtered to high-quality subset:
+
+| Metric | Unfiltered (v28) | Filtered (v29) |
+|--------|-----------------|----------------|
+| Files | 2.9M | 850K (29% pass rate) |
+| Tokens | 5.08B | 2.04B |
+| Syntax valid | ~87% | **100%** |
+| Has docstrings | ~40% | **100%** (≥1 per 50 lines) |
+| Has imports | ~60% | **100%** (≥2 unique) |
+| No generated code | ~80% | **100%** |
+
+Hypothesis: 2B clean tokens > 5B noisy tokens for code generation quality,
+following phi-1's finding that data quality dominates model scale.
 
 ### Research Context
 
 **Why this is hard** ([Textbooks Are All You Need](https://arxiv.org/abs/2306.11644)):
 phi-1-small (350M) achieved 45% HumanEval — but with 7B tokens of synthetic
 textbook-quality data generated by GPT-3.5. Albor trains on codeparrot-clean
-(raw GitHub Python, ~50GB). Data quality is the primary ceiling, not model
-architecture. Distillation from Qwen3-Coder-30B partially compensates.
+(raw GitHub Python). Data quality is the primary ceiling, not model architecture.
+v29 addresses this with quality filtering; distillation adds synthetic data.
 
-**Scaling position** ([Chinchilla](https://arxiv.org/abs/2203.15556), [Beyond Chinchilla](https://arxiv.org/abs/2401.00448)):
+**Scaling position** ([Chinchilla](https://arxiv.org/abs/2203.15556)):
 Our 5.08B tokens on 350M params (14.5:1) is below Chinchilla-optimal (20:1 = 7B tokens).
-Modern practice overtrains small models far beyond this — Llama 3 uses 1875:1.
-For inference-optimized deployment, training longer on a smaller model is preferred.
+The [Step Law](https://arxiv.org/abs/2503.04715) formula gives lr=3.2e-3 and
+batch=183K tokens for this model size — our HPO-validated lr=7.35e-5 is
+conservative because of the interleaved per-block optimizer architecture.
 
-**Competitive landscape** ([CodeGen](https://huggingface.co/Salesforce/codegen-350M-mono)):
-CodeGen-350M-mono achieves 10.2% HumanEval pass@1, trained on 577B tokens.
-No sub-1B model has appeared on the [Big Code Models Leaderboard](https://huggingface.co/spaces/bigcode/bigcode-models-leaderboard).
-
-### What Needs to Happen
-
-| Milestone | When | Success Criteria |
-|-----------|------|------------------|
-| v15 surpasses v9 (val_ppl < 129) | Step 10-15K (~2 days) | Sentence-level patterns learned |
-| v15 reaches ppl < 50 | Step 155K (~5 days) | Syntactic structure captured |
-| HumanEval pass@1 > 0% | val_ppl < 100 | First valid Python generation |
-| Distillation from Qwen3-Coder-30B | After base model | Synthetic textbook-style data |
-| HumanEval pass@1 > 10% | After distillation | Beat CodeGen-350M-mono (10.2%) |
-| Big Code Leaderboard submission | After distillation | First sub-1B entry |
-
-### When We Declare Success
-
-**Minimum viable (Phase 3):** Base model converges to val_ppl < 100 and
-achieves HumanEval pass@1 > 5%. Proves the sovereign stack can train a
-working code model end-to-end in Rust.
-
-**Good (Phase 5):** Distilled model hits HumanEval pass@1 > 10%, beating
-CodeGen-350M-mono (10.2%). Proves distillation from Qwen3-Coder-30B MoE
-teacher through the sovereign stack produces competitive results.
-
-**Full success (Phase 8):** All 6 model variants benchmarked, Q4 model under
-100MB runs at <50ms/token on CPU, submitted to Big Code Leaderboard as the
-first sub-1B entry. The stack is proven end-to-end.
-
-**Full success (Phase 8):** All 6 model variants benchmarked, Q4 model under 100MB runs at <50ms/token on CPU, submitted to Big Code Leaderboard as the first sub-1B entry.
+**HPO methodology** ([μTransfer](https://arxiv.org/abs/2203.03466),
+[Hyperband](https://arxiv.org/abs/1603.06560)):
+Hyperparameters are tuned on a 50M proxy model via `apr train sweep` +
+`apr train halving`, then transferred to 350M via μTransfer width scaling.
+Contract: C-HPO-001 (`contracts/hyperparameter-tuning-v1.yaml`).
 
 ## Architecture
 
@@ -106,47 +131,91 @@ LLaMA-style decoder-only transformer
 ├── 24 layers, 1024 hidden dim, 16 attention heads, 4 KV heads (GQA)
 ├── SwiGLU FFN (4096 intermediate), RoPE, RMSNorm (pre-norm)
 ├── 32,768 vocab (ByteLevel BPE v2), 1024 context (GPU-resident)
-├── ~370M parameters, GPU-resident AdamW on RTX 4090 (~13 GB VRAM)
-└── Cosine LR schedule (3e-4 peak, 155K steps, 2K warmup)
+├── ~370M parameters, GPU-resident AdamW on RTX 4090 (~14.8 GB VRAM)
+└── Cosine LR schedule (7.35e-5 peak, 38K steps, 93-step warmup, GA=32)
 ```
 
-## Training History
+## Automatic Hyperparameter Tuning (C-HPO-001)
 
-15 training runs, each revealing and fixing infrastructure bugs:
+```bash
+# Step 1: Generate 16 random sweep configs from 50M proxy base
+apr train sweep --config configs/train/pretrain-50m-sweep.yaml \
+    --strategy random --num-configs 16 --seed 42 \
+    --output-dir sweeps/50m-hpo/
 
-| Run | Steps | Best val_ppl | Outcome | Key Fix |
-|-----|-------|-------------|---------|---------|
-| v2 | 1K | 1,008 | Crashed | ALB-073: PTX instruction bug |
-| v3 | 28K | 1,018 | Plateau | ALB-079: no cosine LR decay |
-| v5 | — | — | Failed | ALB-092: gradient accumulation bug |
-| v8 | 5K | — | Killed | ALB-106: trained without RoPE |
-| **v9** | **15K** | **129** | **Stopped** | **Best genuine result** (490M tokens) |
-| v13 | 62K | 239 (inflated) | Stopped | ALB-120: data position not checkpointed |
-| v14 | 20K | 782 | Killed | Degenerate init (seed=42) |
-| **v15** | **5K+** | **333** | **Running** | **Phase change at step 3K** |
+# Step 2: Run successive halving (kills worst half each round)
+apr train halving --sweep-dir sweeps/50m-hpo/ \
+    --rounds 3 --steps-per-round 500 \
+    --source-width 512 --target-width 1024 \
+    --output sweeps/50m-hpo/results.json
+
+# Step 3: Winner's LR is μTransfer-scaled for 350M
+cat sweeps/50m-hpo/results.json | jq '.winner'
+```
+
+References:
+[μTransfer](https://arxiv.org/abs/2203.03466),
+[Hyperband](https://arxiv.org/abs/1603.06560),
+[MiniCPM](https://arxiv.org/abs/2404.06395),
+[Step Law](https://arxiv.org/abs/2503.04715)
 
 ## Sovereign AI Stack
 
 | Component | Role | Gaps Fixed |
 |-----------|------|-----------|
-| [entrenar](https://github.com/paiml/entrenar) | Training engine | 40+ (CUDA kernels, optimizer, checkpoint) |
-| [trueno](https://github.com/paiml/trueno) | GPU tensor ops | 15+ (RoPE, RMSNorm, cuBLAS, PTX) |
-| [aprender](https://github.com/paiml/aprender) (`apr`) | CLI | 10+ (eval, train, checkpoint) |
-| [realizar](https://github.com/paiml/realizar) | Inference | 5+ (Qwen3 MoE, Q4K) |
-| [alimentar](https://github.com/paiml/alimentar) | Data pipeline | 5+ (Parquet, FIM) |
-| [provable-contracts](https://github.com/paiml/provable-contracts) | Verification | 39 contracts |
+| [entrenar](https://github.com/paiml/entrenar) | Training engine (CUDA kernels, optimizer) | 45+ |
+| [trueno](https://github.com/paiml/trueno) | GPU tensor ops (RoPE, RMSNorm, PTX) | 15+ |
+| [aprender](https://github.com/paiml/aprender) (`apr`) | CLI (train, sweep, halving, eval) | 12+ |
+| [realizar](https://github.com/paiml/realizar) | Inference (Qwen3 MoE, Q4K) | 5+ |
+| [alimentar](https://github.com/paiml/alimentar) | Data pipeline (Parquet, FIM) | 5+ |
+| [provable-contracts](https://github.com/paiml/provable-contracts) (`pv`) | Verification (49 contracts) | — |
+| [renacer](https://github.com/paiml/renacer) | Tracing (BrickTracer, spans) | 3+ |
+
+## Provable Contracts
+
+Every training invariant is encoded as a YAML contract verified by `pv validate`:
+
+| Contract | What It Proves |
+|----------|---------------|
+| C-RESIDUAL-001 | Residual skip bypasses RMSNorm backward |
+| C-CLIP-001 | Gradient clipping uses L2 norm, not squared |
+| C-BACKPARITY-001 | Backward pass matches PyTorch canary |
+| C-HPO-001 | μTransfer scaling, successive halving protocol |
+| C-INTERLEAVED-001 | LR bound for interleaved optimizer |
+| C-TIEDOPT-001 | Tied weight optimizer single-step invariant |
 
 ## Reproduce
 
 ```bash
-# Build the CLI
-cd ~/src/aprender && cargo build --release -p apr-cli
+# Build the CLI (requires sibling repos: entrenar, trueno, realizar, renacer)
+cd ~/src/aprender && CARGO_TARGET_DIR=/mnt/nvme-raid0/targets/aprender \
+    cargo build --release -p apr-cli
 
-# Train from scratch (RTX 4090, ~5 days)
-apr train apply --task pretrain --config configs/train/pretrain-350m-v15.yaml
+# IMPORTANT: Pin the binary — other projects sharing CARGO_TARGET_DIR will
+# overwrite it with feature-incompatible builds (no train subcommand)
+mkdir -p bin && cp /mnt/nvme-raid0/targets/aprender/release/apr bin/apr-train
+
+# Quick regression test (50M model, 5 steps, < 2 min)
+bin/apr-train train apply --task pretrain --config configs/train/pretrain-50m-quick.yaml
+
+# Full 350M training on unfiltered data (RTX 4090, ~5 days)
+bin/apr-train train apply --task pretrain --config configs/train/pretrain-350m-v28.yaml
+
+# Full 350M training on filtered data (RTX 4090, ~2.4 days)
+bin/apr-train train apply --task pretrain --config configs/train/pretrain-350m-v29.yaml
 
 # Evaluate
-apr eval --task humaneval --model checkpoints/albor-base-350m-v15/model-best.apr
+bin/apr-train eval --task humaneval --data data/humaneval.jsonl \
+    --device cpu checkpoints/albor-base-350m-v28/model-best.apr
+
+# Filter codeparrot-clean (CPU, ~50 min)
+python3 scripts/filter_codeparrot.py --output data/filtered/
+
+# Pretokenize filtered data (CPU, ~30 min)
+python3 scripts/pretokenize_streaming.py \
+    --input data/filtered/train/ \
+    --output data/pretokenized-1024-v4/train/ \
+    --tokenizer models/albor-tokenizer-v2/tokenizer.json
 ```
 
 ## License

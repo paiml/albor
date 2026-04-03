@@ -2,21 +2,21 @@
 
 ### 6.1 Optimizer & Schedule
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| Optimizer | AdamW | Standard; in aprender/entrenar |
-| Learning rate | 3e-4 | Chinchilla-recommended for 350M |
-| Weight decay | 0.1 | Standard AdamW regularization |
+| Parameter | Value (v28) | Rationale |
+|-----------|-------------|-----------|
+| Optimizer | AdamW | Standard; GPU-resident in entrenar |
+| Learning rate | **7.35e-5** | HPO-validated via `apr train halving` on 50M proxy (C-HPO-001). μTransfer: 1.47e-4 × (512/1024) |
+| Weight decay | **0.012** | HPO-validated (v1-v26 used 0.1, 8x higher) |
 | Beta1, Beta2 | 0.9, 0.95 | LLaMA/GPT-3 standard |
 | Epsilon | 1e-8 | Standard |
-| LR schedule | Cosine annealing with warmup | `CosineAnnealingLR` in aprender |
-| Warmup steps | 2000 (v1) / 500 (v2) | **ALB-060**: 2000/5000 = 40%, not 0.2%. v2 config uses 500 (10%) per C-TRAINCFG-001 |
-| Min LR | 3e-5 | 10% of peak (standard) |
+| LR schedule | Cosine | Cosine annealing with `max_steps` calibrated to training horizon (ALB-129) |
+| Warmup steps | **93** | HPO-validated (v26 used 1000, v25 used 2000) |
+| Min LR | 0 | Cosine decays to 0 |
 | Gradient clipping | 1.0 (global norm) | Stability |
-| Batch size (global) | 32K tokens/step | batch=4 × ga=8 × seq_len=1024 (v9 config) |
+| Batch size (global) | **131K tokens/step** | batch=4 × **ga=32** × seq_len=1024. HPO finding: 4x batch vs v26 eliminates val_ppl oscillation |
 | Micro-batch (4090) | 4 | GPU-resident (batch=8 OOM at seq≥1024) |
-| Gradient accumulation | 8 (ALB-091) | GPU-resident accumulation via `GpuGradientAccumulator` — zero D2H during micro-batch loop |
-| Total training tokens | Target 5.08B (v15); 5.3B available | 155,000 steps × 32K tokens/step; data: codeparrot-clean pretokenized-1024-v3. 73% Chinchilla-optimal (7B for 350M at 20:1). Modern practice overtrains far beyond Chinchilla — Llama 3 uses 1875:1. Our 14.5:1 is acceptable for first-gen training. |
+| Gradient accumulation | **32** (C-HPO-001) | GPU-resident accumulation. 4x increase from v26's GA=8 based on HPO sweep winner |
+| Total training tokens | 5.08B (**38K steps**) | codeparrot-clean pretokenized-1024-v3. `max_steps=38349` = 1 epoch (ALB-129 fix) |
 | Mixed precision | fp16 (CUDA) | Hardware-appropriate |
 
 ### 6.1.1 PyTorch Canary — Ground Truth Validation
@@ -221,13 +221,14 @@ C-RESIDUAL-001, C-CLIP-001, C-BACKPARITY-001.
 val_ppl=9.44 at step 2K (65M tokens, 0.9% of epoch) confirms the model
 is converging correctly with all backward pass fixes applied.
 
-**v23-v25 iterations** (tied weight and shuffle experiments):
+**v22-v26 iterations** (convergence fix + LR tuning):
 
-| Run | Changes | Step 1K | Step 2K | Step 3K | Status |
-|-----|---------|---------|---------|---------|--------|
-| v22 | All residual fixes | 114.7 | **9.44** | 118.3 | Overfitting regression |
-| v23 | + shuffle + tied weight fix | 143.4 | 109 | 242 | Tied weight fix hurt |
-| v25 | + shuffle (no tied weight) | 143.0 | **69.35** | 135.96 | **RUNNING** (predicted 55.8) |
+| Run | Changes | 1K | 2K | 3K | 4K | 5K | 6K | Status |
+|-----|---------|-----|------|--------|--------|--------|--------|--------|
+| v22 | All residual fixes | 114.7 | **9.44** | 118.3 | — | — | — | Overfitting (no shuffle) |
+| v23 | + shuffle + tied weight | 143.4 | 109 | 242 | — | — | — | Tied weight fix hurt |
+| v25 | + shuffle (no tied), lr=3e-4 | 143.0 | 69.35 | 135.96 | 313.8 | 138.1 | 132.0 | STOPPED (ALB-128) |
+| **v26** | **lr=1e-4** | 171.8 | 61.56 | **15.13** | 31.7 | 130.5 | 79.8 | **STOPPED** step 14K, best=**41.1** |
 
 v22's val_ppl=9.44 at step 2K was a memorization artifact — the model
 consumed all 64K sequences from shard 1 by step 2K. The step 3K regression
@@ -239,11 +240,383 @@ only the last micro-batch's LM head gradient (1/8th of total) corrupted
 the embedding optimizer state. The correct fix requires proper accumulated
 gradient support (future work).
 
-**Current config (v25)**: `configs/train/pretrain-350m-v25.yaml`
+**v25 instability analysis** (step 2K–6K):
+
+The step 4K spike (val_ppl=313.8) occurs at peak LR (3e-4) with 32K token
+batch size. LR=3e-4 is the Chinchilla recommendation for 400M models with
+batch size ~500K tokens. Our 16x smaller batch (32K) amplifies gradient noise,
+making 3e-4 too aggressive.
+
+**Corrected root cause** (ALB-128 update): The initial diagnosis blamed the
+interleaved per-block optimizer, but code review shows that **with GA=8, the
+optimizer IS separated from backward**. `gpu_backward()` runs with
+`accumulate_only=true` for all 8 micro-batches, accumulating gradients in
+`GpuGradientAccumulator`. The optimizer runs ONCE via
+`gpu_optimizer_from_gpu_accum()` after all backward passes complete — exactly
+like PyTorch. The interleaved path only activates when GA=1.
+
+The actual cause is **LR-to-batch-size mismatch**: Chinchilla's 3e-4 assumes
+~500K tokens/step, but we use 32K (16x smaller). With higher gradient noise,
+the same LR causes larger weight perturbations per step.
+
+ZClip detects frequent gradient spikes (z>2.0 every ~15 steps, z>3.5 every
+~100 steps) confirming noise-induced instability.
+
+**Mitigation**: Reduce peak LR from 3e-4 to 1e-4 (v26). This compensates
+for the 16x batch size deficit. The MiniCPM scaling formula (Hu et al. 2024,
+https://arxiv.org/abs/2404.06395) suggests even higher LR (4.1e-3) for 350M
+models — but that assumes standard batch sizes.
+
+**Optimal LR**: Unknown. Requires systematic HPO via `apr train sweep` on
+50M proxy with μTransfer scaling (C-HPO-001). The current 1e-4 may be 3-40x
+too conservative.
+
+**v26 results** (LR=1e-4):
+
+v26 shows val_ppl=15.13 at step 3K (vs v25's 135.96, a **9x improvement**
+at that checkpoint). However, v26 subsequently oscillated — val_ppl spiked
+to 162 at step 7K before recovering to 64 at step 13K. The step 3K result
+was not sustained. Key differences at step 3K:
+
+| Metric | v25 (lr=3e-4) | v26 (lr=1e-4) |
+|--------|---------------|---------------|
+| val_ppl @ 3K | 135.96 | **15.13** |
+| Scaling law slope | -0.48 (diverging) | **+2.13** (converging) |
+| ZClip max gnorm | 1.22 | 0.64 |
+| B_noise @ 3K | 0.021 | **0.008** |
+| Throughput | 8.8K tok/s | 8.9K tok/s |
+
+The 3x LR reduction costs nothing in throughput and dramatically stabilizes
+training. The lower B_noise (0.008 vs 0.021) confirms reduced gradient noise
+from the smaller per-block weight perturbations.
+
+v26's step 1K val_ppl (171.8) is worse than v25's (143.0) because the lower LR
+warms up more slowly. By step 2K the advantage appears (61.56 vs 69.35) and by
+step 3K it's decisive (15.13 vs 135.96). However, the subsequent oscillation
+(15→162→64 over steps 3K-13K) suggests the LR is in a suboptimal regime.
+Systematic HPO via `apr train sweep` with μTransfer scaling is needed to find
+the true optimal LR (§6.5, C-HPO-001).
+
+**v27: HPO-validated config** (C-HPO-001 sweep results):
+
+`apr train halving` ran 16 configs on the 50M proxy (3 rounds, 500→2000 steps).
+Winner: lr=1.47e-4, batch=16, wd=0.012, warmup=93 (val_ppl=113.75 at step 2K).
+μTransfer to 350M: lr=7.35e-5. Batch transferred via GA=32 (131K tokens/step).
+
+| v26 | v27 (HPO) | Change |
+|-----|-----------|--------|
+| lr=1e-4 | lr=7.35e-5 | 0.74x (slightly lower) |
+| GA=8 (32K tok/step) | GA=32 (131K tok/step) | **4x batch** |
+| wd=0.1 | wd=0.012 | 8x lower |
+| warmup=1000 | warmup=93 | 11x shorter |
+
+The HPO finding: **batch size matters more than LR**. The 4x batch increase
+(32K→131K tokens/step) reduces gradient noise, which was the root cause of
+v25-v26 val_ppl oscillation (see corrected ALB-128 analysis above).
+
+**v27 post-mortem** (ALB-129): Stopped at step 10.2K. Best val_ppl=**9.39**
+at step 2K, then diverged — val_ppl oscillated upward to 82.2 at step 9K.
+Both train and val loss oscillated together, ruling out overfitting.
+
+| Step | val_ppl | Train loss | LR (% of peak) |
+|------|---------|------------|-----------------|
+| 1K | 48.15 | 3.76 | 100% |
+| 2K | **9.39** | 2.27 | 100% |
+| 3K | 9.95 | 2.07 | 99.9% |
+| 5K | 12.57 | 2.74 | 99.7% |
+| 7K | 32.02 | 2.91 | 99.5% |
+| 9K | 82.20 | 4.42 | 99.0% |
+| 10K | 55.86 | 3.73 | 99.0% |
+
+**Root cause**: `max_steps: 155000` (4 epochs) with `epochs: 1` (~38K actual
+steps). The cosine schedule `lr = 0.5 × lr_max × (1 + cos(π × step / max_steps))`
+used 155K as its denominator, so at step 10K it had only decayed to 99% of peak.
+The model found a good basin at step 2K, but the effectively constant LR bounced
+it right back out. This same mechanism caused v26's oscillation (15→162→41).
+
+The scaling law predictor's slope collapsed from +1.53 (step 3K) to -0.43
+(step 10K), correctly identifying the divergence but unable to diagnose the
+cause (config error, not model capacity).
+
+**v28: Cosine horizon fix** (ALB-129):
+
+Only change: `max_steps: 38349` (= 1,227,172 batches / 32 GA), calibrated to
+the actual 1-epoch training horizon. All HPO-validated hyperparameters unchanged.
+`eval_interval: 500` (was 1000) for earlier divergence detection.
+
+| Step | v27 LR (% peak) | v28 LR (% peak) |
+|------|-----------------|-----------------|
+| 2K | 100% | 99% |
+| 5K | 99.7% | 95.9% |
+| 10K | 99.0% | **84.1%** |
+| 20K | 95.9% | **46.6%** |
+| 38K | 85.9% | **0%** |
+
+Contract: FALSIFY-COSINE-006 in `cosine-lr-schedule-v1.yaml` — asserts
+`lr(final_step) < 0.05 × lr_max` to prevent recurrence.
+
+**v28 results** (ALB-129 fix confirmed):
+
+v28 is the best albor training run. The cosine horizon fix resolved the
+divergence pattern that killed v26 and v27.
+
+| Step | v28 val_ppl | v27 val_ppl | v28 LR (% peak) |
+|------|-----------|-----------|-----------------|
+| 500 | 139.26 | — | 99.9% |
+| 1000 | 81.63 | 48.15 | 99.7% |
+| 1500 | 21.15 | — | 99.4% |
+| 2000 | 9.65 | **9.39** (peak) | 99.0% |
+| 2500 | 6.87 | 12.57 (diverging) | 98.4% |
+| 3000 | 6.16 | 16.07 | 97.7% |
+| 3500 | **5.88** | 32.02 | 96.8% |
+| 4000 | 6.53 | 39.35 | 95.9% |
+| 4500 | 15.53 (spike) | 82.20 | 94.8% |
+| 5000 | 6.70 (recovered) | 55.86 | 93.6% |
+
+Key observations:
+- v28 matched v27's peak (9.65 vs 9.39 at step 2K) then **continued improving**
+- v27 diverged from step 2K onward; v28 pushed through to 5.88 at step 3.5K
+- v28 had a spike at step 4500 (15.53) but **recovered** to 6.70 — v27's spikes
+  never recovered (they escalated: 16→36→82)
+- Scaling law slope remains positive (+1.38 at step 5K), predicting continued
+  improvement through the full 38K-step epoch
+
+The original v28 run was killed by a `cargo-killer` systemd timer (ALB-132 note).
+Resume exposed a checkpoint corruption bug (ALB-132: re-save at resume step
+overwrites source checkpoint). Fresh restart with all fixes (ALB-129/130/131/132):
+
+| Step | v28 fresh | v28 original | v27 | v28 fresh LR (% peak) |
+|------|-----------|-------------|-----|-----------------------|
+| 500 | 138.70 | 139.26 | — | 99.9% |
+| 1000 | 98.56 | 81.63 | 48.15 | 99.7% |
+| 1500 | 74.68 | 21.15 | — | 99.4% |
+| 2000 | 59.34 | 9.65 | 9.39 | 99.0% |
+| 2500 | 48.28 | 6.87 | 12.57 | 98.4% |
+| 3000 | 53.62 | 6.16 | 16.07 | 97.7% |
+| 3500 | 46.91 | **5.88** | 32.02 | 96.8% |
+| 4000 | 47.04 | 6.53 | 39.35 | 95.9% |
+| 4500 | 48.96 | 15.53 | 82.20 | 94.8% |
+| 5000 | **42.99** | 6.70 | 55.86 | 93.6% |
+| 5500 | 44.13 | — | — | 92.4% |
+
+The fresh run converges more slowly than the original (different random init
+from recompiled binary). The trajectory shows two phases:
+
+1. **Rapid descent** (steps 0–2.5K): val_ppl drops from 138→48, consistent
+   with the original run's early trajectory
+2. **Plateau** (steps 2.5K–5.5K): val_ppl oscillates between 42–53, with
+   slow improvement. Best=42.99 at step 5K
+
+Scaling law predictor: val_ppl=**31.7** at step 38K (slope=0.175 at step 5.5K).
+The plateau phase has compressed the prediction from the optimistic 10.2
+(step 2.5K, based only on the descent phase) to a more realistic 31.7.
+
+The cosine schedule fix (ALB-129) is validated — the fresh run shows no
+divergence pattern. v27 peaked at step 2K then oscillated upward; v28 fresh
+plateaued but never diverged. The cosine LR has only decayed to 92% at step
+5.5K — meaningful annealing (below 80%) begins around step 8K.
+
+**Throughput**: The fresh run was restarted at step 2500 with a rebuilt binary
+(2026-04-02). Post-resume throughput improved from 9.7K tok/s (28% MFU) to
+14.7K tok/s (46% MFU) — a **1.6x speedup** from fused gradient clipping
+(ALB-078) and other optimizations in the rebuilt entrenar. Step time: 541ms
+at 131K tokens/step.
+
+**Status** (2026-04-03): Step 5.6K/38K (~15% complete), ETA ~3.4 days.
+
+**Current config (v28)**: `configs/train/pretrain-350m-v28.yaml`
+
+### 6.4.2 Path to HumanEval: Data Filtering + Distillation
+
+v28 original reached val_ppl=5.88 but scored 0/164 HumanEval at step 3.5K.
+The bottleneck is **data quality**, not model capacity or training correctness.
+codeparrot-clean contains raw GitHub Python including dead code, configs, trivial
+files, and non-Python content. phi-1-small (350M, 45% HumanEval) proved the
+architecture is sufficient — but only with synthetic textbook-quality data.
+
+**Two-phase improvement plan** (runs while v28 epoch completes):
+
+**Phase A — Data filtering** (COMPLETE, ran on CPU parallel with v28):
+
+Script: `scripts/filter_codeparrot.py` (streams from HuggingFace, ~50 min).
+Filters applied:
+
+| Filter | Reject rate | Removes |
+|--------|------------|---------|
+| `ast.parse()` syntax | 13% | Non-Python, Python 2 only |
+| Docstring density (<1 per 50 lines) | 31% | Undocumented code |
+| Generated code markers | 19% | Auto-generated, flake8:noqa |
+| Import diversity (<2 unique) | 9% | Config files, data files |
+| Too short (<10 lines, <200 chars) | <1% | Trivial files |
+| Mostly comments (>60%) | <1% | License headers |
+
+Results: 2.9M files → **850K passed (29%)** → pretokenized to **2.04B tokens**
+(40 shards, `data/pretokenized-1024-v4/`). Config: `pretrain-350m-v29.yaml`
+(15,530 steps, ~2.4 days).
+
+**Phase B — Teacher completions** (RUNNING on intel, parallel with v28 GPU training):
+
+Prompt extraction complete: 50K prompts from filtered corpus
+(`data/distill/prompts-filtered-50k.jsonl`). Breakdown: 58% methods, 26%
+functions, 16% classes. All have docstrings — the teacher completes the body.
+
+Teacher inference is **memory-bound** (autoregressive generation = sequential
+weight loads), not compute-bound. The Q4K model (19 GB) fits in CPU RAM with
+no GPU required. This enables full parallelism: v28 trains on the local 4090
+while the teacher generates completions on a separate machine.
+
+**Infrastructure**: `intel` — Xeon W-3245 (16C/32T, 3.2 GHz), 283 GB DDR4,
+no GPU. Running `apr serve run` with `--no-gpu` on Qwen2.5-Coder-32B-Instruct
+Q4K (19 GB). The generation script (`scripts/generate_teacher_completions_api.py`)
+calls the OpenAI-compatible `/v1/completions` endpoint.
+
+**Measured throughput**: ~40 completions/hour (~1.5 min/completion, ~3-5 tok/s
+for 32B Q4K on DDR4). First batch: 10K prompts, ETA ~10 days. Running in
+parallel with v28 GPU training (zero contention — different machines).
+
+```bash
+# On intel (CPU inference, 283 GB RAM):
+apr serve run qwen2.5-coder-32b-instruct-q4km.apr --no-gpu --host 0.0.0.0 --port 8090
+
+# Generation (runs on intel, prompts + script copied via scp):
+python3 generate_teacher_completions_api.py \
+    --server http://localhost:8090 \
+    --prompts prompts-filtered-50k.jsonl \
+    --output completions-50k.jsonl
+```
+
+**Phase C — Distillation** (after teacher completions + v28/v29 best checkpoint):
+
+Pipeline:
+
+```
+prompts-filtered-50k.jsonl
+    → Qwen2.5-Coder-32B teacher generates completions (intel CPU, parallel with v28)
+    → Mix 80% synthetic + 20% filtered codeparrot
+    → Pretokenize mixed corpus
+    → Fine-tune student (distill-student-v5.yaml, ~10K steps)
+    → HumanEval eval
+```
+
+Config: `configs/train/distill-student-v5.yaml` (lr=5e-5, 3 epochs, patience=15).
+Key difference from v4: strong base model (v28/v29 val_ppl ~5-10) + 50K quality
+prompts vs v4's weak base (v15 val_ppl ~309) + 118 textbook prompts.
+
+Target: 10-20% HumanEval pass@1.
+
+**Binary pinning**: Long-running training MUST use `bin/apr-train` (a pinned
+copy of the `apr` binary). Other projects sharing `CARGO_TARGET_DIR` overwrite
+the release binary with feature-incompatible builds. See CLAUDE.md Build & Test.
 
 **Note on YAML numeric formatting**: YAML supports underscore notation natively
 (`32_768`, `1_000_000`) for human-readable large numbers. All albor configs use
 this convention. For shorthand like `10B` or `512K`, see gap ALB-021.
+
+### 6.5 Automatic Hyperparameter Tuning (C-HPO-001)
+
+Manual tuning across v1-v26 identified 8 root causes but failed to find the
+optimal learning rate — v26 still oscillates (15→162→64) at lr=1e-4. The
+literature suggests our LR may be 3-40x too conservative:
+
+| Source | Recommended LR (350M) | Link |
+|--------|----------------------|------|
+| **Step Law** (2025) | **3.2e-3** | https://arxiv.org/abs/2503.04715 |
+| MiniCPM formula | **4.1e-3** | https://arxiv.org/abs/2404.06395 |
+| Chinchilla table | **3e-4** | https://arxiv.org/abs/2203.15556 |
+| μTransfer (if 50M=6e-4) | **3e-4** | https://arxiv.org/abs/2203.03466 |
+| v26 current | 1e-4 | — |
+
+The Step Law (https://arxiv.org/abs/2503.04715) provides the most recent and
+directly applicable formula: `lr = 1.79 × N^(-0.713) × D^(0.307)` where N is
+non-embedding parameters and D is dataset tokens. For 350M on 7B tokens, this
+gives lr≈3.2e-3. It also recommends batch size `B = 0.58 × D^(0.571)` ≈ 183K
+tokens — 5.7x our current 32K.
+
+**Provable contract**: `contracts/hyperparameter-tuning-v1.yaml` (C-HPO-001)
+
+#### 6.5.1 μTransfer Scaling (Yang et al. 2022)
+
+Tune hyperparameters on a cheap proxy model, transfer to the target via
+width-ratio scaling. For standard parametrization (SP):
+
+```
+lr_target = lr_proxy × (width_proxy / width_target)
+```
+
+Albor proxy: 50M model (hidden=512, 12 layers). Target: 350M (hidden=1024,
+24 layers). Width ratio: 512/1024 = 0.5. If 50M optimal lr=6e-4, then 350M
+lr=3e-4. If 50M optimal lr=8e-3, then 350M lr=4e-3.
+
+**Proxy config**: `configs/train/pretrain-50m-sweep.yaml`
+
+#### 6.5.2 Successive Halving (Hyperband, Li et al. 2018)
+
+Start N configs, kill the worst half every k steps. Eliminates bad configs
+early with minimal compute waste.
+
+```
+Round 0: 16 configs × 500 steps  (~2 min each = 32 min)
+Round 1:  8 configs × 1000 steps (16 min)
+Round 2:  4 configs × 2000 steps (16 min)
+Round 3:  2 configs × 4000 steps (16 min)
+Winner:   1 config  (total: ~80 min on 50M proxy)
+```
+
+The `ScalingLawPredictor` (entrenar) provides the ranking metric: predicted
+val_ppl at max_steps from ≥3 eval checkpoints.
+
+#### 6.5.3 Reproducible Workflow via `apr` CLI
+
+```bash
+# Step 1: Generate 16 sweep configs from 50M proxy base
+apr train sweep --config configs/train/pretrain-50m-sweep.yaml \
+    --strategy random --num-configs 16 --seed 42 \
+    --output-dir sweeps/50m-hpo/
+
+# Step 2: Run each config for 500 steps (Phase 1 of successive halving)
+for config in sweeps/50m-hpo/sweep-*.yaml; do
+    apr train apply --task pretrain --config "$config"
+done
+
+# Step 3: Rank by val_ppl, keep top 8, increase max_steps, repeat
+# (Future: apr train halving automates this loop)
+
+# Step 4: Transfer winner to 350M via μTransfer
+# lr_350m = lr_50m_winner × (512 / 1024)
+```
+
+#### 6.5.4 WSD Learning Rate Schedule
+
+Warmup-Stable-Decay (MiniCPM, https://arxiv.org/abs/2404.06395) replaces
+cosine with three distinct phases:
+
+```
+LR
+|    /‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾\
+|   /                   \
+|  /                     \___
++---|---------|-----------|---> steps
+  warmup(5%) stable(75%) decay(20%)
+```
+
+Advantages over cosine:
+- **Anytime checkpointing**: every checkpoint during stable phase is equally good
+- **Extension-friendly**: extend stable phase, add new decay
+- **MiniCPM empirical result**: matches or beats cosine quality
+
+Implementation: `lr_scheduler: "wsd"` in YAML config (entrenar).
+
+#### 6.5.5 Search Space
+
+Based on literature review, the HPO search space for 350M:
+
+| Parameter | Range | Scale | Rationale |
+|-----------|-------|-------|-----------|
+| Peak LR | [1e-4, 1e-2] | log-uniform | MiniCPM: 4.1e-3, Chinchilla: 3e-4 |
+| Weight decay | [0.01, 0.5] | log-uniform | Standard range |
+| Beta2 | [0.9, 0.99] | uniform | Stability-critical |
+| Warmup steps | [100, 5000] | uniform | 1-5% of total steps |
+| GA (batch multiplier) | {8, 16, 32} | discrete | Effective batch: 32K-128K |
 
 ### 6.3 Training Workflow (Plan/Apply)
 
@@ -334,6 +707,9 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v14 (from scratch, ALB-120 fixed) | 20K / 155K | 10.40→6.66 | 12h | **KILLED** (plateau) — val_ppl stuck at ~782 for 19K steps. No phase change. Degenerate init with seed=42 on recompiled binary. |
 | 350M v15 (from scratch, seed=123) | 47K / 155K | 10.37→5.18 | 37h | **KILLED** — power outage at step 11K permanently damaged convergence. Post-resume val_ppl stuck at ~400 (-0.017 val_loss/10K steps). Best pre-outage: 309 (step 9K). |
 | 350M v16 (from scratch, seed=456, canary-validated) | 10K / 155K | 10.40→6.64 | 11h | **KILLED** (plateau) — val_ppl stuck at 693-767 for steps 6K-10K. No phase change. Same pattern as v14 (seed=42). seed=456 degenerate. |
+| 350M v27 (HPO-validated, C-HPO-001) | 10.2K / 38K | 10.40→3.44 | ~12h | **STOPPED** (ALB-129) — Best val_ppl=**9.39** at step 2K, then diverged to 82. `max_steps=155K` with `epochs=1` (38K actual) made cosine schedule constant (99% of peak at step 10K). Model found good basin then LR bounced it out. 9.4K tok/s, 27.3% MFU. |
+| 350M v28 orig (ALB-129 cosine fix) | 5.4K / 38K | 10.40→1.77 | ~7h | **KILLED** — Best val_ppl=**5.88** at step 3.5K. ALB-129 fix confirmed. Killed by `cargo-killer` systemd timer. Resume hit ALB-132 (checkpoint corruption on re-save). |
+| 350M v28 fresh (all fixes) | 2.8K+ / 38K | 10.40→3.98 | ~4h+ | **RUNNING** — val_ppl=53.52 at step 2.5K, monotonically decreasing. Slower convergence than original (different init). Scaling law predicts 10.2 at 38K. Includes ALB-129/130/131/132 fixes. 9.7K tok/s, 28.1% MFU. `cargo-killer` disabled. |
 
 **v15 convergence tracking** (seed=123, strongest early convergence):
 

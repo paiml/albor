@@ -54,6 +54,16 @@ proof_obligations:
     property: "CPU embedding optimizer receives updated lr before each step"
     formal: "embed_optimizer.lr == current_lr(step) at every optimizer_step()"
 
+  - type: invariant
+    property: "max_steps calibrated to actual training horizon"
+    formal: "max_steps == ceil(total_train_batches / gradient_accumulation) when epochs is finite"
+    rationale: |
+      ALB-129: v26 and v27 both used max_steps=155000 (4 epochs) with epochs=1
+      (actual ~38K steps). Cosine denominator of 155K meant LR only decayed 1%
+      over 10K steps — effectively constant. Model peaked at step 2K (val_ppl
+      9.39) then diverged to 82 because LR was too high to stay in the basin.
+      Both train and val loss oscillated together, ruling out overfitting.
+
 falsification_tests:
   - id: FALSIFY-COSINE-001
     rule: "lr at midpoint of cosine decay equals 0.5 * lr_max"
@@ -107,6 +117,29 @@ falsification_tests:
         embed_optimizer.lr == current_lr(step)
       Assert: all 1000 checks pass with no mismatch.
     if_fails: "Embedding optimizer lr not updated — ALB-079 regression in CPU path"
+
+  - id: FALSIFY-COSINE-006
+    rule: "max_steps matches actual training horizon for cosine schedule"
+    prediction: |
+      For epochs=1 training: lr at final step < 0.05 * lr_max.
+      If max_steps >> actual_steps, lr at final step ≈ lr_max (schedule incomplete).
+    test: |
+      Given: epochs=1, total_train_batches=1227172, GA=32
+        actual_steps = 1227172 / 32 = 38349
+
+      Miscalibrated (v27): max_steps=155000
+        lr_final = 0.5 * lr_max * (1 + cos(pi * 38349 / 155000))
+                 = 0.5 * lr_max * (1 + cos(0.777))
+                 = 0.5 * lr_max * 1.716
+                 = 0.858 * lr_max   ← 86% of peak, effectively constant
+
+      Calibrated (v28): max_steps=38349
+        lr_final = 0.5 * lr_max * (1 + cos(pi * 38349 / 38349))
+                 = 0.5 * lr_max * (1 + cos(pi))
+                 = 0.0             ← full decay
+
+      Assert: lr(actual_final_step) < 0.05 * lr_max
+    if_fails: "max_steps not calibrated to training horizon — ALB-129 recurrence"
 
 kani_harnesses:
   - id: KANI-COSINE-001

@@ -165,12 +165,17 @@ on a damaged trajectory. A 30-min PyTorch canary would have diagnosed both.
 cd ~/src/aprender && CARGO_TARGET_DIR=/mnt/nvme-raid0/targets/aprender \
     cargo build --release -p apr-cli
 
+# CRITICAL: Pin the binary for training — other projects sharing
+# CARGO_TARGET_DIR overwrite apr with feature-incompatible builds.
+# Always use bin/apr-train for long-running training, never the shared target.
+cp /mnt/nvme-raid0/targets/aprender/release/apr bin/apr-train
+
 # Run 50M regression test (< 2 min)
-/mnt/nvme-raid0/targets/aprender/release/apr train apply \
+bin/apr-train train apply \
     --task pretrain --config configs/train/pretrain-50m-quick.yaml
 
 # Run 350M CUDA test (< 1 min for 5 steps)
-/mnt/nvme-raid0/targets/aprender/release/apr train apply \
+bin/apr-train train apply \
     --task pretrain --config configs/train/pretrain-350m-cuda-test.yaml
 
 # Validate contracts

@@ -1,0 +1,67 @@
+# v28: Fix cosine schedule horizon (ALB-129)
+#
+# v27 post-mortem: val_ppl peaked at 9.39 (step 2K) then diverged to 82
+# because max_steps=155K with epochs=1 (actual ~38K steps) made the cosine
+# schedule effectively constant — only 1% LR decay over 10K steps.
+#
+# Fix: max_steps=38349 (= total_train_batches / GA = 1,227,172 / 32)
+# so cosine completes its full decay within the actual training horizon.
+#
+# LR schedule comparison at key steps (7.35e-5 peak):
+#   step 2K:  v27=100% → v28=99%  (same early learning)
+#   step 10K: v27=99%  → v28=84%  (meaningful decay begins)
+#   step 20K: v27=96%  → v28=47%  (half-power)
+#   step 38K: v27=86%  → v28=0%   (full decay)
+#
+# All other hyperparameters unchanged from v27 (HPO-validated, C-HPO-001).
+# Only max_steps and eval_interval changed.
+model:
+  path: "."
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
+data:
+  train: "data/pretokenized-1024-v3/train/"
+  val: "data/pretokenized-1024-v3/val/"
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+optimizer:
+  name: "adamw"
+  lr: 7.35e-5
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.012
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 93
+  gradient_accumulation: 32
+  output_dir: "./checkpoints/albor-base-350m-v28"
+  save_interval: 5000
+  eval_interval: 500
+  patience: 30
+  max_steps: 38349
+  seed: 789
+monitoring:
+  terminal: { enabled: false }
+  tracking: { enabled: false }
+  system: { enabled: false }
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion"

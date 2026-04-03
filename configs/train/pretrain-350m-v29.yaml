@@ -1,0 +1,71 @@
+# v29: Filtered data training (quality-filtered codeparrot-clean)
+#
+# Same architecture and HPO-validated hyperparameters as v28.
+# Only change: data/pretokenized-1024-v4 (quality-filtered, 2.04B tokens)
+# vs v28's data/pretokenized-1024-v3 (unfiltered, 5.08B tokens).
+#
+# Filters applied (scripts/filter_codeparrot.py):
+#   - ast.parse() syntax validity
+#   - ≥10 lines, ≥200 chars, ≤10K lines
+#   - ≥1 docstring per 50 lines
+#   - ≥2 unique imports
+#   - No generated/auto-generated markers
+# Result: 850K/2.9M files passed (29%), 2.04B clean tokens
+#
+# max_steps calibrated to 1 epoch:
+#   1,987,843 seqs / 32 GA = 62,120 steps (but batch_size=4 → micro-batches)
+#   total_micro_batches = 1,987,843 / 4 ≈ 496,960
+#   steps = 496,960 / 32 = 15,530
+#
+# Hypothesis: higher quality data + same compute = better HumanEval
+# even though total tokens (2B) < v28 (5B).
+model:
+  path: "."
+  mode: transformer
+  architecture:
+    hidden_size: 1024
+    num_hidden_layers: 24
+    num_attention_heads: 16
+    num_key_value_heads: 4
+    intermediate_size: 4096
+    vocab_size: 32768
+    max_position_embeddings: 1024
+    rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
+data:
+  train: "data/pretokenized-1024-v4/train/"
+  val: "data/pretokenized-1024-v4/val/"
+  batch_size: 4
+  seq_len: 1024
+  tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
+  input_column: "input_ids"
+optimizer:
+  name: "adamw"
+  lr: 7.35e-5
+  beta1: 0.9
+  beta2: 0.95
+  weight_decay: 0.012
+training:
+  mode: "causal_lm"
+  epochs: 1
+  grad_clip: 1.0
+  lr_scheduler: "cosine"
+  warmup_steps: 93
+  gradient_accumulation: 32
+  output_dir: "./checkpoints/albor-base-350m-v29"
+  save_interval: 5000
+  eval_interval: 500
+  patience: 30
+  max_steps: 15530
+  seed: 789
+monitoring:
+  terminal: { enabled: false }
+  tracking: { enabled: false }
+  system: { enabled: false }
+  alerts:
+    - condition: "loss > 10"
+      action: "stop"
+      message: "Loss exploded"
+    - condition: "gradient_norm > 100"
+      action: "stop"
+      message: "Gradient explosion"
