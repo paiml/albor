@@ -131,10 +131,11 @@ Uses same architecture but `max_steps: 5`, small data path.
 | v25 | 6K | 786M | 48.09 | 8.1K | 25.4% | STOPPED: LR spike |
 | v27 | 10.2K | 1.3B | 9.39 | 14.7K | 46.1% | STOPPED: diverged to 82 (ALB-129) |
 | v28 (orig) | 5.4K | 708M | **5.88** | 14.7K | 46.1% | KILLED: experiment |
-| **v28 (fresh)** | **6.8K** | **891M** | **38.53** | **12.3K** | **38.7%** | **RUNNING** |
+| **v28 (fresh)** | **7.4K** | **970M** | **38.53** | **11.6K** | **36.3%** | **RUNNING** |
 
-**v28 fresh** is the current active run (started 2026-04-02). At step 6.5K,
-scaling law predictor estimates val_ppl ~25.6 at step 38K completion.
+**v28 fresh** is the current active run (started 2026-04-02). At step 7K,
+scaling law predictor estimates val_ppl ~26.7 at step 38K completion.
+val_ppl plateau at 38-42 since step 5K — may break through with more data.
 
 ### 3.2 v28 Fresh Loss Curve
 
@@ -152,7 +153,8 @@ Step    val_ppl  pred_final  Notes
 5000    42.99    32.4
 5500    44.13    31.7
 6000    38.53    26.3        New best
-6500    40.09    25.6        Predicted final ~26
+6500    40.09    25.6
+7000    41.73    26.7        Plateau at 38-42
 ```
 
 ### 3.3 v28 Original vs Fresh

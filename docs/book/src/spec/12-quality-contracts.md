@@ -102,7 +102,17 @@ Key findings from gradient parity testing:
 - **C-CLIP-001**: `squared_sum_collect` returns ‖g‖². Do not re-square.
 - **ENTRENAR_TRACE_GRADIENTS=1**: env var enables per-block gradient norm logging.
 
-**Contract validation status: 49/49 PASS** (`pv validate contracts/*.yaml`, 2026-04-03)
+### Pipeline & Data Quality Contracts (ALB-133, ALB-134)
+
+Added 2026-04-03 for teacher completions pipeline resilience and data quality
+filtering hypothesis.
+
+| Contract | Key Equations | Key Obligations | Priority | `pv validate` |
+|----------|---------------|-----------------|----------|---------------|
+| `teacher-completions-pipeline-v1.yaml` | Pipeline resume: output = prompts \ completed; retry with exponential backoff | Crash resilience, hash-based dedup, append-mode JSONL, atexit summary | High | PASS |
+| `data-quality-filtering-v1.yaml` | passes(f) = ast_valid ∧ has_docstrings ∧ has_imports ∧ ¬generated | v29 val_ppl < v28 val_ppl at matched steps; 100% AST validity; deterministic | High | PASS |
+
+**Contract validation status: 52/52 PASS** (`pv validate contracts/*.yaml`, 2026-04-03)
 
 ## 12.3 Contract Workflow for Each Kernel
 
