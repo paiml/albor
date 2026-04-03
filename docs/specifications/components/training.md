@@ -8,14 +8,14 @@
 
 ### 1.1 AdamW Configuration
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| lr | 3e-4 | Standard for 350M (Chinchilla scaling) |
-| beta1 | 0.9 | Default momentum |
-| beta2 | 0.95 | Lower than 0.999 — avoids f32 overflow in bias correction |
-| weight_decay | 0.1 | Standard regularization |
-| epsilon | 1e-8 | Default |
-| grad_clip | 1.0 | Max gradient norm (global) |
+| Parameter | v28 (HPO) | v6 (original) | Rationale |
+|-----------|-----------|---------------|-----------|
+| lr | 7.35e-5 | 3e-4 | HPO-validated via 50M proxy (C-HPO-001) |
+| beta1 | 0.9 | 0.9 | Default momentum |
+| beta2 | 0.95 | 0.95 | Lower than 0.999 — avoids f32 overflow in bias correction |
+| weight_decay | 0.012 | 0.1 | HPO-validated, ~8× lower than original |
+| epsilon | 1e-8 | 1e-8 | Default |
+| grad_clip | 1.0 | 1.0 | Max gradient norm (global, with ZClip) |
 
 ### 1.2 Learning Rate Schedule
 
@@ -34,21 +34,26 @@ consumed by training loop. Now properly wired end-to-end.
 GPU-resident accumulation (ALB-091): gradients stay on GPU across micro-batches.
 No PCIe round-trip per micro-batch.
 
-| Config | Value |
-|--------|-------|
-| batch_size | 4 (sequences per micro-batch) |
-| gradient_accumulation | 8 (micro-batches per step) |
-| tokens_per_step | 4 × 8 × 1024 = 32,768 |
+| Config | v28 (HPO) | v6 (original) |
+|--------|-----------|---------------|
+| batch_size | 4 (sequences per micro-batch) | 4 |
+| gradient_accumulation | 32 (micro-batches per step) | 8 |
+| tokens_per_step | 4 × 32 × 1024 = 131,072 | 4 × 8 × 1024 = 32,768 |
 
 **ALB-080 fix**: Previous configs used 4K tokens/step (batch=4, ga=1).
-Rule: ≥64K tokens/step ideal for 350M, but 32K is acceptable given VRAM
-constraints.
+HPO sweep (C-HPO-001) selected ga=32 for 131K tokens/step — matches 350M
+scaling recommendations. ALB-078 fused gradient clipping enables this without
+throughput penalty.
 
 ---
 
 ## 2. Training Configs
 
-### 2.1 Active Config: pretrain-350m-v6.yaml
+### 2.1 Active Config: pretrain-350m-v28.yaml
+
+v28 uses HPO-validated hyperparameters (C-HPO-001) with corrected cosine
+schedule horizon (ALB-129). Key insight: `max_steps` must match actual training
+length, not be an arbitrary cap.
 
 ```yaml
 model:
@@ -61,6 +66,7 @@ model:
     vocab_size: 32768
     max_position_embeddings: 1024
     rms_norm_eps: 1.0e-5
+    rope_theta: 10000.0
 
 data:
   train: "data/pretokenized-1024-v3/train/"
@@ -70,23 +76,28 @@ data:
 
 optimizer:
   name: "adamw"
-  lr: 3.0e-4
+  lr: 7.35e-5
   beta1: 0.9
   beta2: 0.95
-  weight_decay: 0.1
+  weight_decay: 0.012
 
 training:
   mode: "causal_lm"
   epochs: 1
   grad_clip: 1.0
   lr_scheduler: "cosine"
-  warmup_steps: 500
-  gradient_accumulation: 8
-  max_steps: 20000
-  save_interval: 500
-  eval_interval: 250
-  patience: 10
+  warmup_steps: 93
+  gradient_accumulation: 32
+  max_steps: 38349    # = total_train_batches / GA = 1,227,172 / 32
+  save_interval: 5000
+  eval_interval: 500
+  patience: 30
+  seed: 789
 ```
+
+**Changes from v6**: LR 4× lower (HPO), weight decay 8× lower (HPO), GA 4×
+higher (131K tok/step), warmup ~93 steps (short), max_steps calibrated to
+actual epoch length (ALB-129), patience extended to 30.
 
 ### 2.2 Test Config: pretrain-350m-cuda-test.yaml
 
@@ -103,41 +114,68 @@ Uses same architecture but `max_steps: 5`, small data path.
 
 ### 3.1 Run Summary
 
+**Pre-HPO era (v3-v6):** Manual hyperparameters, cuBLAS integration, bug fixes.
+
 | Run | Steps | Tokens | val_ppl | tok/s | MFU | Status |
 |-----|-------|--------|---------|-------|-----|--------|
 | v3 | 28K | 918M | 1018 | 6.7K | 19.3% | STOPPED: plateau |
 | v4 | 2.4K | 79M | 918 | 6.7K | 19.3% | STOPPED: eval, no HumanEval pass |
 | v5 | 3.4K | 112M | — | 7.9K | 22.9% | BROKEN: ALB-092 (norm grads) |
-| v6 | 2K | 64M | **776** | 6.5K | 18.8% | STOPPED: strategic pivot |
+| v6 | 2K | 64M | 776 | 6.5K | 18.8% | STOPPED: strategic pivot |
 
-### 3.2 v6 Loss Curve
+**HPO era (v23-v28):** HPO-validated params (C-HPO-001), cosine horizon fix.
+
+| Run | Steps | Tokens | val_ppl | tok/s | MFU | Status |
+|-----|-------|--------|---------|-------|-----|--------|
+| v23 | 10K | 1.3B | 50.38 | 8.2K | 25.7% | STOPPED: baseline |
+| v25 | 6K | 786M | 48.09 | 8.1K | 25.4% | STOPPED: LR spike |
+| v27 | 10.2K | 1.3B | 9.39 | 14.7K | 46.1% | STOPPED: diverged to 82 (ALB-129) |
+| v28 (orig) | 5.4K | 708M | **5.88** | 14.7K | 46.1% | KILLED: experiment |
+| **v28 (fresh)** | **6.8K** | **891M** | **38.53** | **12.3K** | **38.7%** | **RUNNING** |
+
+**v28 fresh** is the current active run (started 2026-04-02). At step 6.5K,
+scaling law predictor estimates val_ppl ~25.6 at step 38K completion.
+
+### 3.2 v28 Fresh Loss Curve
 
 ```
-Step    Loss    val_ppl  Notes
-0       10.44            Random init
-50      8.92             Warmup phase
-100     7.83
-150     7.07             Loss plateau begins
-200     6.82
-250     6.73   829       First eval (val from same distribution)
-500     6.53   965       Post-warmup
-750     6.42   865
-1000    6.35   849
-1250    6.27   862
-1500    6.19   838
-1750    6.11   813
-2000    6.03   776       Best val_ppl (killed here)
+Step    val_ppl  pred_final  Notes
+500     138.70               Warmup
+1000    98.56                First sub-100
+1500    74.68    12.6        Rapid improvement
+2000    59.34    10.3
+2500    53.52    10.2        Plateau begins
+3000    52.07
+3500    46.91    41.9        Scaling law slope flattens
+4000    47.04    36.0
+4500    48.96    41.4        Minor regression
+5000    42.99    32.4
+5500    44.13    31.7
+6000    38.53    26.3        New best
+6500    40.09    25.6        Predicted final ~26
 ```
 
-### 3.3 Convergence Analysis
+### 3.3 v28 Original vs Fresh
 
-Loss decreasing at ~0.02/250 steps = 0.08/1000 steps. At this rate:
-- val_ppl < 500: ~5K more steps (~160M tokens)
-- val_ppl < 100: ~60K more steps (~2B tokens)
-- Competitive HumanEval: likely never without data quality improvement
+v28 original achieved val_ppl=5.88 at step 3.5K — best ever — but was killed
+for experimentation. The fresh run starts from scratch and shows a different
+convergence pattern (slower initial descent, more stable plateau). The original
+run's rapid descent to 5.88 may reflect favorable seed or data ordering.
 
-**Conclusion**: Architecture works. Optimizer works. Training is stable.
-The bottleneck is 100% data quality. Distillation addresses this directly.
+### 3.4 Convergence Analysis
+
+**v6 era conclusion** (validated): Architecture and optimizer work. Data
+quality is the bottleneck.
+
+**v28 era update**: HPO + cosine horizon fix (ALB-129) reduced val_ppl from
+776 (v6) to 38.53 (v28 fresh, step 6K). Key factors:
+1. **LR right-sizing**: 7.35e-5 vs 3e-4 (HPO validated on 50M proxy)
+2. **Cosine horizon**: `max_steps=38349` matches actual epoch (ALB-129)
+3. **Fused gradient clipping** (ALB-078): MFU 19% → 38.7%, tok/s 6.7K → 12.3K
+4. **Gradient accumulation**: ga=32 → 131K tokens/step
+
+**Next**: v28 completes full epoch (~3.5 days remaining), then v29 on filtered
+data (2.04B clean tokens). Distillation on best checkpoint.
 
 ---
 
@@ -186,22 +224,27 @@ workspace (FFN: 3 × d × intermediate = 3 × 1024 × 4096 = 48MB at f32).
 
 ## 5. Throughput Analysis
 
-### 5.1 Current Performance
+### 5.1 Current Performance (v28)
 
-| Metric | Value |
-|--------|-------|
-| tok/s | 6.5-7.9K (varies by swap pressure) |
-| MFU | 18.8-22.9% |
-| FLOPS/tok | ~2.1 GFLOP (370M × 6) |
-| Peak TFLOPS | 82.6 (RTX 4090 FP32) |
-| Theoretical max tok/s | ~39K |
+| Metric | v28 | v6 | Change |
+|--------|-----|-----|--------|
+| tok/s | 12.3K | 6.5-7.9K | +55-89% |
+| MFU | 38.7% | 18.8-22.9% | +2× |
+| FLOPS/tok | ~2.1 GFLOP | ~2.1 GFLOP | — |
+| GPU VRAM | 13.7 GB | 17.8 GB peak | -23% |
+| Peak TFLOPS | 82.6 (RTX 4090 FP32) | — | — |
 
-### 5.2 Bottlenecks
+**ALB-078** (fused gradient clipping) was the key throughput breakthrough:
+eliminated per-block D2H gradient transfers. Single fused clip pass on GPU
+replaces 24 individual block clips + host round-trips.
 
-1. **Swap pressure** (20%): All shards loaded into RAM at startup
+### 5.2 Bottlenecks (Updated)
+
+1. ~~**Swap pressure** (20%)~~: Mitigated by v28's larger ga (fewer steps, same data)
 2. **PCIe transfers** (10%): 3 transfers per step for embeddings
 3. **CPU optimizer** (5%): Embedding + LM head AdamW on CPU
 4. **Kernel launch overhead** (5%): Per-kernel launch latency
+5. **ZClip overhead** (~2%): Per-step z-score spike detection (acceptable)
 
 ### 5.3 cuBLAS Status (ALB-075)
 
@@ -215,7 +258,7 @@ operations.
 ## 6. Checkpoint Format
 
 ```
-checkpoints/albor-base-350m-v6/
+checkpoints/albor-base-350m-v28/
 ├── model.safetensors       # All weights (SafeTensors format)
 ├── config.json             # Architecture config
 ├── final_model.json        # Training metadata
@@ -225,8 +268,8 @@ checkpoints/albor-base-350m-v6/
     └── config.json
 ```
 
-Checkpoints saved every `save_interval` steps (500). Training state saved
-for rollback detection (loss EMA comparison).
+Checkpoints saved every `save_interval` steps (5000 in v28). Training state
+saved for rollback detection (loss EMA comparison).
 
 ---
 
