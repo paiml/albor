@@ -202,3 +202,9 @@ pv validate contracts/*.yaml
 | aprender | `~/src/aprender` | CLI (`apr`) with `[patch.crates-io]` for entrenar |
 | renacer | `~/src/renacer` | Tracing infrastructure (BrickTracer, spans) |
 | provable-contracts | via `pv` | Contract validation |
+
+## Contract-First Development
+
+All code changes require a prior contract (provable-contract YAML in `contracts/` or pmat work contract.json).
+NEVER write code before defining the contract. Run `pmat comply check` before completing any task.
+CB-1400 enforces agent contract existence; verification_level must be satisfied before merge.
