@@ -122,6 +122,25 @@ python scripts/pretokenize-codeparrot.py \
     --num-shards 19
 ```
 
+**v4 pipeline** (quality-filtered codeparrot-clean, 2.04B tokens, 40 shards at seq_len=1024):
+
+```bash
+# Filter codeparrot-clean (AST + heuristic quality gates)
+python3 scripts/filter_codeparrot.py
+# Input: 2.95M files (streamed from HuggingFace)
+# Output: 850K files (28.7% pass rate), 17 shards in data/filtered/train/
+# Filters: ast.parse(), docstring density, import diversity, no generated code
+
+# Pretokenize filtered data
+python3 scripts/pretokenize.py \
+    --input data/filtered/train/ \
+    --tokenizer models/albor-tokenizer-v2/tokenizer.json \
+    --seq-len 1024 \
+    --output data/pretokenized-1024-v4/train/ \
+    --text-column text --shard-output
+# Result: 1,988,843 sequences × 1024 = 2.04B tokens in 40 shards
+```
+
 ### Step 4: Model Training
 
 ```bash
@@ -129,13 +148,21 @@ python scripts/pretokenize-codeparrot.py \
 /mnt/nvme-raid0/targets/aprender/release/apr train apply \
     --task pretrain --config configs/train/pretrain-50m-quick.yaml
 
-# 350M v13 — current production run (~7 days on RTX 4090)
-# All ALB-079–119 fixes applied, GPU optimizer state checkpointed (ALB-118)
-/mnt/nvme-raid0/targets/aprender/release/apr train apply \
-    --task pretrain --config configs/train/pretrain-350m-v13.yaml
-# v13: cosine LR over 155K steps, ga=8, batch=4, seq=1024, 32K tokens/step
-# Data: codeparrot-clean 5.0B tokens (19 shards, streaming loader)
-# RoPE forward+backward (ALB-119), GPU optimizer state saved (ALB-118)
+# 350M v28 — current production run (~4 days on RTX 4090)
+# HPO-validated params (C-HPO-001), cosine horizon fix (ALB-129),
+# fused gradient clipping (ALB-078). All ALB-079–132 fixes applied.
+bin/apr-train train apply \
+    --task pretrain --config configs/train/pretrain-350m-v28.yaml
+# v28: cosine LR over 38349 steps, ga=32, batch=4, seq=1024, 131K tokens/step
+# Data: codeparrot-clean 5.0B tokens (19 shards)
+# lr=7.35e-5, wd=0.012, warmup=93 steps, seed=789
+
+# 350M v29 — filtered data run (~2.4 days on RTX 4090)
+bin/apr-train train apply \
+    --task pretrain --config configs/train/pretrain-350m-v29.yaml
+# v29: same hyperparams as v28 but on quality-filtered data
+# Data: 2.04B tokens (40 shards from data/pretokenized-1024-v4/train/)
+# Val: same as v28 (data/pretokenized-1024-v3/val/) for fair comparison
 
 # Build apr-cli with local patches
 cd ~/src/aprender && CARGO_TARGET_DIR=/mnt/nvme-raid0/targets/aprender \
