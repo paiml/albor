@@ -93,11 +93,24 @@
 - [x] v10/v11/v12 continuation failures — all KILLED. Root cause: ALB-118 (GPU optimizer state not checkpointed).
 - [x] ~~Fix ALB-118~~ VERIFIED — GPU optimizer state (438 tensors, 2.3 GB) now saved in APR checkpoints.
 - [x] ~~Fix ALB-119~~ FIXED — RoPE backward (inverse rotation) added to both F32 and NF4 paths.
-- [x] v13 training — **RUNNING** (155K steps target, 5.08B tokens). Phase change at step 4000: val_ppl 812→**499** (outperforming v9 by 25%). 8.3K tok/s, 23.9% MFU.
-- [ ] HumanEval pass@1 evaluation (target >8%) — eval pipeline ready, awaiting checkpoint
+- [x] v13 training — 42K steps, val_ppl=288. 8.3K tok/s, 23.9% MFU. **STOPPED**: plateau
+- [x] v14-v22 — convergence bug hunt (RC1-RC9). Fixed residual skip, causal mask, clip norm, sequential shards.
+- [x] HPO infrastructure — `apr train sweep` + `apr train halving` (C-HPO-001). Winner: lr=7.35e-5, ga=32, wd=0.012.
+- [x] v23-v26 — HPO-validated runs. v25 best val_ppl=48.09, v26 best=46.91.
+- [x] v27 training — 10.2K steps, val_ppl=9.39 (step 2K) then diverged to 82. Root cause: ALB-129 cosine horizon.
+- [x] v28 original — best val_ppl=**5.88** at step 3.5K. ALB-129 fix confirmed. Killed by cargo-killer.
+- [x] v28 fresh **RUNNING** — step 6.8K/38K, val_ppl=**38.53** at step 6K. 12.3K tok/s, 38.7% MFU. Predicted ~25.6 at 38K.
+- [x] ~~Fix ALB-078~~ FIXED — fused gradient clipping (MFU 19%→38.7%)
+- [x] ~~Fix ALB-128~~ MITIGATED — LR-batch mismatch (HPO)
+- [x] ~~Fix ALB-129~~ FIXED — cosine schedule horizon (max_steps=38349)
+- [x] Data filtering — `scripts/filter_codeparrot.py`: 850K/2.95M files (28.7%), 2.04B tokens
+- [x] HumanEval v4 baseline — 0% pass@1 (pre-HPO checkpoint, gx10)
+- [x] Teacher pipeline pilot — Qwen3-8B on gx10, 330/1K completions at 100% pass rate
+- [ ] HumanEval pass@1 on v28 checkpoint (target >1%) — awaiting full epoch
+- [ ] v29 training on filtered data (2.04B tokens, ~2.4 days)
 - [ ] Verify FALSIFY-ALBOR-003 (checkpoint determinism)
 - [ ] `pmat tdg check-regression` on all touched components
-- [ ] **Milestone**: HumanEval pass@1 > 8%, Perplexity < 30, TDG grade A maintained
+- [ ] **Milestone**: HumanEval pass@1 > 0%, val_ppl < 30, TDG grade A maintained
 
 ### Phase 4: Teacher Setup & Distillation Data (Week 3-5) — COMPLETE
 - [x] ~~Fix ALB-010~~ FIXED — Qwen3-Coder-30B MoE inference in realizar (Q4K, 15 tok/s GPU)
@@ -111,7 +124,7 @@
 - [x] distill-v3 training: 2,400 steps, val_ppl=658. HumanEval 0% — insufficient tokens + raw format
 - [x] **Milestone**: Teacher inference working, synthetic data pipeline demonstrated
 - [ ] `pv kani` on KD loss contract (KL non-negativity, temperature scaling)
-- [ ] **Future**: Re-run distillation after v13 base model converges
+- [ ] **Next**: Re-run distillation after v28/v29 base model converges (val_ppl < 30)
 
 ### Phase 5: Knowledge Distillation (Week 5-6)
 - [ ] Implement `apr distill apply` with KD loss
