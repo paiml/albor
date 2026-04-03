@@ -61,8 +61,13 @@ Primary signal for training convergence (NOT for benchmark prediction).
 **Critical**: val and train data MUST come from same source. Cross-distribution
 val_ppl is misleading. See v6 post-mortem (val/train mismatch bug).
 
-Current best: **776** (v6, step 2000, 64M tokens).
-Target post-distillation: **< 100**.
+**Results by run:**
+- v28 original: **5.88** (step 3500, 708M tokens) — best ever, run killed
+- v28 fresh: **38.53** (step 6000, running) — predicted ~26 at step 38K
+- v27: 9.39 (step 2000, then diverged to 82 due to ALB-129)
+- v6: 776 (step 2000, 64M tokens)
+
+Target post-distillation: **< 20**.
 
 ---
 
@@ -163,14 +168,20 @@ HumanEval pass@k evaluation.
 | CodeGen-350M | 350M | 12% | — | 577B raw |
 | SantaCoder | 1.1B | 14% | — | The Stack |
 | InCoder-1.3B | 1.3B | 8% | — | 159B tokens |
-| Albor (current) | 370M | 0% | — | 64M raw |
+| Albor v4 baseline | 370M | 0% | — | 79M raw (pre-HPO) |
+| Albor v28 (running) | 370M | TBD | — | 5.3B raw (HPO, val_ppl=38.53) |
 | **Albor (target)** | **370M** | **≥30%** | **≥40%** | **~2B curated + distill** |
 
-### 6.2 Key Observation
+### 6.2 Key Observations
 
 phi-1-small proves 45% HumanEval is achievable at 350M params. CodeGen-350M
 at 12% with 577B raw tokens shows that data quality matters 80x more than
 quantity. Our path: match phi-1's data quality through distillation.
+
+**HumanEval v4 baseline** (gx10, 2026-03-14): 0% pass@1 at all k values.
+Model had only seen 79M tokens of raw code with pre-HPO hyperparameters.
+This establishes the floor. v28's much lower val_ppl (38.53 vs 918) should
+yield non-zero HumanEval once the full epoch completes.
 
 ---
 
