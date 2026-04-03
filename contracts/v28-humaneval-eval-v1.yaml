@@ -1,0 +1,107 @@
+# Contract: v28 HumanEval Evaluation (ALB-135)
+#
+# First HumanEval evaluation on a model with val_ppl < 50.
+# Previous baseline: 0% pass@1 on v4 checkpoint (val_ppl=918).
+# v28 checkpoint at val_ppl=38.53 falls in the 30-50 ppl range,
+# which literature mapping predicts 8-15% HumanEval pass@1.
+#
+# This is a falsifiable prediction. If pass@1 = 0% at val_ppl=38,
+# the ppl→HumanEval mapping is wrong for our model/data combination.
+
+metadata:
+  version: "1.0.0"
+  description: "HumanEval pass@1 evaluation on v28 checkpoint — first test of ppl→HumanEval prediction"
+  references:
+    - "ALB-135"
+    - "eval-humaneval-v1.yaml"
+    - "Chen et al. (2021) Evaluating Large Language Models Trained on Code"
+
+equations:
+  ppl_humaneval_prediction:
+    formula: |
+      For a model M with val_ppl P on codeparrot-clean held-out data:
+        P > 200 → expected pass@1 = 0%
+        100 < P ≤ 200 → expected pass@1 = 0-3%
+        50 < P ≤ 100 → expected pass@1 = 3-8%
+        30 < P ≤ 50 → expected pass@1 = 8-15%
+        P ≤ 30 → expected pass@1 = 15%+
+
+      v28 best checkpoint: val_ppl = 38.53 (step 6K)
+      Prediction: pass@1 in [8%, 15%]
+
+    domain: "350M decoder-only transformer trained on codeparrot-clean"
+    invariants:
+      - "Lower val_ppl implies higher or equal HumanEval pass@1"
+      - "pass@1 >= 0% and pass@1 <= 100%"
+      - "v28 pass@1 >= v4 pass@1 (0%) since val_ppl decreased"
+
+  eval_protocol:
+    formula: |
+      HumanEval evaluation:
+        1. Load model from checkpoints/albor-base-350m-v28/model-best.apr
+        2. For each of 164 problems: generate completion (greedy, max_tokens=512)
+        3. Execute completion + test assertions in sandbox (timeout=10s)
+        4. pass@1 = count(passed) / 164
+
+    domain: "HumanEval benchmark (164 problems)"
+    invariants:
+      - "All 164 problems evaluated (no skips)"
+      - "Execution sandbox: timeout=10s, memory=256MB, no network"
+      - "Greedy decoding (temperature=0.0) for deterministic pass@1"
+      - "Stop sequences: newline + class/def/if-main"
+
+proof_obligations:
+  - type: invariant
+    property: "v28 pass@1 > v4 pass@1 (monotonicity with ppl improvement)"
+    formal: "pass_at_1(v28, humaneval) >= pass_at_1(v4, humaneval) = 0"
+
+  - type: bound
+    property: "v28 pass@1 in predicted range"
+    formal: "8% <= pass_at_1(v28, humaneval) <= 15% (or prediction model is wrong)"
+
+  - type: invariant
+    property: "All problems evaluated"
+    formal: "count(evaluated_problems) = 164"
+
+falsification_tests:
+  - id: FALSIFY-V28-EVAL-001
+    rule: "val_ppl < 50 implies non-zero HumanEval"
+    prediction: "pass@1 > 0% on v28 best checkpoint (val_ppl=38.53)"
+    test: |
+      1. Run: apr serve run checkpoints/albor-base-350m-v28/model-best.apr --port 8080
+      2. Run: python3 scripts/eval-code.py data/humaneval.jsonl --api http://localhost:8080
+      3. Assert: pass@1 > 0% (at least 1/164 problems solved)
+    if_fails: "ppl→HumanEval mapping invalid for our model — may need distillation even at low ppl"
+
+  - id: FALSIFY-V28-EVAL-002
+    rule: "pass@1 falls in predicted 8-15% range"
+    prediction: "8% <= pass@1 <= 15% for val_ppl=38.53"
+    test: |
+      Same as FALSIFY-V28-EVAL-001 but assert 13/164 <= passed <= 25/164
+    if_fails: "Prediction mapping miscalibrated for 350M codeparrot models (may be too optimistic)"
+
+  - id: FALSIFY-V28-EVAL-003
+    rule: "v28 completion has no model-best.apr checkpoint"
+    prediction: "model-best.apr exists and is loadable"
+    test: |
+      1. Verify: ls checkpoints/albor-base-350m-v28/model-best.apr
+      2. Run: apr check checkpoints/albor-base-350m-v28/model-best.apr
+      Assert: file exists and passes validation
+    if_fails: "Checkpoint not saved — check training_state.json for best_step"
+
+kani_harnesses:
+  - id: KANI-V28-EVAL-001
+    obligation: eval_protocol
+    property: "pass@k monotonicity — pass@1 <= pass@10 <= pass@100"
+    bound: 164
+    strategy: exhaustive
+
+qa_gate:
+  id: F-V28-EVAL-001
+  name: "v28 HumanEval Evaluation"
+  min_coverage: 0.0
+  max_complexity: 15
+  required_tests:
+    - "FALSIFY-V28-EVAL-001"
+    - "FALSIFY-V28-EVAL-002"
+    - "FALSIFY-V28-EVAL-003"
