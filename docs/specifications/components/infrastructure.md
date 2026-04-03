@@ -40,7 +40,8 @@ Single 4090 means no pipeline parallelism.
 | cuBLAS workspace | ~256 MB | GEMM scratch space |
 | **Total** | **~13 GB** | Leaves ~11 GB headroom |
 
-Actual usage varies: v6 measured at 17.8 GB peak.
+Actual usage varies: v6 measured at 17.8 GB peak, v28 at 13.7 GB steady-state
+(lower due to fused gradient clipping reducing workspace overhead, ALB-078).
 
 ---
 
@@ -149,11 +150,19 @@ GPU memory managed via trueno's `GpuBuffer`:
 
 ## 5. Monitoring
 
-### 5.1 Training Metrics (JSONL)
+### 5.1 Training Metrics (Log Format)
 
-entrenar writes per-step metrics to JSONL log:
-```json
-{"step": 100, "loss": 7.83, "lr": 0.0003, "grad_norm": 1.42, "tok_s": 6700}
+entrenar writes per-step metrics to training log:
+```
+[216600/1227172 batches] step=6768 loss=3.8449 lr=6.81e-5 tok/s=12306 mfu=38.6% gnorm=2.49e-1 gpu=13675/24045MB step=618ms eta=336373s
+```
+
+Fields: batch progress, step, loss, learning rate, throughput, MFU, gradient
+norm, GPU memory (used/total), step time, ETA.
+
+**ZClip** alerts logged inline when gradient z-score exceeds threshold:
+```
+[ZClip] gradient spike at step 6768: z=3.0 gnorm=3.64e-1 ema=2.50e-1
 ```
 
 ### 5.2 Andon Stops
@@ -176,11 +185,23 @@ Computed from gnorm variance in rolling window (100 steps).
 
 ---
 
-## 6. Known Infrastructure Issues
+## 6. Secondary Compute: gx10 (Jetson)
+
+| Component | Spec |
+|-----------|------|
+| GPU | NVIDIA GB10 (Jetson) |
+| Role | Teacher inference, HumanEval eval |
+| Current | 2× `realizar serve` (Qwen3-8B-Q4K, ports 8090/8091, 8 GB VRAM) |
+
+gx10 handles teacher completions and model evaluation while the 4090 is
+occupied with training. Teacher throughput: ~36 completions/hour.
+
+## 7. Known Infrastructure Issues
 
 | Issue | Impact | Status |
 |-------|--------|--------|
-| All-shards-in-RAM data loading | 39 GB swap, 20% throughput loss | OPEN |
+| All-shards-in-RAM data loading | 39 GB swap, 20% throughput loss | OPEN (mitigated by ga=32) |
 | `with_model()` resume broken | Can't resume from checkpoint | OPEN |
 | Stale training_state.json | Rollback false positives | Workaround: clean dir |
-| cargo-killer.service | May kill long builds | Under investigation |
+| cargo-killer.service | May kill long builds | DISABLED for training |
+| Teacher completions crash | Connection reset after 330/1K | Needs retry logic |
