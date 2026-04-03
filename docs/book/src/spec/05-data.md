@@ -10,10 +10,10 @@
 
 ### 5.2 Data Mix (Target: ~10B tokens)
 
-**Current status (2026-03-18)**: v3 dataset BUILT and IN USE by v13 training run.
-2M Python files from codeparrot-clean → 4.9M sequences × 1024 = 5.0B tokens in
-19 shards. v13 is training on the full v3 dataset (155K steps, 73% Chinchilla-optimal
-for 350M params). See §5.4.2 for the v3 pipeline.
+**Current status (2026-04-03)**: v3 dataset (5.0B raw tokens) in use by v28
+training run (step 7.4K/38K). v4 filtered dataset (2.04B clean tokens, 850K/2.95M
+files, 28.7% pass rate) ready for v29. See §5.4.2 for v3 pipeline, §5.4.3 for
+v4 quality filtering pipeline.
 
 v2 dataset (139M tokens, 67,977 sequences × 2048) was used for early runs (v1-v8)
 but was only 0.9% of Chinchilla-minimum. v3 provides 36x more tokens.
@@ -275,6 +275,34 @@ python3 scripts/pretokenize.py \
 
 # Validation set: reuse v1 (814 sequences)
 ```
+
+#### 5.4.3 v4 Dataset Pipeline — Quality-Filtered codeparrot-clean (2026-04-02)
+
+The v4 dataset applies AST-based quality filtering to codeparrot-clean, reducing
+5.3B raw tokens to 2.04B clean tokens. This is the data for v29 training.
+
+Contract: `data-quality-filtering-v1.yaml` (ALB-134, C-FILTER-*).
+
+```bash
+# Step 1: Stream from HuggingFace and filter (2.95M files, ~1.5h)
+python3 scripts/filter_codeparrot.py
+# Filters: ast.parse() validity, docstring density (≥1 per 50 lines),
+#          import diversity (≥2 unique), no generated code markers
+# Result: 850K/2.95M files passed (28.7%), 17 shards in data/filtered/train/
+
+# Step 2: Pretokenize at seq_len=1024
+python3 scripts/pretokenize.py \
+  --input data/filtered/train/ \
+  --tokenizer models/albor-tokenizer-v2/tokenizer.json \
+  --seq-len 1024 \
+  --output data/pretokenized-1024-v4/train/ \
+  --text-column text --shard-output
+# Result: 1,988,843 sequences × 1024 = 2.04B tokens in 40 shards
+```
+
+**Hypothesis** (FALSIFY-FILTER-002): v29 (2.04B filtered) achieves lower
+val_ppl than v28 (5.08B raw) at matched steps, following phi-1's finding
+that data quality dominates data quantity at small model scale.
 
 ### 5.5 Tokenizer
 
