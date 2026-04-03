@@ -15,16 +15,19 @@
 
 | Metric | Value |
 |--------|-------|
-| Best val_ppl | 776 (v6, step 2000, 64M tokens) |
-| HumanEval pass@1 | 0% (undertrained) |
+| Best val_ppl | **5.88** (v28 orig, step 3.5K); **38.53** (v28 fresh, step 6K, running) |
+| HumanEval pass@1 | 0% (v4 baseline, pre-HPO) |
 | Target HumanEval | ≥30% pass@1 |
-| Training throughput | 6.5K tok/s, 19% MFU (RTX 4090) |
-| Gaps fixed | 52 of 92 filed |
+| Training throughput | **12.3K tok/s, 38.7% MFU** (RTX 4090, v28) |
+| Contracts validated | 50 |
 
-**Strategic pivot (v1.0)**: Pre-training from scratch plateaus at val_ppl ~776 after
-64M tokens. The phi-1 result proves a 350M model can reach 45% HumanEval — but only
-with high-quality data (filtered web + synthetic textbooks + exercises). Our path:
-**distillation-first** using Qwen3-Coder-30B-A3B as teacher, combined with data curation.
+**v28 era (v1.2)**: HPO-validated hyperparameters (C-HPO-001) + cosine horizon fix
+(ALB-129) + fused gradient clipping (ALB-078) pushed val_ppl from 776 (v6) to 38.53
+(v28 fresh, step 6K, predicted ~26 at completion). Data filtering complete: 850K files,
+2.04B clean tokens for v29. Teacher pilot running: Qwen3-8B on gx10, 330/1K completions.
+
+**Strategy**: Complete v28 full epoch → v29 on filtered data → distill with teacher
+completions → target HumanEval pass@1 > 0%.
 
 **Teacher selection (v1.1)**: Falsification analysis revealed Qwen3.5-35B-A3B is the
 wrong teacher — no FIM support, no HumanEval benchmarks, designed for agentic reasoning
@@ -240,15 +243,18 @@ Teacher and student run sequentially, never simultaneously.
 
 ## 7. Training Results (Historical)
 
-| Run | Steps | Tokens | val_ppl | tok/s | Notes |
-|-----|-------|--------|---------|-------|-------|
-| v3 | 28K | 112M | 1018 | 6.7K | No cosine decay, small batch (ALB-079/080) |
-| v4 | 2.4K | 79M | 918 | 6.7K | Fixed LR/batch, stopped early |
-| v5 | 3.4K | 112M | — | — | Broken: norm grads + accum init (ALB-092) |
-| v6 | 2K | 64M | **776** | 6.5K | ALB-092 fixed, matched val data |
+| Run | Steps | Tokens | val_ppl | tok/s | MFU | Notes |
+|-----|-------|--------|---------|-------|-----|-------|
+| v3 | 28K | 918M | 1018 | 6.7K | 19.3% | No cosine decay, small batch (ALB-079/080) |
+| v6 | 2K | 64M | 776 | 6.5K | 18.8% | ALB-092 fixed, matched val data |
+| v27 | 10.2K | 1.3B | 9.39 | 14.7K | 46.1% | HPO-validated, ALB-129 (diverged to 82) |
+| v28 orig | 5.4K | 708M | **5.88** | 14.7K | 46.1% | ALB-129 fix confirmed. Killed. |
+| **v28 fresh** | **6.8K** | **891M** | **38.53** | **12.3K** | **38.7%** | **RUNNING** (ETA ~3.5 days) |
 
-**Lesson**: Pre-training from scratch converges too slowly. 64M tokens → val_ppl 776.
-Need 7B+ tokens of curated data to be competitive. Distillation is the multiplier.
+**Lessons**:
+1. v6 era: Data quality is the bottleneck (64M tokens → val_ppl 776)
+2. v28 era: HPO + correct cosine schedule + fused clipping → 20× val_ppl improvement
+3. Distillation remains the multiplier for HumanEval — raw pre-training alone won't suffice
 
 → Details: [components/training.md](components/training.md)
 
@@ -299,13 +305,14 @@ Each stage exercises a different `apr` subcommand and may reveal new stack gaps.
 
 ## 10. Gap Register Summary
 
-**92 gaps filed, 52 fixed.** Critical path gaps for distillation:
+**129+ gaps filed, 50 contracts validated.** Key gaps:
 
-| ID | Gap | Status | Blocker? |
-|----|-----|--------|----------|
-| ALB-010 | `qwen3_moe` teacher loading (re-scoped) | IN PROGRESS | **YES** |
-| ALB-089 | GPU-accelerated inference for eval | DOGFOODING | No |
-| ALB-092 | Norm grads + accum zeroing + resume | FIXED | No |
+| ID | Gap | Status | Notes |
+|----|-----|--------|-------|
+| ALB-010 | `qwen3_moe` teacher loading | IN PROGRESS | Steps 4-5 DONE, 6-8 remaining |
+| ALB-078 | Fused gradient clipping | **FIXED** | MFU 19%→38.7% |
+| ALB-129 | Cosine schedule horizon | **FIXED** | val_ppl 82→5.88 |
+| ALB-089 | GPU-accelerated inference | DOGFOODING | For fast eval |
 
 → Full register: [components/gaps.md](components/gaps.md)
 → Bug patterns: [components/bugs.md](components/bugs.md)
