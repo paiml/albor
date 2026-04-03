@@ -20,7 +20,7 @@ A **350M-parameter decoder-only transformer** for Python code completion, traine
 
 **The project has two goals:**
 1. Produce a **usable Python code completion model** that runs anywhere Rust compiles
-2. Identify and fix every gap in the [Sovereign AI stack](https://github.com/paiml) that blocks end-to-end LLM development — **128+ gaps found, 120+ fixed**
+2. Identify and fix every gap in the [Sovereign AI stack](https://github.com/paiml) that blocks end-to-end LLM development — **129+ gaps found, 53 contracts validated**
 
 ## Current Status
 
@@ -168,7 +168,7 @@ References:
 | [aprender](https://github.com/paiml/aprender) (`apr`) | CLI (train, sweep, halving, eval) | 12+ |
 | [realizar](https://github.com/paiml/realizar) | Inference (Qwen3 MoE, Q4K) | 5+ |
 | [alimentar](https://github.com/paiml/alimentar) | Data pipeline (Parquet, FIM) | 5+ |
-| [provable-contracts](https://github.com/paiml/provable-contracts) (`pv`) | Verification (49 contracts) | — |
+| [provable-contracts](https://github.com/paiml/provable-contracts) (`pv`) | Verification (53 contracts) | — |
 | [renacer](https://github.com/paiml/renacer) | Tracing (BrickTracer, spans) | 3+ |
 
 ## Provable Contracts
