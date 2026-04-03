@@ -63,11 +63,11 @@ the model has learned to concentrate probability mass on the correct tokens.
 | 32,768 | Random baseline (uniform over vocab) | Untrained / step 0 |
 | ~1,000 | Basic token frequency learned | v3 plateau (step 12K-28K) |
 | ~500 | Phase change — position encoding learned | v13 step 4K, v9 step 4.75K |
-| ~330 | Token co-occurrence and local patterns | v15 step 5K (164M tokens) — phase change, converging |
-| ~130 | Sentence-level patterns and common idioms | v9 plateau (step 14K, 490M tokens) — v15 on track to surpass |
-| ~50 | Syntactic patterns and code structure captured | v13 target at ~1.5B tokens |
-| ~30 | Strong code model — predicts Python structure | Good 350M model (Chinchilla-trained) |
-| ~10 | Excellent — narrows predictions to a few candidates | State-of-the-art at this scale |
+| ~130 | Sentence-level patterns and common idioms | v9 best (step 14K, 490M tokens) |
+| ~50 | Syntactic patterns and code structure captured | **v23 best: 50.38** |
+| **~39** | **Code structure + basic patterns** | **v28 fresh best: 38.53** (step 6K, 786M tokens) |
+| ~30 | Strong code model — predicts Python structure | v28 predicted at completion (~38K steps) |
+| ~10 | Excellent — narrows predictions to a few candidates | v28 orig best: 5.88 (step 3.5K, killed) |
 
 **Why perplexity, not loss**: Cross-entropy loss (ln(perplexity)) compresses
 the scale. Loss 6.93 vs 6.83 sounds small but corresponds to perplexity 1018
@@ -129,10 +129,14 @@ quantity at this scale (phi-1 lesson).
 | 30-50 | 8-15% | Competitive with CodeGen-350M |
 | < 30 | 15%+ | Strong code model at this scale |
 
-**Empirical baseline (v15, step 5K, val_ppl=333):** HumanEval pass@1 = **0/164**
-(0%). Ran full 164-problem eval with CPU inference, greedy decoding, 256 max
-tokens. Confirmed: ppl=333 produces no valid Python. Consistent with the
-mapping above — must reach ppl < 100 for any score, ppl < 50 to compete.
+**Empirical baselines:**
+- **v4 (val_ppl=918):** HumanEval pass@1 = 0/164. Pre-HPO, 79M tokens.
+- **v15 (val_ppl=333):** HumanEval pass@1 = 0/164. CPU inference, greedy.
+- **v28 fresh (val_ppl=38.53):** HumanEval eval **pending** (awaiting full epoch).
+
+Per the mapping above, v28's val_ppl=38.53 falls in the 30-50 range
+(expected 8-15% HumanEval). This would be competitive with CodeGen-350M
+if confirmed. v28 completion (predicted val_ppl ~29) could push into 15%+ range.
 
 **Big Code Models Leaderboard — where Albor would land**
 
