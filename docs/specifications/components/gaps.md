@@ -6,7 +6,7 @@
 
 ## 1. Summary
 
-**129+ gaps filed. 50 contracts validated.** The gap register tracks every
+**129+ gaps filed. 52 contracts validated.** The gap register tracks every
 missing capability, bug, or integration issue discovered during end-to-end LLM
 development with the sovereign stack.
 
@@ -126,7 +126,7 @@ gradients only) but produced garbage weights. Fix: implement batched backward.
 Per-block gradient clipping required 24 D2H transfers per step to read
 individual block norms on CPU. Fused approach: compute all block norms on
 GPU, single D2H for total norm, clip all at once. Result: MFU 19% → 38.7%,
-tok/s 6.7K → 14.7K. Rebuilt binary 2026-04-02.
+tok/s 6.7K → 12.3K (steady-state). Rebuilt binary 2026-04-02.
 
 ### 3.11 ALB-128: LR-Batch Mismatch (MITIGATED)
 

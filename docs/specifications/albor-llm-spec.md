@@ -305,7 +305,7 @@ Each stage exercises a different `apr` subcommand and may reveal new stack gaps.
 
 ## 10. Gap Register Summary
 
-**129+ gaps filed, 50 contracts validated.** Key gaps:
+**129+ gaps filed, 52 contracts validated.** Key gaps:
 
 | ID | Gap | Status | Notes |
 |----|-----|--------|-------|
