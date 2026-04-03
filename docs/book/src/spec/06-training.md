@@ -1045,7 +1045,7 @@ dataset (67,977 sequences, `epochs: 38`, `warmup_steps: 500`).
 | Early stopping | `patience: 10` — stop after 10 evals (2,500 steps) without val_loss improvement (ALB-087) |
 | Content | Model weights + CPU embed optimizer + GPU block optimizer (24 blocks × AdamW m/v) in single APR file (~5.2 GB), config.json. ALB-118 **FIXED**: all 438 GPU optimizer tensors checkpointed (`entrenar@784f7b6`). |
 | Pruning | Automatic — keeps latest + best only, old checkpoints deleted |
-| Disk usage | ~15 GB peak (v13: ~5.2 GB per checkpoint, current + best + in-flight) |
+| Disk usage | ~15 GB peak (~5.2 GB per checkpoint, current + best + in-flight) |
 | Storage | Local NVMe RAID-0, checkpoints directory in repo |
 | Resume | From latest APR checkpoint on crash (weights + CPU embed optimizer + GPU block optimizer + step counter). ALB-097: LM head always saved. ALB-118 **FIXED**: full optimizer state (model weights + 438 GPU tensors + CPU embed optimizer) checkpointed in APR v2 format. v13 benefits from safe resume on interruption. |
 | Shape format | 2D `[out, in]` shapes (ALB-086) — HuggingFace compatible |

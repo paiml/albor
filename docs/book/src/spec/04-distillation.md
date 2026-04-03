@@ -6,16 +6,16 @@ Early training runs (v1-v8) on codeparrot-clean showed a val_ppl ~800 plateau
 with limited data (655M tokens = 1.9x params). The root cause was Chinchilla
 scaling mismatch: 350M params needs ~7B tokens (20x) for optimal training.
 
-**v15 is the current training run:** Phase change at step 3K (earliest ever),
-best pre-outage val_ppl=309 (step 9K). Power outage at step 11K, resumed from
-10K. Post-resume oscillating at 400-657. HumanEval 0/164 at ppl=333.
+**v28 is the current training run:** HPO-validated hyperparameters (C-HPO-001),
+cosine horizon fix (ALB-129), fused gradient clipping (ALB-078). Best
+val_ppl=38.53 at step 6K. Plateau at 38-42, predicted ~29 at completion.
 
-| Parameter | v9 (best genuine) | v15 (current) | Chinchilla Optimal |
-|-----------|-----------|---------------|-------------------|
+| Parameter | v9 (early best) | v28 fresh (current) | Chinchilla Optimal |
+|-----------|-----------------|---------------------|-------------------|
 | Model size | 350M | 350M | 350M |
-| Training tokens | 490M (15K steps) | 5.08B (155K steps) | ~7B |
+| Training tokens | 490M (15K steps) | 5.08B (38K steps) | ~7B |
 | Ratio (tokens/params) | 1.4x | 14.5x | 20x |
-| Best val_ppl | 129 | 309 (step 9K, improving) | ~30-50 (predicted) |
+| Best val_ppl | 129 | **38.53** (step 6K) | ~30-50 (predicted) |
 
 **Distillation complements pretraining**: a strong teacher can transfer
 structured knowledge (code patterns, API usage, docstring→implementation
