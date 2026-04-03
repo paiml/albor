@@ -154,16 +154,43 @@ HumanEval.
 
 ### 4.1 Prompt Sources
 
-| Source | Prompts | Style |
-|--------|---------|-------|
-| HumanEval-style stubs | ~500 | Function signature + docstring |
-| MBPP-style tasks | ~1000 | Natural language → code |
-| codeparrot-clean headers | ~50K | Extract first function/class from samples |
-| Synthetic textbook exercises | ~10K | Multi-step problems with hints |
-| OSS-Instruct (Magicoder-style) | ~20K | Real code → inspired problem |
+| Source | Prompts | Style | Status |
+|--------|---------|-------|--------|
+| codeparrot-clean headers | **50,000** | Function/method/class from filtered files | **DONE** |
+| HumanEval-style stubs | ~500 | Function signature + docstring | TODO |
+| MBPP-style tasks | ~1000 | Natural language → code | TODO |
+| Synthetic textbook exercises | ~10K | Multi-step problems with hints | TODO |
+| OSS-Instruct (Magicoder-style) | ~20K | Real code → inspired problem | TODO |
+
+**Actual prompt distribution** (`data/distill/prompts-filtered-50k.jsonl`):
+- function: 12,895 (25.8%)
+- method: 28,891 (57.8%)
+- class: 8,214 (16.4%)
+
+Extracted from first shard of filtered codeparrot via
+`scripts/extract_distill_prompts.py`.
 
 ### 4.2 Generation Config
 
+**Actual config** (interim teacher, Qwen3-8B on gx10):
+```yaml
+teacher:
+  model: "Qwen3-8B-Q4_K_M.gguf"  # Interim (ALB-010 MoE not ready)
+  server: "gx10:8090"             # realizar serve --gpu --openai-api
+  temperature: 0.0                # Greedy for pilot, 0.8 for scale
+  max_tokens: 512
+  num_completions: 1              # Single completion per prompt
+
+filtering:
+  min_completion_length: 10       # chars, stripped (C-TEACHER-QUALITY-001)
+  dedup_by_prompt_hash: true      # C-TEACHER-DEDUP-001
+```
+
+**Contract**: `teacher-completions-pipeline-v1.yaml` (C-TEACHER-*).
+Resilient pipeline with retry, resume, dedup. See
+`scripts/generate_teacher_completions_api.py`.
+
+**Target config** (full teacher, Qwen3-Coder-30B-A3B):
 ```yaml
 teacher:
   model: "qwen3-coder-30b.apr"
@@ -174,14 +201,14 @@ teacher:
   num_completions: 5  # per prompt, pick best
 
 execution:
-  sandbox: "bubblewrap"  # or nsjail
+  sandbox: "bubblewrap"
   timeout_seconds: 10
   python_version: "3.11"
   allowed_imports: ["math", "collections", "itertools", "typing", "re", "string"]
 
 filtering:
   require_execution_pass: true
-  require_type_check: false  # aspirational
+  require_type_check: false
   dedup_by_ast: true
   min_tokens: 20
   max_tokens: 512
@@ -189,13 +216,23 @@ filtering:
 
 ### 4.3 Generation Schedule
 
-| Phase | Prompts | Completions | ~Tokens | Wall Time |
-|-------|---------|-------------|---------|-----------|
-| Pilot (M1) | 1K | 5K | ~1.3M | ~3.5h |
-| Scale 1 (M2) | 20K | 100K | ~26M | ~71h |
-| Scale 2 (M2+) | 100K | 500K | ~128M | ~15 days |
+| Phase | Prompts | Completions | ~Tokens | Wall Time | Status |
+|-------|---------|-------------|---------|-----------|--------|
+| Pilot (M1) | 1K | 1K × 1 | ~0.4M | ~28h | **330/1K done** (crashed, resumable) |
+| Scale 1 (M2) | 10K | 10K × 1 | ~4M | ~280h | TODO |
+| Scale 2 (M2+) | 50K | 50K × 1 | ~20M | ~58 days | TODO |
 
-Start with pilot to validate pipeline and measure rejection rate.
+**Pilot results** (Qwen3-8B, greedy, 1 completion per prompt):
+- 330/1K completed at 36 completions/hour before connection reset
+- 100% acceptance rate (all 330 completions passed quality filter)
+- Average completion length: ~2.9K chars
+- Pipeline crashed at prompt 331 (unhandled RemoteDisconnected)
+- Fixed: retry + resume logic added (C-TEACHER-RETRY-001, C-TEACHER-RESUME-001)
+- Resume via: `bash scripts/resume-teacher-completions.sh`
+
+**Scaling note**: With Qwen3-8B (interim teacher) at 36/h, generating 10K
+completions takes ~12 days. The full Qwen3-Coder-30B teacher (ALB-010, pending)
+at ~100-140 tok/s would be ~3.5× faster.
 
 ---
 
