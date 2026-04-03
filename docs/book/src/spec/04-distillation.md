@@ -240,27 +240,27 @@ unambiguous:
 | Data mix | **90% codeparrot + 10% synthetic** | Prevents catastrophic forgetting (literature standard: 90-95% replay) |
 | Optimizer | AdamW (lr=1e-4, lower than pretraining) | Conservative for fine-tuning |
 | Schedule | Cosine with 100-step warmup | Standard |
-| Init | From **v13 checkpoint** (post-convergence, ~5B tokens) | Best base model; v9 (490M tokens, ppl=129) is fallback |
+| Init | From **v28 or v29 checkpoint** (best base model) | v28 fresh: val_ppl=38.53 at step 6K; v29 on filtered data TBD |
 | Max steps | 1,000-3,000 | Small synthetic budget; early stopping on val_ppl |
 
-Starting from the v13 checkpoint (projected val_ppl 80-120 after 5B
-tokens) gives the student a stronger foundation than v9 (ppl=129 at
-490M tokens). The mixed training teaches it the teacher's coding
-patterns while replaying the original distribution to maintain
-(or improve) general Python capability.
+Starting from the v28/v29 checkpoint (val_ppl ~25-39 projected at
+completion) gives the student a much stronger foundation than earlier
+runs (v9: ppl=129, v13: ppl=288). The mixed training teaches it the
+teacher's coding patterns while replaying the original distribution to
+maintain (or improve) general Python capability.
 
 ### 4.10 Success Criteria
 
-| Metric | Base v13 (projected) | Distillation Target | Stretch |
-|--------|---------------------|---------------------|---------|
-| val_ppl (codeparrot) | 80-120 | < base (no regression) | < 50 |
-| train_loss (synthetic) | ~5.0 (untrained) | < 4.0 | < 3.0 |
-| HumanEval pass@1 | TBD (v9 was 0/164) | > 5/164 (3%) | > 15/164 (9%) |
-| MBPP pass@1 | TBD (v9 was 0/974) | > 20/974 (2%) | > 50/974 (5%) |
+| Metric | Base v28/v29 (projected) | Distillation Target | Stretch |
+|--------|--------------------------|---------------------|---------|
+| val_ppl (codeparrot) | 25-39 | < base (no regression) | < 20 |
+| train_loss (synthetic) | ~3.5 (on base checkpoint) | < 3.0 | < 2.5 |
+| HumanEval pass@1 | 0% (v4 baseline) | > 5/164 (3%) | > 15/164 (9%) |
+| MBPP pass@1 | TBD | > 20/974 (2%) | > 50/974 (5%) |
 
 **Critical constraint**: val_ppl on codeparrot must NOT regress beyond
-10% of base (i.e., must stay < 147). Distill-v1 violated this (133 →
-326, a 2.4x regression) because it used 100% synthetic data.
+10% of base. Distill-v1 violated this (133 → 326, a 2.4x regression)
+because it used 100% synthetic data. Use 90/10 mix.
 
 Any non-zero HumanEval score from a 350M model trained on sovereign
 stack synthetic data would be a meaningful result.
