@@ -34,7 +34,8 @@ model:
     rope_theta: 10000.0
 data:
   train: "data/pretokenized-1024-v4/train/"
-  val: "data/pretokenized-1024-v4/val/"
+  # Use v3 val set (same as v28) for fair comparison (C-FILTER invariant)
+  val: "data/pretokenized-1024-v3/val/"
   batch_size: 4
   seq_len: 1024
   tokenizer: "models/albor-tokenizer-v2/tokenizer.json"
