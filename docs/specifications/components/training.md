@@ -131,11 +131,12 @@ Uses same architecture but `max_steps: 5`, small data path.
 | v25 | 6K | 786M | 48.09 | 8.1K | 25.4% | STOPPED: LR spike |
 | v27 | 10.2K | 1.3B | 9.39 | 14.7K | 46.1% | STOPPED: diverged to 82 (ALB-129) |
 | v28 (orig) | 5.4K | 708M | **5.88** | 14.7K | 46.1% | KILLED: experiment |
-| **v28 (fresh)** | **7.4K** | **970M** | **38.53** | **11.6K** | **36.3%** | **RUNNING** |
+| **v28 (fresh)** | **11K** | **1.44B** | **38.53** | **11K** | **36.3%** | **STOPPED** |
 
-**v28 fresh** is the current active run (started 2026-04-02). At step 7K,
-scaling law predictor estimates val_ppl ~26.7 at step 38K completion.
-val_ppl plateau at 38-42 since step 5K — may break through with more data.
+**v28 fresh** stopped at step 11K (2026-04-04). Best val_ppl=38.53 at step 6K.
+Regressed to 75.65 at step 11K (same pattern as v27 — peaks early, then
+diverges on raw data). Confirms data quality is the ceiling on raw codeparrot.
+Best checkpoint: `model-best.apr` (step 6K).
 
 ### 3.2 v28 Fresh Loss Curve
 
@@ -152,9 +153,17 @@ Step    val_ppl  pred_final  Notes
 4500    48.96    41.4        Minor regression
 5000    42.99    32.4
 5500    44.13    31.7
-6000    38.53    26.3        New best
+6000    38.53    26.3        ★ Best
 6500    40.09    25.6
 7000    41.73    26.7        Plateau at 38-42
+7500    42.81    28.4
+8000    41.78    29.3
+8500    40.47    29.6
+9000    44.41    31.6        Regression begins
+9500    44.62    33.3
+10000   45.72    35.1
+10500   52.40    38.6        Spike
+11000   75.65    47.5        Diverging — STOPPED
 ```
 
 ### 3.3 v28 Original vs Fresh
@@ -176,8 +185,14 @@ quality is the bottleneck.
 3. **Fused gradient clipping** (ALB-078): MFU 19% → 38.7%, tok/s 6.7K → 12.3K
 4. **Gradient accumulation**: ga=32 → 131K tokens/step
 
-**Next**: v28 completes full epoch (~3.5 days remaining), then v29 on filtered
-data (2.04B clean tokens). Distillation on best checkpoint.
+**v28 post-mortem**: Model peaked at step 6K (val_ppl=38.53), plateaued at
+38-45 from steps 6K-10K, then diverged to 75.65 at step 11K. Scaling law
+slope went negative (-0.0167) — model getting worse, not better. Same pattern
+as v27 (peaked at step 2K, diverged to 82). Raw codeparrot data runs out of
+useful signal after ~800M tokens on this architecture.
+
+**Next**: v29 on filtered data (2.04B clean tokens, higher signal density).
+HumanEval eval on v28 best checkpoint. Distillation with teacher completions.
 
 ---
 

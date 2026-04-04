@@ -709,7 +709,7 @@ At `seq_len=2048, batch=8`: OOM at block 21 upload.
 | 350M v16 (from scratch, seed=456, canary-validated) | 10K / 155K | 10.40→6.64 | 11h | **KILLED** (plateau) — val_ppl stuck at 693-767 for steps 6K-10K. No phase change. Same pattern as v14 (seed=42). seed=456 degenerate. |
 | 350M v27 (HPO-validated, C-HPO-001) | 10.2K / 38K | 10.40→3.44 | ~12h | **STOPPED** (ALB-129) — Best val_ppl=**9.39** at step 2K, then diverged to 82. `max_steps=155K` with `epochs=1` (38K actual) made cosine schedule constant (99% of peak at step 10K). Model found good basin then LR bounced it out. 9.4K tok/s, 27.3% MFU. |
 | 350M v28 orig (ALB-129 cosine fix) | 5.4K / 38K | 10.40→1.77 | ~7h | **KILLED** — Best val_ppl=**5.88** at step 3.5K. ALB-129 fix confirmed. Killed by `cargo-killer` systemd timer. Resume hit ALB-132 (checkpoint corruption on re-save). |
-| 350M v28 fresh (all fixes) | **6.8K / 38K** | 10.40→3.65 | ~20h | **RUNNING** — Best val_ppl=**38.53** at step 6K. Scaling law predicts **25.6** at 38K. Includes ALB-078 fused grad clip (rebuilt 2026-04-02). **12.3K tok/s, 38.7% MFU** (up from 9.7K/28.1% pre-ALB-078). `cargo-killer` disabled. ETA ~3.5 days. |
+| 350M v28 fresh (all fixes) | **11K / 38K** | 10.40→4.33 | ~28h | **STOPPED** — Best val_ppl=**38.53** at step 6K. Plateaued 38-45 (steps 6K-10K), then diverged to 75.65 at step 11K (slope went negative). Same pattern as v27: raw codeparrot data exhausts useful signal ~800M tokens. 11K tok/s, 36.3% MFU. Best checkpoint: `model-best.apr`. |
 
 **v15 convergence tracking** (seed=123, strongest early convergence):
 

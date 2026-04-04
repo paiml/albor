@@ -15,16 +15,17 @@
 
 | Metric | Value |
 |--------|-------|
-| Best val_ppl | **5.88** (v28 orig, step 3.5K); **38.53** (v28 fresh, step 6K, running) |
-| HumanEval pass@1 | 0% (v4 baseline, pre-HPO) |
+| Best val_ppl | **5.88** (v28 orig, step 3.5K); **38.53** (v28 fresh, step 6K) |
+| HumanEval pass@1 | 0% (v4 baseline, pre-HPO) — v28 eval pending |
 | Target HumanEval | ≥30% pass@1 |
-| Training throughput | **12.3K tok/s, 38.7% MFU** (RTX 4090, v28) |
-| Contracts validated | 50 |
+| Training throughput | **11K tok/s, 36.3% MFU** (RTX 4090, v28) |
+| Contracts validated | 54 |
 
-**v28 era (v1.2)**: HPO-validated hyperparameters (C-HPO-001) + cosine horizon fix
-(ALB-129) + fused gradient clipping (ALB-078) pushed val_ppl from 776 (v6) to 38.53
-(v28 fresh, step 6K, predicted ~26 at completion). Data filtering complete: 850K files,
-2.04B clean tokens for v29. Teacher pilot running: Qwen3-8B on gx10, 330/1K completions.
+**v28 stopped, v29 next (v1.3)**: v28 fresh peaked at val_ppl=38.53 (step 6K),
+then diverged to 75.65 at step 11K — raw codeparrot data ceiling reached.
+Data filtering complete (850K files, 2.04B clean tokens). Teacher completions
+running on gx10 GPU (realizar#184 fixed). Next: v29 on filtered data, then
+HumanEval eval on v28 best checkpoint.
 
 **Strategy**: Complete v28 full epoch → v29 on filtered data → distill with teacher
 completions → target HumanEval pass@1 > 0%.

@@ -226,7 +226,7 @@ wired into `apr` → dogfooded in albor pipeline → FALSIFY/pmat verified → c
 | v26 | 14.3K | 468M | **41.14** (step 14K) | STOPPED | LR=1e-4, GA=8 (32K tok/step). val_ppl oscillated 15→162→41 over 14K steps. Stopped for HPO sweep. Best checkpoint at step 14K. |
 | v27 | 10.2K | 1.34B | **9.39** (step 2K) | STOPPED | ALB-129: `max_steps=155000` with `epochs=1` (38K actual steps) made cosine schedule effectively constant (99% of peak LR at step 10K). Model peaked at step 2K then diverged: val_ppl 9.39→82. Both train and val oscillated together — not overfitting, LR too high to stay in basin. |
 | v28 (orig) | 5.4K | 700M | **5.88** (step 3.5K) | KILLED | ALB-129 fix confirmed: val_ppl 9.65→6.87→6.16→**5.88**. Pushed through v27's divergence zone. Killed by `cargo-killer` systemd timer, then hit ALB-132 (resume corruption). |
-| v28 (fresh) | **6.8K** | **891M** | **38.53** (step 6K) | **RUNNING** | Fresh start with all fixes including ALB-078 fused grad clip (rebuilt 2026-04-02). Best val_ppl=38.53 at step 6K. Scaling law predicts val_ppl=25.6 at step 38K. **12.3K tok/s, 38.7% MFU.** `cargo-killer` disabled. ETA ~3.5 days. |
+| v28 (fresh) | **11K** | **1.44B** | **38.53** (step 6K) | **STOPPED** | Best val_ppl=38.53 at step 6K. Plateaued 38-45, then diverged to 75.65 at step 11K (slope negative). Raw data ceiling reached ~800M tokens. 11K tok/s, 36.3% MFU. Best checkpoint: `model-best.apr`. |
 | distill-v3 | 2400 | 58M (mixed) | 658 | STOPPED | 0% HumanEval — insufficient tokens + raw code format |
 
 *Gaps are added as they are discovered during implementation and dogfooding.*

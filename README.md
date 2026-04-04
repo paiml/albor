@@ -24,20 +24,18 @@ A **350M-parameter decoder-only transformer** for Python code completion, traine
 
 ## Current Status
 
-**v28 training RUNNING** — step 6.8K/38K (~18% complete).
+**v28 STOPPED** — peaked at step 6K, diverged by step 11K. Next: v29 on filtered data.
 
 | Metric | Value |
 |--------|-------|
-| Training run | v28 fresh (all fixes incl. ALB-078 fused grad clip) |
-| Best val_ppl | **38.53** at step 6K |
-| Projected val_ppl | **25.6** at step 38K (scaling law) |
+| Training run | v28 fresh — **STOPPED** at step 11K (diverging on raw data) |
+| Best val_ppl | **38.53** at step 6K (best checkpoint saved) |
+| Final val_ppl | 75.65 at step 11K (regression — raw data ceiling) |
 | Prior best (v28 orig) | **5.88** at step 3.5K (killed by `cargo-killer`) |
 | Config | lr=7.35e-5, GA=32 (131K tok/step), wd=0.012 |
-| Throughput | **12,300 tok/s, 38.7% MFU** (ALB-078 fused gradient clipping) |
+| Throughput | **11,000 tok/s, 36.3% MFU** (ALB-078 fused gradient clipping) |
 | Hardware | RTX 4090 (24 GB), single GPU |
-| Data | codeparrot-clean, 5.08B tokens (73% Chinchilla) |
-| Total steps | 38,349 (1 epoch, cosine decay calibrated) |
-| ETA | ~3.5 days |
+| Next | **v29** on quality-filtered data (2.04B tokens, `data/pretokenized-1024-v4/`) |
 
 ### Training History: v1 to v28
 
@@ -83,7 +81,7 @@ keeps improving.
 
 | Phase | What | Status | ETA |
 |-------|------|--------|-----|
-| **v28** | Full epoch, unfiltered codeparrot (5B tokens, 38K steps) | **RUNNING** step 6.8K | ~3.5 days |
+| **v28** | Full epoch, unfiltered codeparrot (5B tokens, 38K steps) | **STOPPED** step 11K (diverged) | Best: step 6K |
 | **v29** | Filtered codeparrot (2B clean tokens, 15.5K steps) | **READY** | ~2.4 days |
 | **Distill** | Best checkpoint + Qwen3-Coder-30B teacher | **CONFIG READY** | after v29 |
 | **HumanEval** | Target: 5-15% pass@1 | pending | after distill |
