@@ -99,7 +99,7 @@ def main():
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args()
 
-    # Health check
+    # Health check (ALB-136: validate completions endpoint, not just /health)
     try:
         with urllib.request.urlopen(f"{args.server}/health", timeout=5) as r:
             health = json.loads(r.read())
@@ -108,6 +108,15 @@ def main():
     except Exception as e:
         print(f"ERROR: Server not reachable at {args.server}: {e}")
         sys.exit(1)
+
+    # Smoke test: verify completions actually work (not just health)
+    test_result = generate_completion(args.server, "def add(a, b):\n", 10,
+                                      max_retries=2)
+    if test_result is None:
+        print("ERROR: Server health OK but completions endpoint broken. "
+              "Model may not be loaded (ALB-136: 'No model available').")
+        sys.exit(1)
+    print(f"Smoke test OK ({len(test_result)} chars)", flush=True)
 
     # Load prompts
     with open(args.prompts) as f:
