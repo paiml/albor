@@ -112,7 +112,16 @@ filtering hypothesis.
 | `teacher-completions-pipeline-v1.yaml` | Pipeline resume: output = prompts \ completed; retry with exponential backoff | Crash resilience, hash-based dedup, append-mode JSONL, atexit summary | High | PASS |
 | `data-quality-filtering-v1.yaml` | passes(f) = ast_valid ∧ has_docstrings ∧ has_imports ∧ ¬generated | v29 val_ppl < v28 val_ppl at matched steps; 100% AST validity; deterministic | High | PASS |
 
-**Contract validation status: 52/52 PASS** (`pv validate contracts/*.yaml`, 2026-04-03)
+### Inference & Eval Contracts (ALB-135, ALB-136)
+
+Added 2026-04-04 for v28 HumanEval evaluation and GGUF OpenAI completions fix.
+
+| Contract | Key Equations | Key Obligations | Priority | `pv validate` |
+|----------|---------------|-----------------|----------|---------------|
+| `v28-humaneval-eval-v1.yaml` | ppl→HumanEval mapping: val_ppl 30-50 → 8-15% pass@1 | Non-zero HumanEval on v28 best checkpoint; prediction range validation | High | PASS |
+| `gguf-openai-completions-v1.yaml` | healthy(S) ∧ completable(/generate) → completable(/v1/completions) | CUDA GGUF models serve OpenAI completions; health reflects readiness | Critical | PASS |
+
+**Contract validation status: 54/54 PASS** (`pv validate contracts/*.yaml`, 2026-04-05)
 
 ## 12.3 Contract Workflow for Each Kernel
 
