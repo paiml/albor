@@ -218,21 +218,23 @@ filtering:
 
 | Phase | Prompts | Completions | ~Tokens | Wall Time | Status |
 |-------|---------|-------------|---------|-----------|--------|
-| Pilot (M1) | 1K | 1K × 1 | ~0.4M | ~28h | **330/1K done** (crashed, resumable) |
-| Scale 1 (M2) | 10K | 10K × 1 | ~4M | ~280h | TODO |
-| Scale 2 (M2+) | 50K | 50K × 1 | ~20M | ~58 days | TODO |
+| **Pilot (M1)** | **1K** | **982** | **~400K** | **5h** | **DONE** (98.3% pass) |
+| Scale 1 (M2) | 10K | ~9.8K | ~4M | ~38h (GPU) | TODO |
+| Scale 2 (M2+) | 50K | ~49K | ~20M | ~8 days (GPU) | TODO |
 
-**Pilot results** (Qwen3-8B, greedy, 1 completion per prompt):
-- 330/1K completed at 36 completions/hour before connection reset
-- 100% acceptance rate (all 330 completions passed quality filter)
-- Average completion length: ~2.9K chars
-- Pipeline crashed at prompt 331 (unhandled RemoteDisconnected)
-- Fixed: retry + resume logic added (C-TEACHER-RETRY-001, C-TEACHER-RESUME-001)
-- Resume via: `bash scripts/resume-teacher-completions.sh`
+**Pilot results** (Qwen3-8B-Q4K, greedy, 1 completion per prompt):
+- **982/1000 completed**, 17 failures, 132 completions/hour (GPU mode)
+- Completion distribution: 406 function, 434 method, 142 class
+- Completion length: min=11, median=1046, max=5622, mean=1635 chars
+- Total: ~1.6M chars, ~400K estimated tokens
+- Infrastructure: realizar serve on gx10 GB10 GPU (realizar#184 fix enabled
+  GGUF→OpenAI completions; arXiv:2306.11644 sequence-level distillation)
+- Pipeline: `scripts/generate_teacher_completions_api.py` with retry/resume
+  (C-TEACHER-*). Runs directly on gx10 via `scripts/resume-teacher-completions.sh`.
 
-**Scaling note**: With Qwen3-8B (interim teacher) at 36/h, generating 10K
-completions takes ~12 days. The full Qwen3-Coder-30B teacher (ALB-010, pending)
-at ~100-140 tok/s would be ~3.5× faster.
+**Scaling projection**: GPU mode at 132/h means 10K completions in ~3.2 days.
+With parallel servers (2× realizar instances) or upgraded teacher
+(Qwen3-Coder-30B at 100+ tok/s): ~1.5 days for 10K.
 
 ---
 
@@ -242,8 +244,10 @@ at ~100-140 tok/s would be ~3.5× faster.
 
 Two parallel paths, best checkpoint from either feeds into Stage B:
 
-**Path 1 (v28)**: Full epoch on raw codeparrot-clean (5.3B tokens) with
-HPO-validated hyperparameters. Currently running, val_ppl=38.53 at step 6K.
+**Path 1 (v28)**: Raw codeparrot-clean (5.3B tokens). **STOPPED** at step 11K.
+Best val_ppl=38.53 at step 6K, then diverged to 75.65 at step 11K. Raw data
+ceiling at ~800M tokens — same regression pattern as v27 (arXiv:2203.15556
+Chinchilla scaling: model needs higher-quality tokens, not more raw ones).
 
 **Path 2 (v29)**: Train on AST-filtered subset (2.04B tokens, 850K files,
 `data/pretokenized-1024-v4/`). Config: `configs/train/pretrain-350m-v29.yaml`

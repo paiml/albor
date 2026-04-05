@@ -96,6 +96,16 @@ against FP32 peak (82.6 TFLOP/s), not TF32 peak.
 from cuBLAS (ALB-075), batched RMSNorm (ALB-076), GPU-resident gradient
 accumulation (ALB-091), and fused gradient clipping (ALB-078).
 
+**Inference**: CUDA graph replay enabled by default for sm_89+ (realizar#201).
+Eliminates kernel launch overhead for repetitive decode steps. Logprobs and
+teacher-forcing perplexity endpoints added (realizar#191) for model quality
+measurement without the training loop.
+
+**Negative result (trueno)**: AVX-512 GEMV kernel tested but AVX2 wins for
+Q4K inference — bandwidth-bound workload where wider SIMD doesn't help
+(arXiv:2210.17323 GPTQ quantization analysis). The kernel is retained as
+a documented negative result per Popperian methodology.
+
 ### 1.3 Research Benchmarks for Context
 
 | System | Model Size | Hardware | MFU | Source |

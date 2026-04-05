@@ -54,7 +54,7 @@ Actual usage varies: v6 measured at 17.8 GB peak, v28 at 13.7 GB steady-state
 | `apr` (aprender) | CLI: train, eval, distill, quantize, export | `~/src/aprender` |
 | `entrenar` | Training engine: CUDA trainer, GPU-resident grad accum | `~/src/entrenar` |
 | `trueno` | Tensor ops: cuBLAS GEMMs, PTX kernels, RMSNorm | crates.io |
-| `realizar` | Inference: teacher model, eval generation, MoE dispatch | `~/src/realizar` |
+| `realizar` | Inference: teacher model, eval, MoE, CUDA graph, logprobs/ppl | `~/src/realizar` |
 | `alimentar` | Data: import, tokenize, FIM transform, quality filter | — |
 | `forjar` | Pipeline: DAG orchestration, multi-machine, idempotent | — |
 | `batuta` | Mutation testing, falsification | — |
@@ -189,12 +189,26 @@ Computed from gnorm variance in rolling window (100 steps).
 
 | Component | Spec |
 |-----------|------|
-| GPU | NVIDIA GB10 (Jetson) |
-| Role | Teacher inference, HumanEval eval |
-| Current | 2× `realizar serve` (Qwen3-8B-Q4K, ports 8090/8091, 8 GB VRAM) |
+| GPU | NVIDIA GB10 (Jetson, sm_121, 120 GB unified memory) |
+| Role | Teacher inference, HumanEval eval, canary benchmarks |
+| Current | `realizar serve` (Qwen3-8B-Q4K, port 8091, GPU mode) |
 
-gx10 handles teacher completions and model evaluation while the 4090 is
-occupied with training. Teacher throughput: ~36 completions/hour.
+gx10 handles teacher completions and model evaluation. Teacher throughput:
+~132 completions/hour (GPU mode, post-realizar#184 fix).
+
+### 6.1 realizar Inference Capabilities (Recent)
+
+| Feature | Endpoint | Status | Reference |
+|---------|----------|--------|-----------|
+| GGUF CUDA completions | `/v1/completions` | **FIXED** | realizar#184 (ALB-136) |
+| Logprobs endpoint | `/v1/logprobs` | NEW | realizar#191 (F-QUALITY-01) |
+| Teacher-forcing perplexity | `/v1/perplexity` | NEW | realizar#191 |
+| CUDA graph replay | auto (sm_89+) | NEW | realizar#201 |
+
+The `/v1/perplexity` endpoint enables measuring model quality directly via the
+inference server — standard PPL methodology matching llama-perplexity
+(arXiv:2404.10830). Teacher-forcing feeds ground-truth tokens and measures
+prediction quality per-token.
 
 ## 7. Known Infrastructure Issues
 
@@ -204,4 +218,4 @@ occupied with training. Teacher throughput: ~36 completions/hour.
 | `with_model()` resume broken | Can't resume from checkpoint | OPEN |
 | Stale training_state.json | Rollback false positives | Workaround: clean dir |
 | cargo-killer.service | May kill long builds | DISABLED for training |
-| Teacher completions crash | Connection reset after 330/1K | Needs retry logic |
+| GGUF OpenAI completions broken | Teacher pipeline blocked | **FIXED** (realizar#184) |

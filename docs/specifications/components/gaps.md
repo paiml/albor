@@ -144,6 +144,16 @@ diverging run (v27: 9.39 → 82) into the best result (v28: val_ppl=5.88).
 
 ---
 
+### 3.13 ALB-136: GGUF OpenAI Completions (FIXED)
+
+`realizar serve --model X.gguf --gpu --openai-api` reported `/health` as
+healthy but `/v1/completions` returned "No model available". Five Whys:
+`with_cuda_model_and_vocab()` sets `model: None` → handler chain falls
+through without checking `cuda_batch_tx`. Fix: `try_cuda_gguf_completions()`
+routes via batch scheduler (realizar#184). Contract: `gguf-openai-completions-v1.yaml`.
+
+---
+
 ## 4. Infrastructure Gaps
 
 | ID | Gap | Status | Notes |
@@ -152,6 +162,7 @@ diverging run (v27: 9.39 → 82) into the best result (v28: val_ppl=5.88).
 | ALB-087 | Auto eval scheduling | FIXED | entrenar PR #254 |
 | ALB-088 | Multi-sample pass@k | FIXED | aprender PR #432 |
 | ALB-091 | GPU-resident grad accum | FIXED | entrenar (CudaGradWorkspace) |
+| ALB-136 | GGUF→OpenAI completions | **FIXED** | realizar#184, contract `gguf-openai-completions-v1.yaml` |
 
 ---
 
