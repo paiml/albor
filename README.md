@@ -14,6 +14,20 @@
 
 ---
 
+> ### 🎉 Albor SHIPPED (2026-05-18) — via the aprender monorepo
+>
+> Active development of Albor moved into the [`paiml/aprender`](https://github.com/paiml/aprender) monorepo after the APR-MONO consolidation. The shipped artifact is **[`paiml/albor-370m-v1`](https://huggingface.co/paiml/albor-370m-v1)** on HuggingFace Hub — a 494M-parameter Qwen2-architecture model trained from `Qwen/Qwen2.5-Coder-0.5B-Instruct` init + fine-tuned on bigcode/the-stack-dedup + codeparrot/codeparrot-clean (Python permissive subset), val_loss=4.6227. Apache-2.0. Three usage paths verified: `apr run` (Rust), HF Transformers (`AutoModelForCausalLM.from_pretrained`), and llama.cpp (GGUF Q4_K).
+>
+> The ship is framed as a **§88 stack-existence-proof** per [SPEC-SHIP-MODEL-2 §84](https://github.com/paiml/aprender/blob/main/docs/specifications/aprender-train/ship-model-2-spec.md) — demonstrating that the pure-Rust pipeline runs end-to-end on real data, not that the resulting model is competitive at code completion. The compute-bounded target (val_loss ≤ 4.7 within 48 GPU-hours) was met; the strict target (val_loss ≤ 2.2) is deferred to the distillation epic.
+>
+> The publish pipeline is now codified in [**SPEC-HF-PUBLISH-001**](https://github.com/paiml/aprender/blob/main/docs/specifications/aprender-train/model-hf-publish-pipeline-spec.md) — 12-file minimum, YAML schema, NDJSON-commit rule, LFS-batch flow, 13-tier crates.io cascade, three-path verification. Future Albor iterations follow that spec.
+>
+> Post-ship audit with Popperian falsification + Sorscher 2022 ([arXiv:2206.14486](https://arxiv.org/abs/2206.14486)) literature support: [`audits/albor-370.md`](https://github.com/paiml/aprender/blob/main/docs/specifications/audits/albor-370.md).
+>
+> **This repo (`paiml/albor`) remains the historical reference for the standalone v0.1.0–v0.2.x lineage and the v1–v28 training history.** Last active commit: 2026-04-05. The 54/54 ALB-* contracts and the v28/v29 data-quality work (ALB-134) remain valid context for the monorepo's continued iteration.
+
+---
+
 ## What Is Albor?
 
 A **350M-parameter decoder-only transformer** for Python code completion, trained entirely in Rust with zero Python dependencies. Every operation — data loading, tokenization, training, evaluation, checkpointing — uses the Sovereign AI stack. No PyTorch, no pip, no conda.
